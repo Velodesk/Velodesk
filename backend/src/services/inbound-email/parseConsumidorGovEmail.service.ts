@@ -4,6 +4,12 @@ import { parseBrSlashDateToIso } from '../dates/brDateTime.util';
 
 export const CGOV_PRIORITY_SUBJECT_PATTERN = /PRIORIZAR\s*-\s*CGOV/i;
 
+/** Protocolo Consumidor.gov no assunto, ex.: "CGOV - 2026.07/00015790834". */
+export const CGOV_SUBJECT_PROTOCOL_PATTERN = /CGOV\s*-\s*([\d]{4}\.\d{2}\/\d+)/i;
+
+/** Prazo de resposta no assunto, ex.: "Prazo: 10/08" (sem ano — inferido na extração). */
+export const CGOV_SUBJECT_PRAZO_PATTERN = /Prazo\s*:\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/i;
+
 export interface ParsedCgovInboundEmail {
   nome: string;
   cpf: string;
@@ -53,6 +59,38 @@ function parseLocalidade(value: string): { cidade: string; uf: string } {
 
 function parseBrDate(value: string, endOfDay = false): string | undefined {
   return parseBrSlashDateToIso(value, endOfDay);
+}
+
+/** Número do protocolo Consumidor.gov quando ele vem no assunto do e-mail (ex.: "CGOV - 2026.07/00015790834"). */
+export function extractCgovProtocoloFromSubject(subject: string): string {
+  const match = String(subject ?? '').match(CGOV_SUBJECT_PROTOCOL_PATTERN);
+  return match?.[1]?.trim() || '';
+}
+
+/**
+ * "Prazo: 10/08" no assunto não traz ano — infere a partir da data de recebimento do e-mail e
+ * avança pro ano seguinte se a data cair mais de ~30 dias no passado (evita, por ex., um e-mail
+ * recebido em janeiro com "Prazo: 10/12" apontar de volta pro dezembro do ano anterior).
+ */
+export function extractCgovPrazoIsoFromSubject(subject: string, referenceDate: Date = new Date()): string | undefined {
+  const match = String(subject ?? '').match(CGOV_SUBJECT_PRAZO_PATTERN);
+  if (!match) return undefined;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  let year = match[3]
+    ? Number(match[3].length === 2 ? `20${match[3]}` : match[3])
+    : referenceDate.getFullYear();
+
+  if (!match[3]) {
+    const candidate = new Date(Date.UTC(year, month - 1, day));
+    const diffDays = (candidate.getTime() - referenceDate.getTime()) / 86400000;
+    if (diffDays < -30) year += 1;
+  }
+
+  const dd = String(day).padStart(2, '0');
+  const mm = String(month).padStart(2, '0');
+  return parseBrDate(`${dd}/${mm}/${year}`, true);
 }
 
 function extractField(text: string, labels: string[]): string {
@@ -121,11 +159,12 @@ export function isCgovStructuredInboundEmail(
   bodyText?: string,
 ): boolean {
   if (isCgovPrioritySubject(payload.subject)) return true;
+  if (extractCgovProtocoloFromSubject(payload.subject)) return true;
   const body = bodyText ?? payload.textBody ?? '';
   return hasCgovBodyStructure(body);
 }
 
-export function parseConsumidorGovInboundEmail(bodyText: string): ParsedCgovInboundEmail {
+export function parseConsumidorGovInboundEmail(bodyText: string, subject?: string): ParsedCgovInboundEmail {
   const text = String(bodyText ?? '').replace(/\r\n/g, '\n');
 
   const reclamanteSection = extractSection(text, 'Dados do Reclamante', [
@@ -142,7 +181,7 @@ export function parseConsumidorGovInboundEmail(bodyText: string): ParsedCgovInbo
   const telefone = normalizeTelefone(extractField(reclamanteSection, ['Telefone']));
   const localidade = parseLocalidade(extractField(reclamanteSection, ['Localidade']));
 
-  const protocolo = extractField(reclamacaoSection, ['Protocolo']).replace(/^#+/, '').trim();
+  const protocoloBody = extractField(reclamacaoSection, ['Protocolo']).replace(/^#+/, '').trim();
   const area = extractField(reclamacaoSection, ['Área', 'Area']);
   const assunto = extractField(reclamacaoSection, ['Assunto']);
   const problema = extractField(reclamacaoSection, ['Problema']);
@@ -153,7 +192,10 @@ export function parseConsumidorGovInboundEmail(bodyText: string): ParsedCgovInbo
   const descricao = extractDescricao(text);
 
   const dataAberturaIso = parseBrDate(aberturaRaw, false);
-  const prazoIso = parseBrDate(prazoRaw, true);
+  // O assunto é a fonte confiável de protocolo/prazo (ex.: "CGOV - 2026.07/00015790834" e
+  // "Prazo: 10/08") — prevalece sobre o que vier rotulado no corpo do e-mail.
+  const protocolo = extractCgovProtocoloFromSubject(subject || '') || protocoloBody;
+  const prazoIso = extractCgovPrazoIsoFromSubject(subject || '') ?? parseBrDate(prazoRaw, true);
 
   const parsed: ParsedCgovInboundEmail = {
     nome,

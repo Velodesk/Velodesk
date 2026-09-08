@@ -465,7 +465,9 @@ export function buildBacenStructuredTicketBody(
   const descricao = String(parsed.descricao || '').trim();
   const telefone = parsed.telefone ? [parsed.telefone] : [];
   const dataDemanda = parsed.dataDemandaIso || new Date().toISOString();
-  const prazoLegal = addDaysIso(dataDemanda, 10);
+  // Prazo real vem do assunto do e-mail (ex.: "Prazo: 06/08/2026"); só cai no cálculo de
+  // +10 dias corridos quando o e-mail não trouxer essa informação.
+  const prazoLegal = parsed.prazoIso || addDaysIso(dataDemanda, 10);
 
   return {
     title: assunto,
@@ -662,12 +664,12 @@ async function runInboundEmailFlow(
   const bodyText = appendAttachmentReferencesToBody(resolveEmailBodyForPersist(payload), payload);
 
   const bacenParsed = isBacenRdrStructuredInboundEmail(payload, bodyText)
-    ? parseBacenRdrInboundEmail(bodyText)
+    ? parseBacenRdrInboundEmail(bodyText, payload.subject)
     : null;
   const bacenStructured = Boolean(bacenParsed?.isValid());
 
   const cgovParsed = !bacenStructured && isCgovStructuredInboundEmail(payload, bodyText)
-    ? parseConsumidorGovInboundEmail(bodyText)
+    ? parseConsumidorGovInboundEmail(bodyText, payload.subject)
     : null;
   const cgovStructured = Boolean(cgovParsed?.isValid());
 

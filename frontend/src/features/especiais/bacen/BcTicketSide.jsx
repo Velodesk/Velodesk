@@ -44,15 +44,9 @@ export default function BcTicketSide({
           </span>
           <dl>
             <div>
-              <dt>ID Bacen</dt>
+              <dt>RDR</dt>
               <dd>{protocoloDisplay}</dd>
             </div>
-            {bcItem.idDemanda ? (
-              <div>
-                <dt>ID da demanda</dt>
-                <dd>{bcItem.idDemanda}</dd>
-              </div>
-            ) : null}
             <div>
               <dt>Assunto</dt>
               <dd>{bcItem.assunto || '—'}</dd>
@@ -75,7 +69,7 @@ export default function BcTicketSide({
             </div>
             <div>
               <dt>Data da demanda</dt>
-              <dd>{formatComplaintDate(bcItem.dataDemanda)}</dd>
+              <dd>{formatComplaintDate(bcItem.prazoLegal)}</dd>
             </div>
             {bcItem.workflowAtivo ? (
               <div>

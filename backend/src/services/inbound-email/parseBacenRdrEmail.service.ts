@@ -1,8 +1,14 @@
 /** parseBacenRdrEmail v1.1.0 — datas BR com offset -03:00 explícito */
 import type { InboundEmailPayload } from './types';
-import { parseBrCivilDateTimeToIso } from '../dates/brDateTime.util';
+import { parseBrCivilDateTimeToIso, parseBrSlashDateToIso } from '../dates/brDateTime.util';
 
 export const BACEN_RDR_PRIORITY_SUBJECT_PATTERN = /PRIORIZAR\s*-\s*BACEN\s*\/?\s*RDR/i;
+
+/** ID/RDR Bacen no assunto, ex.: "BACEN/ RDR - 20261074668" ou "BACEN / RDR - 20261074668". */
+export const BACEN_SUBJECT_RDR_PATTERN = /BACEN\s*\/\s*RDR\s*-\s*(\d+)/i;
+
+/** Prazo de resposta no assunto, ex.: "Prazo: 06/08/2026" (já vem com ano, ao contrário do CGOV). */
+export const BACEN_SUBJECT_PRAZO_PATTERN = /Prazo\s*:\s*(\d{2}\/\d{2}\/\d{4})/i;
 
 export interface ParsedBacenRdrInboundEmail {
   nome: string;
@@ -22,6 +28,7 @@ export interface ParsedBacenRdrInboundEmail {
   motivo: string;
   contrato: string;
   dataDemandaIso?: string;
+  prazoIso?: string;
   protocoloBacen: string;
   idDemanda: string;
   isValid(): boolean;
@@ -67,6 +74,19 @@ function parseEnderecoLocalidade(endereco: string): { cidade: string; uf: string
 
 function parseBrDateTime(value: string): string | undefined {
   return parseBrCivilDateTimeToIso(value);
+}
+
+/** ID/RDR Bacen quando vem no assunto do e-mail (ex.: "BACEN/ RDR - 20261074668"). */
+export function extractBacenRdrFromSubject(subject: string): string {
+  const match = String(subject ?? '').match(BACEN_SUBJECT_RDR_PATTERN);
+  return match?.[1]?.trim() || '';
+}
+
+/** Prazo de resposta quando vem no assunto do e-mail (ex.: "Prazo: 06/08/2026"). */
+export function extractBacenPrazoIsoFromSubject(subject: string): string | undefined {
+  const match = String(subject ?? '').match(BACEN_SUBJECT_PRAZO_PATTERN);
+  if (!match?.[1]) return undefined;
+  return parseBrSlashDateToIso(match[1], true);
 }
 
 function extractField(text: string, labels: string[]): string {
@@ -165,11 +185,12 @@ export function isBacenRdrStructuredInboundEmail(
   bodyText?: string,
 ): boolean {
   if (isBacenRdrPrioritySubject(payload.subject)) return true;
+  if (extractBacenRdrFromSubject(payload.subject)) return true;
   const body = bodyText ?? payload.textBody ?? '';
   return hasBacenRdrBodyStructure(body);
 }
 
-export function parseBacenRdrInboundEmail(bodyText: string): ParsedBacenRdrInboundEmail {
+export function parseBacenRdrInboundEmail(bodyText: string, subject?: string): ParsedBacenRdrInboundEmail {
   const text = String(bodyText ?? '').replace(/\r\n/g, '\n');
 
   const demandanteSection = extractSection(text, 'Dados do Demandante', [
@@ -210,8 +231,12 @@ export function parseBacenRdrInboundEmail(bodyText: string): ParsedBacenRdrInbou
   const assunto = deriveAssuntoFromMensagem(mensagem);
   const motivo = assunto;
   const localidade = parseEnderecoLocalidade(endereco);
-  const idDemanda = idBacen || idReclamacao;
+  // O assunto é a fonte confiável do RDR/prazo (ex.: "BACEN/ RDR - 20261074668" e
+  // "Prazo: 06/08/2026") — prevalece sobre o que vier (ou não) rotulado no corpo do e-mail.
+  const rdrFromSubject = extractBacenRdrFromSubject(subject || '');
+  const idDemanda = rdrFromSubject || idBacen || idReclamacao;
   const protocoloBacen = buildProtocoloBacen(idDemanda, dataDemandaIso);
+  const prazoIso = extractBacenPrazoIsoFromSubject(subject || '');
 
   const parsed: ParsedBacenRdrInboundEmail = {
     nome: nome || footer.nomeFooter,
@@ -231,6 +256,7 @@ export function parseBacenRdrInboundEmail(bodyText: string): ParsedBacenRdrInbou
     motivo,
     contrato,
     dataDemandaIso,
+    prazoIso,
     protocoloBacen,
     idDemanda,
     isValid() {
