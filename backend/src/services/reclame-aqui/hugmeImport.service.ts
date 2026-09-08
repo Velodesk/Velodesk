@@ -1,10 +1,14 @@
-/** hugmeImport.service v1.2.0 — lote em background; progresso persistido a cada ticket */
+/**
+ * hugmeImport.service v2.0.0 — sem coleção paralela (reclame_aqui_hugme_registros removida):
+ * cada linha da planilha vira upsert direto em reclamacoes_reclameAqui, deduplicado por
+ * idOrigem (enriquece o ticket existente em vez de duplicar). reclame_aqui_hugme_import_batches
+ * segue só como log/auditoria do lote (contadores, erros, quem/quando importou).
+ */
 import { randomUUID } from 'crypto';
-import type { IReclameAquiHugmeRegistro, HugmeOrigemImportacao } from '../../models/reclamacoes/ReclameAquiHugmeRegistro.schema';
-import {
-  getReclameAquiHugmeImportBatchModel,
-  getReclameAquiHugmeRegistroModel,
-} from '../../models/reclamacoes/hugmeModels';
+import type { HugmeOrigemImportacao } from '../../models/reclamacoes/ReclameAquiHugmeRegistro.schema';
+import { getReclameAquiHugmeImportBatchModel } from '../../models/reclamacoes/hugmeModels';
+import { getReclamacaoReclameAquiModel, type IReclamacao } from '../../models/reclamacoes/reclamacaoModels';
+import { reclamacaoToPortalDto } from '../reclamacoes/reclamacao.service';
 import {
   parseHugmeBuffer,
   type HugmeParseResult,
@@ -45,88 +49,6 @@ export interface HugmeImportResult {
   rows: HugmeImportRowResult[];
   errors: Array<{ rowIndex: number; idOrigem?: string; message: string }>;
 }
-
-function mergeColunasOriginais(
-  existing: Record<string, string> | undefined,
-  incoming: Record<string, string>,
-): Record<string, string> {
-  return { ...(existing ?? {}), ...incoming };
-}
-
-function buildRegistroPayload(
-  row: ParsedHugmeRow,
-  modo: HugmeOrigemImportacao,
-  batchId: string,
-  now: Date,
-) {
-  return {
-    idOrigem: row.idOrigem.trim(),
-    idHugme: row.idHugme || row.idReclamacaoRa || '',
-    colunasOriginais: row.colunasOriginais,
-    cabecalhos: row.cabecalhos,
-    consumidor: row.consumidor,
-    cpf: row.cpf,
-    email: row.email,
-    telefoneWhatsapp: row.telefoneWhatsapp,
-    assunto: row.assunto,
-    descricao: row.descricao,
-    produto: row.produto ?? '',
-    tipo: row.tipo ?? 'Reclamação',
-    motivo: row.hugmeMotivoRa ?? row.motivo ?? '',
-    nota: row.nota ?? '',
-    statusRa: row.statusRa ?? '',
-    statusHugme: row.statusHugme ?? '',
-    statusRaLabel: row.statusRaLabel ?? '',
-    dataReclamacao: row.dataReclamacao ? new Date(row.dataReclamacao) : undefined,
-    dataResposta: row.dataResposta ? new Date(row.dataResposta) : undefined,
-    respostaPublica: row.respostaPublica ?? '',
-    cidade: row.cidade ?? '',
-    uf: row.uf ?? '',
-    ultimoImportBatchId: batchId,
-    ultimoImportEm: now,
-    origemImportacao: modo,
-  };
-}
-
-function registroToPortalDto(doc: IReclameAquiHugmeRegistro) {
-  return {
-    id: String(doc._id),
-    idOrigem: doc.idOrigem,
-    idHugme: doc.idHugme,
-    consumidor: doc.consumidor,
-    cpf: doc.cpf,
-    email: doc.email,
-    telefoneWhatsapp: doc.telefoneWhatsapp,
-    assunto: doc.assunto,
-    descricao: doc.descricao,
-    produto: doc.produto,
-    tipo: doc.tipo,
-    motivo: doc.motivo,
-    nota: doc.nota,
-    statusRa: doc.statusRa,
-    statusHugme: doc.statusHugme,
-    statusRaLabel: doc.statusRaLabel,
-    dataReclamacao: doc.dataReclamacao,
-    dataResposta: doc.dataResposta,
-    respostaPublica: doc.respostaPublica,
-    cidade: doc.cidade,
-    uf: doc.uf,
-    colunasOriginais: doc.colunasOriginais,
-    cabecalhos: doc.cabecalhos,
-    chamadoId: doc.chamadoId ? String(doc.chamadoId) : null,
-    chamadoProtocolo: doc.chamadoProtocolo || null,
-    reclamacaoId: doc.reclamacaoId ? String(doc.reclamacaoId) : null,
-    ticketCriadoEm: doc.ticketCriadoEm,
-    ultimoImportBatchId: doc.ultimoImportBatchId,
-    primeiroImportEm: doc.primeiroImportEm,
-    ultimoImportEm: doc.ultimoImportEm,
-    origemImportacao: doc.origemImportacao,
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-  };
-}
-
-export { registroToPortalDto };
 
 export type HugmeImportStats = HugmeImportResult['stats'];
 
@@ -308,7 +230,6 @@ export async function beginHugmeImport(
 export async function runHugmeImportLoop(started: HugmeImportStarted): Promise<HugmeImportResult> {
   const { batchId, parse, stats, rows, errors, now } = started;
   const options = started.options;
-  const RegistroModel = getReclameAquiHugmeRegistroModel();
   const validRows = parse.rows.filter((row) => row.status === 'valid');
   const validTotal = validRows.length;
   let processedValid = 0;
@@ -316,51 +237,23 @@ export async function runHugmeImportLoop(started: HugmeImportStarted): Promise<H
   try {
     for (const row of validRows) {
       try {
-        const existing = await RegistroModel.findOne({ idOrigem: row.idOrigem.trim() }).exec();
-        const payload = buildRegistroPayload(row, options.modo, batchId, now);
-
-        let doc: IReclameAquiHugmeRegistro;
-        let action: 'inserted' | 'updated';
-
-        if (existing) {
-          existing.set({
-            ...payload,
-            colunasOriginais: mergeColunasOriginais(
-              existing.colunasOriginais as Record<string, string>,
-              row.colunasOriginais,
-            ),
-            cabecalhos: row.cabecalhos.length ? row.cabecalhos : existing.cabecalhos,
-          });
-          doc = await existing.save();
-          action = 'updated';
-          stats.updated += 1;
-        } else {
-          doc = await RegistroModel.create({
-            ...payload,
-            primeiroImportEm: now,
-          });
-          action = 'inserted';
-          stats.inserted += 1;
-        }
-
-        let ticketCreated = false;
-        let chamadoId: string | undefined;
-
+        // Sem coleção paralela: upsertRaTicketFromSource já dedupe por idOrigem e
+        // enriquece o documento existente em reclamacoes_reclameAqui em vez de duplicar.
         const ticketResult = await upsertRaTicketFromSource(
           parsedRowToRaTicketSource(row),
           options.importedBy || 'sistema',
           'hugme-import',
         );
-        doc.chamadoId = ticketResult.chamadoId;
-        doc.chamadoProtocolo = ticketResult.chamadoProtocolo;
-        doc.reclamacaoId = ticketResult.reclamacaoId;
+        const action: 'inserted' | 'updated' = ticketResult.updated ? 'updated' : 'inserted';
+        if (action === 'updated') stats.updated += 1;
+        else stats.inserted += 1;
+
+        let ticketCreated = false;
         if (!ticketResult.updated) {
-          doc.ticketCriadoEm = now;
           ticketCreated = true;
           stats.ticketsCreated += 1;
         }
-        await doc.save();
-        chamadoId = ticketResult.chamadoId.toString();
+        const chamadoId = ticketResult.chamadoId.toString();
 
         processedValid += 1;
         await persistHugmeBatchProgress(batchId, stats, errors).catch(() => undefined);
@@ -427,8 +320,12 @@ export interface HugmeRegistroListFilters {
   skip?: number;
 }
 
+/**
+ * Substitui a antiga coleção paralela reclame_aqui_hugme_registros: lista/consulta direto em
+ * reclamacoes_reclameAqui (idOrigem é o mesmo campo, agora de primeira classe lá).
+ */
 export async function listHugmeRegistros(filters: HugmeRegistroListFilters = {}) {
-  const Model = getReclameAquiHugmeRegistroModel();
+  const Model = getReclamacaoReclameAquiModel();
   const query: Record<string, unknown> = {};
   if (filters.semTicket) {
     query.chamadoId = { $in: [null, undefined] };
@@ -437,25 +334,25 @@ export async function listHugmeRegistros(filters: HugmeRegistroListFilters = {})
   const skip = Math.max(filters.skip ?? 0, 0);
 
   const [items, total] = await Promise.all([
-    Model.find(query).sort({ ultimoImportEm: -1 }).skip(skip).limit(limit).exec(),
+    Model.find(query).sort({ updatedAt: -1 }).skip(skip).limit(limit).exec(),
     Model.countDocuments(query),
   ]);
 
   return {
-    items: items.map(registroToPortalDto),
+    items: items.map((doc) => reclamacaoToPortalDto(doc as unknown as IReclamacao)),
     total,
   };
 }
 
 export async function getHugmeRegistroByIdOrigem(idOrigem: string) {
-  const doc = await getReclameAquiHugmeRegistroModel()
+  const doc = await getReclamacaoReclameAquiModel()
     .findOne({ idOrigem: String(idOrigem).trim() })
     .exec();
-  return doc ? registroToPortalDto(doc) : null;
+  return doc ? reclamacaoToPortalDto(doc as unknown as IReclamacao) : null;
 }
 
 export async function getHugmeImportStats() {
-  const Model = getReclameAquiHugmeRegistroModel();
+  const Model = getReclamacaoReclameAquiModel();
   const BatchModel = getReclameAquiHugmeImportBatchModel();
 
   const [total, comTicket, semTicket, ultimoBatch] = await Promise.all([
@@ -498,10 +395,3 @@ export async function listHugmeImportBatches(limit = 50) {
   return items.map((batch) => mapHugmeBatch(batch, false));
 }
 
-export async function findHugmeRegistroDocByIdOrigem(idOrigem: string) {
-  return getReclameAquiHugmeRegistroModel()
-    .findOne({ idOrigem: String(idOrigem).trim() })
-    .exec();
-}
-
-export type { IReclameAquiHugmeRegistro } from '../../models/reclamacoes/ReclameAquiHugmeRegistro.schema';

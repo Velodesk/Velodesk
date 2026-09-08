@@ -38,6 +38,12 @@ export default function EspeciaisDeskTicketView({
   composeAttachments = [],
   onComposeAttachmentsChange,
   extraTab,
+  publicTabLabel,
+  internalTabLabel,
+  showClienteTab = false,
+  clienteTabLabel,
+  clienteText = '',
+  onClienteTextChange,
 }) {
   const { showNotification } = useNotifications();
   const [mainTab, setMainTab] = useState('conversa');
@@ -200,6 +206,12 @@ export default function EspeciaisDeskTicketView({
                     onComposeTextChange={onComposeTextChange}
                     onInternalTextChange={onInternalTextChange}
                     ticketReadOnly={ticketReadOnly}
+                    {...(publicTabLabel ? { publicTabLabel } : {})}
+                    {...(internalTabLabel ? { internalTabLabel } : {})}
+                    showClienteTab={showClienteTab}
+                    {...(clienteTabLabel ? { clienteTabLabel } : {})}
+                    clienteText={clienteText}
+                    onClienteTextChange={onClienteTextChange}
                   />
                 </>
               ) : mainTab === 'notas' ? (

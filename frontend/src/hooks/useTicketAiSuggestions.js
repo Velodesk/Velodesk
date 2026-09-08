@@ -262,7 +262,10 @@ function buildPayload({ ticket, rightFields, convMsgs, internalNotesBlock, conte
     internalNote,
   };
 
-  if (!apiMessages.length || contextSource === 'internal') {
+  // contextSource não filtra mais o que é mandado pro backend — ele sempre mescla mensagens
+  // públicas + anotação interna (e reconstrói do banco por ticketId de qualquer forma). Só
+  // omitimos messages aqui quando genuinamente não há nenhuma no lado do cliente.
+  if (!apiMessages.length) {
     return base;
   }
 

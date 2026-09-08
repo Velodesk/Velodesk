@@ -3,6 +3,7 @@
  */
 import type { TelephonyCallInput, TelephonyTranscriptTurn } from '../types';
 import { parseExternalTimestampToDate } from '../../dates/brDateTime.util';
+import { normalizeBrPhoneLocal } from '../../phone.util';
 
 const NO_TRANSCRIPT_STATUSES = new Set([
   'no_answer',
@@ -60,10 +61,6 @@ function pickBoolean(body: Record<string, unknown>, keys: string[]): boolean | u
   return undefined;
 }
 
-function normalizePhone(value: string): string {
-  return String(value ?? '').replace(/\D/g, '');
-}
-
 function normalizeCpf(value: string): string {
   return String(value ?? '').replace(/\D/g, '').slice(0, 11);
 }
@@ -86,8 +83,8 @@ export function isContactTelPayload(body: Record<string, unknown>): boolean {
 
 function resolveClientPhone(body: Record<string, unknown>): string {
   const direction = pickString(body, ['direction']).toLowerCase();
-  const toNumber = normalizePhone(pickString(body, ['to_number', 'toNumber']));
-  const fromNumber = normalizePhone(pickString(body, ['from_number', 'fromNumber']));
+  const toNumber = normalizeBrPhoneLocal(pickString(body, ['to_number', 'toNumber']));
+  const fromNumber = normalizeBrPhoneLocal(pickString(body, ['from_number', 'fromNumber']));
   if (direction === 'inbound') return fromNumber || toNumber;
   return toNumber || fromNumber;
 }

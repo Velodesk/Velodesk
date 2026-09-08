@@ -25,6 +25,7 @@ import {
   createChamadoFromBody,
   currentStatus,
   excludeEspeciaisChannelsMongoFilter,
+  isReclameAquiChamado,
   lastStatusFilter,
   normalizeStatusValue,
   resolveBoxIdForChamado,
@@ -71,13 +72,19 @@ import {
 } from '../services/ticketMerge.service';
 import {
   appendWhatsAppMensagemToChamado,
+  hasPriorAgentWhatsAppMessage,
   readWhatsAppMensagens,
+  resolveWaChatIdFromChamado,
   updateWhatsAppMensagemDeliveryBySid,
 } from '../services/twilio/whatsappThread.service';
 import {
   sendWhatsAppForChamado,
   type WhatsAppChamadoOutboundResult,
 } from '../services/twilio/whatsappActiveOutbound.service';
+import {
+  deactivateWaActiveConversationsForTicket,
+  upsertWaActiveConversation,
+} from '../services/twilio/waActiveConversation.service';
 import { requestWhatsAppAudioTranscription } from '../services/twilio/whatsappAudioTranscription.service';
 import { resolveSentAttachmentSendMeta } from '../services/sentAttachmentStorage.service';
 import {
@@ -384,6 +391,13 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
     }
     await chamado.save();
 
+    // fechado/cancelado nunca reabrem via WhatsApp — desativa o ponteiro já aqui (proativo);
+    // resolvido fica ativo até o fim da janela de reabertura, verificado sob demanda no
+    // próximo inbound (resolveChamadoViaActivePointer em whatsappInbound.service.ts).
+    if (targetStatus === 'fechado' || targetStatus === 'cancelado') {
+      void deactivateWaActiveConversationsForTicket(chamado._id.toString(), 'chamados_n1');
+    }
+
     if (isFirstContextNote) {
       void runInboundAgentPipeline(chamado, { source: 'nota-interna-inicial' }).catch((err: Error) => {
         console.warn('[tickets.routes] runInboundAgentPipeline (nota inicial) fail-soft:', err.message);
@@ -397,7 +411,9 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
       const shouldNotifyClient = Boolean(
         commitResult.publicText.trim() || publicAttachments.length,
       );
-      if (shouldNotifyClient) {
+      // Reclame Aqui não tem outbound de e-mail — "Mensagem Agente"/"Mensagem Cliente" só
+      // registram histórico interno, nunca disparam contato real ao cliente por este canal.
+      if (shouldNotifyClient && !isReclameAquiChamado(chamado)) {
         await notifyAgentReplyAsync(
           chamado,
           commitResult.publicText,
@@ -487,7 +503,10 @@ router.post('/:id/messages', authMiddleware, async (req, res: Response) => {
     });
   }
 
-  if (!isInternalOnly && (publicText.trim() || attachmentList.length)) {
+  // Reclame Aqui não tem outbound de e-mail — inclui a "Mensagem Cliente" (sender='them',
+  // origin='cliente'), que é sempre uma transcrição feita pelo agente, nunca um e-mail real
+  // de/para o cliente.
+  if (!isInternalOnly && (publicText.trim() || attachmentList.length) && !isReclameAquiChamado(chamado)) {
     await notifyAgentReplyAsync(
       chamado,
       publicText,
@@ -546,6 +565,7 @@ router.post('/:id/whatsapp/messages', authMiddleware, async (req, res: Response)
 
   applyManualResponsavelClaim(chamado, req.user);
 
+  const isFirstOutboundMessage = !hasPriorAgentWhatsAppMessage(chamado, waChatId);
   const appendText = text || (initialTemplate ? 'Mensagem inicial WhatsApp (template)' : '');
 
   let appendResult;
@@ -570,6 +590,8 @@ router.post('/:id/whatsapp/messages', authMiddleware, async (req, res: Response)
     initialTemplate,
     forceTemplate: initialTemplate || undefined,
     attachments: attachmentList,
+    agentName: String(req.user?.name ?? '').trim() || undefined,
+    isFirstOutboundMessage,
   });
   twilio = sendResult;
   if (sendResult.sent && sendResult.sid) {
@@ -614,6 +636,13 @@ router.post('/:id/whatsapp/messages', authMiddleware, async (req, res: Response)
   if (sendResult.sent) {
     void clearAiSuggestionCache(chamado._id.toString()).catch((err: Error) => {
       console.warn('[tickets.routes] clearAiSuggestionCache fail-soft:', err.message);
+    });
+    void upsertWaActiveConversation({
+      phoneE164: resolveWaChatIdFromChamado(chamado, waChatId),
+      canal: 'whatsapp',
+      ticketId: chamado._id.toString(),
+      ticketCollection: 'chamados_n1',
+      ticketProtocolo: chamado.chamadoProtocolo,
     });
   }
   void publishTicketEvent(chamado._id.toString(), 'whatsapp-outbound');

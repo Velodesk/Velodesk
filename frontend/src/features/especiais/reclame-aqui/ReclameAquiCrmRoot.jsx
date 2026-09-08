@@ -81,6 +81,7 @@ export default function ReclameAquiCrmRoot() {
   const [composeMode, setComposeMode] = useState('public');
   const [composeText, setComposeText] = useState('');
   const [internalText, setInternalText] = useState('');
+  const [clienteText, setClienteText] = useState('');
   const [composeAttachments, setComposeAttachments] = useState([]);
   const [classificacaoDraft, setClassificacaoDraft] = useState({ produto: '', motivo: '' });
   const [initialMessageBusy, setInitialMessageBusy] = useState(false);
@@ -178,6 +179,7 @@ export default function ReclameAquiCrmRoot() {
     setComposeMode('public');
     setComposeText('');
     setInternalText('');
+    setClienteText('');
     setComposeAttachments([]);
     setClassificacaoDraft({ produto: '', motivo: '' });
     setInitialMessageAnsweredLocally(false);
@@ -186,15 +188,17 @@ export default function ReclameAquiCrmRoot() {
   const composeSession = useMemo(() => ({
     composeText,
     internalText,
+    clienteText,
     composeAttachments,
     classificacaoDraft,
     clearCompose: (fields = {}) => {
       if (fields.composeText) setComposeText('');
       if (fields.internalText) setInternalText('');
+      if (fields.clienteText) setClienteText('');
       if (fields.composeAttachments) setComposeAttachments([]);
       if (fields.classificacao) setClassificacaoDraft({ produto: '', motivo: '' });
     },
-  }), [composeText, internalText, composeAttachments, classificacaoDraft]);
+  }), [composeText, internalText, clienteText, composeAttachments, classificacaoDraft]);
 
   const handleCommitSaved = useCallback((result) => {
     setTicket(result.ticket);
@@ -360,6 +364,8 @@ export default function ReclameAquiCrmRoot() {
         onInternalTextChange={setInternalText}
         composeAttachments={composeAttachments}
         onComposeAttachmentsChange={setComposeAttachments}
+        clienteText={clienteText}
+        onClienteTextChange={setClienteText}
       />
 
       <RaTicketSide

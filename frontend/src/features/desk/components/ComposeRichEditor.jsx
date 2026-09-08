@@ -168,7 +168,13 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
           onSelect={readOnly ? undefined : (() => {
             notifyFormatState();
           })}
-          onClick={readOnly ? undefined : (() => {
+          onClick={readOnly ? undefined : ((event) => {
+            const link = event.target.closest ? event.target.closest('a[href]') : null;
+            if (link && (event.ctrlKey || event.metaKey)) {
+              event.preventDefault();
+              window.open(link.getAttribute('href'), '_blank', 'noopener,noreferrer');
+              return;
+            }
             notifyFormatState();
           })}
         />

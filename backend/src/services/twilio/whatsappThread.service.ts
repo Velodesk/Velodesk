@@ -291,6 +291,14 @@ export function appendWhatsAppMensagemToChamado(
   };
 }
 
+/** True se já existe alguma mensagem do agente nessa thread — usado para só incluir o
+ * protocolo na primeira mensagem ativa enviada ao cliente. */
+export function hasPriorAgentWhatsAppMessage(chamado: IChamadoN1, waChatId?: string): boolean {
+  const thread = findWhatsAppThreadRegistro(chamado, waChatId);
+  if (!thread) return false;
+  return readWhatsAppMensagens(thread.registro).some((item) => item.origin === 'agente');
+}
+
 export function isWhatsAppCustomerSessionOpen(
   chamado: IChamadoN1,
   waChatId?: string,

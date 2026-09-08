@@ -19,13 +19,13 @@ export const HUGME_COLUMN_MAP: Record<string, string[]> = {
     'id reclamacao',
     'id da reclamação',
   ],
-  idHugme: ['id hugme'],
   dataReclamacao: ['data reclamacao', 'data reclamação', 'data da reclamacao', 'data da reclamação'],
   dataResposta: ['data de resposta', 'data da resposta'],
   produto: ['produto ra', 'produto', 'produto/servico', 'produto/serviço'],
   motivoRa: ['motivo da reclamacao ra', 'motivo da reclamação ra'],
   categoriaRa: ['categoria ra'],
   problemaRa: ['problema ra'],
+  sentimentoRa: ['sentimento ra*', 'sentimento ra'],
   statusRaLabel: ['status ra'],
   statusHugme: ['status hugme'],
   origem: ['origem'],
@@ -50,12 +50,17 @@ export interface ParsedHugmeRow {
   telefoneWhatsapp: string;
   assunto: string;
   descricao: string;
-  idHugme: string;
   idReclamacaoRa: string;
   protocoloRa: string;
+  /** Coluna A (Origem) — canal por onde a reclamação chegou na plataforma RA. */
+  canal?: string;
+  /** Coluna "Nome social do consumidor" — hoje só usada como fallback de `consumidor` quando
+   * "Nome" vem vazio, mas preservada separadamente aqui também (registro de primeira classe). */
+  nomeSocial?: string;
   hugmeMotivoRa?: string;
   hugmeCategoriaRa?: string;
   hugmeProblemaRa?: string;
+  hugmeSentimentoRa?: string;
   dataReclamacao?: string;
   dataResposta?: string;
   produto?: string;
@@ -184,9 +189,8 @@ function isEmptyRow(row: unknown[]): boolean {
 function isDataRow(row: unknown[], headerIndex: Record<string, number>): boolean {
   if (isEmptyRow(row) || isMetadataRow(row)) return false;
   const idOrigem = headerIndex.idOrigem != null ? cellToIdString(row[headerIndex.idOrigem]) : '';
-  const idHugme = headerIndex.idHugme != null ? cellToIdString(row[headerIndex.idHugme]) : '';
   const nome = headerIndex.consumidor != null ? cellToString(row[headerIndex.consumidor]) : '';
-  return Boolean(idOrigem || idHugme || nome);
+  return Boolean(idOrigem || nome);
 }
 
 function getFieldFromRow(row: unknown[], headerIndex: Record<string, number>, field: string): string {
@@ -201,11 +205,15 @@ function getIdFromRow(row: unknown[], headerIndex: Record<string, number>, field
   return cellToIdString(row[idx]);
 }
 
+/** Colunas descartadas por decisão de negócio — nunca gravadas, nem no bag de colunas cruas. */
+const DISCARDED_COLUMN_HEADERS = new Set(['id hugme']);
+
 export function buildColunasOriginais(headers: string[], row: unknown[]): Record<string, string> {
   const result: Record<string, string> = {};
   headers.forEach((header, idx) => {
     const label = String(header ?? '').trim();
     if (!label) return;
+    if (DISCARDED_COLUMN_HEADERS.has(normalizeHeader(label))) return;
     const value = cellToString(row[idx]);
     if (value !== '') result[label] = value;
   });
@@ -217,6 +225,7 @@ function buildHugmeTaxonomia(row: unknown[], headerIndex: Record<string, number>
     hugmeMotivoRa: getFieldFromRow(row, headerIndex, 'motivoRa') || undefined,
     hugmeCategoriaRa: getFieldFromRow(row, headerIndex, 'categoriaRa') || undefined,
     hugmeProblemaRa: getFieldFromRow(row, headerIndex, 'problemaRa') || undefined,
+    hugmeSentimentoRa: getFieldFromRow(row, headerIndex, 'sentimentoRa') || undefined,
   };
 }
 
@@ -250,7 +259,6 @@ function mapRowToParsed(
     || getFieldFromRow(row, headerIndex, 'nomeSocial');
   const assunto = getFieldFromRow(row, headerIndex, 'assunto');
   const descricao = buildDescricao(row, headerIndex);
-  const idHugme = getIdFromRow(row, headerIndex, 'idHugme');
   const idOrigem = getIdFromRow(row, headerIndex, 'idOrigem');
   const statusRaLabel = getFieldFromRow(row, headerIndex, 'statusRaLabel');
   const taxonomia = buildHugmeTaxonomia(row, headerIndex);
@@ -268,12 +276,16 @@ function mapRowToParsed(
     telefoneWhatsapp: getFieldFromRow(row, headerIndex, 'telefoneWhatsapp'),
     assunto,
     descricao: descricao || assunto,
-    idHugme,
     idReclamacaoRa: idOrigem,
     protocoloRa: idOrigem,
+    nomeSocial: getFieldFromRow(row, headerIndex, 'nomeSocial') || undefined,
+    // Coluna A (Origem) — canal de entrada da reclamação na plataforma RA (ex.: "ReclameAQUI",
+    // Twitter, Facebook) — não é o "tipo" (Reclamação/Dúvida/etc.) da classificação do CRM.
+    canal: getFieldFromRow(row, headerIndex, 'origem') || undefined,
     hugmeMotivoRa: taxonomia.hugmeMotivoRa,
     hugmeCategoriaRa: taxonomia.hugmeCategoriaRa,
     hugmeProblemaRa: taxonomia.hugmeProblemaRa,
+    hugmeSentimentoRa: taxonomia.hugmeSentimentoRa,
     dataReclamacao: parseExcelDate(
       headerIndex.dataReclamacao != null ? row[headerIndex.dataReclamacao] : '',
     ),
@@ -281,7 +293,7 @@ function mapRowToParsed(
       headerIndex.dataResposta != null ? row[headerIndex.dataResposta] : '',
     ),
     produto: getFieldFromRow(row, headerIndex, 'produto') || undefined,
-    tipo: getFieldFromRow(row, headerIndex, 'origem') || undefined,
+    tipo: undefined,
     motivo: undefined,
     nota: getFieldFromRow(row, headerIndex, 'nota') || undefined,
     statusRa: mapStatusRaFromHugme(statusRaLabel),

@@ -56,6 +56,8 @@ export interface SendWhatsAppForChamadoOptions {
   contentSid?: string;
   contentVariables?: Record<string, string>;
   attachments?: string[];
+  agentName?: string;
+  isFirstOutboundMessage?: boolean;
 }
 
 function resolveAttachmentsForTwilio(apiUrls: string[] = []): string[] {
@@ -152,7 +154,12 @@ export async function sendWhatsAppForChamado(
   }
 
   if (!useTemplate) {
-    const maskedText = rawText ? applyWhatsAppSendMask(rawText, chamado) : '';
+    const maskedText = rawText
+      ? applyWhatsAppSendMask(rawText, chamado, {
+        agentName: options.agentName,
+        isFirstOutboundMessage: options.isFirstOutboundMessage,
+      })
+      : '';
     const result = await sendWhatsAppSessionMessageBatch({
       to: destination,
       body: maskedText || undefined,

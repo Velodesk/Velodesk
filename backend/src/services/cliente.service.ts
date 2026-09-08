@@ -8,6 +8,7 @@ import {
   type ConsultaSnapshotResult,
 } from './customerDataApi.service';
 import { extractContractedProductSlugs } from './consultaProductMap';
+import { normalizeBrPhoneLocal } from './phone.util';
 
 export function normalizeCpf(value: unknown): string {
   return String(value ?? '').replace(/\D/g, '');
@@ -43,8 +44,13 @@ function normalizeStringList(value: unknown, fallback: string[] = []): string[] 
   return fallback;
 }
 
+/** Lista de telefones, com o DDI +55 descartado quando presente — indiferente à fonte. */
+function normalizePhoneList(value: unknown): string[] {
+  return normalizeStringList(value).map((item) => normalizeBrPhoneLocal(item)).filter(Boolean);
+}
+
 function normalizeTelefoneWhatsapp(value: unknown, phoneList: string[]): string {
-  const selected = String(value ?? '').trim();
+  const selected = normalizeBrPhoneLocal(value);
   if (selected && phoneList.includes(selected)) return selected;
   if (phoneList.length === 1) return phoneList[0];
   return '';
@@ -69,8 +75,8 @@ function dadosFromBody(body: Record<string, unknown>): IClienteDados | null {
   ];
   const telLista = [
     ...new Set([
-      ...normalizeStringList(lateral.clienteTelefone),
-      ...normalizeStringList(body.clientPhone),
+      ...normalizePhoneList(lateral.clienteTelefone),
+      ...normalizePhoneList(body.clientPhone),
     ].filter(Boolean)),
   ];
   const whatsappRaw =
@@ -142,7 +148,7 @@ export function mapOverviewToClienteDados(
   const cpf = normalizeCpf(overviewData.cpf) || cpfFallback;
   const nome = String(overviewData.name ?? '').trim();
   const emailRaw = normalizeEmail(overviewData.email);
-  const phoneRaw = normalizePhoneDigits(overviewData.phone);
+  const phoneRaw = normalizeBrPhoneLocal(overviewData.phone);
   const emailList = emailRaw ? [emailRaw] : [];
   const phoneList = phoneRaw ? [phoneRaw] : [];
   const produtosContratados = extractContractedProductSlugs(

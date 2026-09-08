@@ -22,6 +22,28 @@ Mapeamento provisório: protótipo vanilla (`../dev - desk/`) → API REST → M
 | GET | `/api/users` | users |
 | POST | `/api/uploads/signed-url` | uploads GCS |
 | GET/POST | `/api/whatsapp/*` | módulo WhatsApp |
+| GET/POST | `/api/ticket-ai/*` | IA sugestão de resposta (status, suggest, suggest-stream) — sem coleção própria, lê `chamados_n1` |
+
+### POST /api/ticket-ai/suggest, POST /api/ticket-ai/suggest-stream
+
+Contexto para geração de sugestão IA é sempre montado no backend a partir do
+histórico completo do ticket (`chamados_n1.registro`), nunca apenas do payload
+enviado pelo cliente:
+
+- Mensagens públicas (e-mail, WhatsApp, portal) e anotações internas do agente
+  são **sempre mescladas** — não há mais escolha exclusiva entre "contexto
+  interno" ou "contexto público".
+- O campo de request `contextSource` (`"internal" | "public"`) está
+  **descontinuado e ignorado pelo backend** a partir desta versão. Clientes
+  antigos que ainda o enviam continuam funcionando (campo é aceito e
+  descartado), mas não deve ser usado por novos clientes.
+- `messages` e `internalNote` no corpo da requisição são tratados como
+  fallback apenas para tickets ainda não persistidos (sem `ticketId` válido em
+  `chamados_n1`); para tickets existentes, o backend sempre reconstrói o
+  contexto a partir do banco (`resolveMessagesForSuggest` /
+  `resolveInternalNoteForSuggest` em `openaiTicketSuggest.service.ts`).
+- A requisição só falha por falta de contexto se não houver **nenhuma**
+  mensagem pública nem anotação interna disponível.
 
 ## localStorage → MongoDB
 

@@ -119,9 +119,20 @@ export function toWhatsAppChatIdDigits(value) {
   return e164 ? e164.replace(/^\+/, '') : normalizePhone(value);
 }
 
+/**
+ * Remove o código de país +55 quando presente, deixando só DDD + número local.
+ * Só 12/13 dígitos totais indicam DDI — um número local nunca chega a esse tamanho sozinho —
+ * então não há ambiguidade com DDDs que também começam em "55" (ex. Santa Maria/RS).
+ */
+export function stripBrCountryCode(value) {
+  const d = normalizePhone(value);
+  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) return d.slice(2);
+  return d;
+}
+
 /** Máscara telefone BR enquanto digita (máx. 11 dígitos): (11) 99999-9999 ou (11) 9999-9999 */
 export function maskPhoneInput(value) {
-  const d = normalizePhone(value).slice(0, 11);
+  const d = stripBrCountryCode(value).slice(0, 11);
   if (!d.length) return '';
   if (d.length <= 2) return `(${d}`;
   if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;

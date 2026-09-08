@@ -1,6 +1,25 @@
-/** ReclamacaoBase.schema v1.4.0 — workflowStatus inclui cancel */
+/**
+ * ReclamacaoBase.schema v1.5.0 — ganha registro[]/tabulacao[] (mesmo schema compartilhado do
+ * ChamadoN1) pra Fase 3 da separação de persistência: a coleção do órgão passa a poder guardar
+ * o histórico de conversa completo, não só a projeção de triagem. Aditivo — nenhum código ainda
+ * escreve nesses campos; será ligado por módulo (Reclame Aqui primeiro) em mudança separada.
+ */
 import { Schema, Document, Types } from 'mongoose';
 import type { CasoEspecialOrgao } from '../../services/agents/casosEspeciais.types';
+import { RegistroSchema, TabulacaoSchema, type IRegistro, type ITabulacao } from '../shared/registro.schema';
+
+export interface IReclamacaoClienteRef {
+  clienteCpf: string;
+  clienteId: Types.ObjectId | null;
+}
+
+const ReclamacaoClienteRefSchema = new Schema<IReclamacaoClienteRef>(
+  {
+    clienteCpf: { type: String, default: '' },
+    clienteId: { type: Schema.Types.ObjectId, default: null },
+  },
+  { _id: false },
+);
 
 export interface IReclamacaoTriagem {
   classificacao: string;
@@ -39,8 +58,16 @@ export interface IReclamacaoWorkflow {
 
 export interface IReclamacao extends Document {
   orgao: CasoEspecialOrgao;
-  chamadoId: Types.ObjectId;
+  /** Legado: só populado quando o ticket nasceu em chamados_n1 e foi fundido/migrado pra cá
+   * (Procon/Bacen/Consumidor.gov via triagem de IA). Reclame Aqui nasce direto nesta coleção
+   * e não tem chamadoId — é criado pelo próprio módulo (manual ou import HugMe), nunca por N1. */
+  chamadoId?: Types.ObjectId;
   chamadoProtocolo: string;
+  /** Histórico completo do atendimento — mesmo shape do ChamadoN1.registro. Só populado nos
+   * tickets que já usam esta coleção como fonte de verdade (ver módulo por módulo). */
+  registro?: IRegistro[];
+  tabulacao?: ITabulacao[];
+  cliente?: IReclamacaoClienteRef[];
   origemEntrada: string;
   inboxDedicada: boolean;
   emailThreadRootId?: string;
@@ -126,8 +153,14 @@ const ReclamacaoWorkflowSchema = new Schema<IReclamacaoWorkflow>(
 export const ReclamacaoBaseSchema = new Schema<IReclamacao>(
   {
     orgao: { type: String, required: true },
-    chamadoId: { type: Schema.Types.ObjectId, required: true, ref: 'ChamadoN1' },
+    // Opcional: Reclame Aqui nasce direto nesta coleção (manual ou import HugMe), sem
+    // chamadoId. Procon/Bacen/Consumidor.gov via triagem de IA continuam preenchendo (ticket
+    // nasceu em chamados_n1 e foi fundido/migrado pra cá).
+    chamadoId: { type: Schema.Types.ObjectId, ref: 'ChamadoN1', default: undefined },
     chamadoProtocolo: { type: String, default: '' },
+    registro: { type: [RegistroSchema], default: undefined },
+    tabulacao: { type: [TabulacaoSchema], default: undefined },
+    cliente: { type: [ReclamacaoClienteRefSchema], default: undefined },
     origemEntrada: { type: String, default: '' },
     inboxDedicada: { type: Boolean, default: false },
     emailThreadRootId: { type: String, default: '' },
@@ -164,7 +197,11 @@ export const ReclamacaoBaseSchema = new Schema<IReclamacao>(
   },
 );
 
-ReclamacaoBaseSchema.index({ chamadoId: 1 }, { unique: true, name: 'chamadoId_1' });
+// Sparse porque chamadoId agora é opcional (Reclame Aqui nasce sem ele) — nome novo em vez de
+// alterar o índice 'chamadoId_1' já criado em produção (mudar opções de um índice existente
+// com o mesmo nome dá IndexOptionsConflict no Mongo; o antigo fica órfão/inofensivo até uma
+// limpeza futura dedicada).
+ReclamacaoBaseSchema.index({ chamadoId: 1 }, { unique: true, sparse: true, name: 'chamadoId_1_sparse' });
 ReclamacaoBaseSchema.index({ chamadoProtocolo: 1 }, { name: 'chamadoProtocolo_1' });
 ReclamacaoBaseSchema.index({ statusCanal: 1, prazoLegal: 1 }, { name: 'statusCanal_prazoLegal_1' });
 ReclamacaoBaseSchema.index({ cpf: 1 }, { name: 'cpf_1', sparse: true });

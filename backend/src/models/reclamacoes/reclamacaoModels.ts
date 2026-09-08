@@ -1,13 +1,20 @@
-/** reclamacaoModels v1.0.0 — models por collection em chamados_reclamacoes */
+/**
+ * reclamacaoModels v1.1.0 — Reclame Aqui ganha schema próprio (ReclamacaoReclameAquiSchema,
+ * campos de primeira classe); Procon/Bacen/Consumidor.gov continuam no ReclamacaoBaseSchema
+ * genérico, inalterados.
+ */
 import type { Model } from 'mongoose';
 import { getReclamacoesConnection } from '../../config/database';
 import {
   ReclamacaoBaseSchema,
   type IReclamacao,
 } from './ReclamacaoBase.schema';
+import {
+  ReclamacaoReclameAquiSchema,
+  type IReclamacaoReclameAqui,
+} from './ReclamacaoReclameAqui.schema';
 
 const MODEL_CONFIG = {
-  ReclamacaoReclameAqui: 'reclamacoes_reclameAqui',
   ReclamacaoProcon: 'reclamacoes_procon',
   ReclamacaoBacen: 'reclamacoes_bacen',
   ReclamacaoConsumidorGov: 'reclamacoes_consumidorGov',
@@ -24,8 +31,15 @@ function getReclamacaoModel(modelName: ReclamacaoModelName): Model<IReclamacao> 
   return conn.model<IReclamacao>(modelName, ReclamacaoBaseSchema, collection);
 }
 
-export function getReclamacaoReclameAquiModel(): Model<IReclamacao> {
-  return getReclamacaoModel('ReclamacaoReclameAqui');
+const RA_MODEL_NAME = 'ReclamacaoReclameAqui';
+const RA_COLLECTION = 'reclamacoes_reclameAqui';
+
+export function getReclamacaoReclameAquiModel(): Model<IReclamacaoReclameAqui> {
+  const conn = getReclamacoesConnection();
+  if (conn.models[RA_MODEL_NAME]) {
+    return conn.models[RA_MODEL_NAME] as Model<IReclamacaoReclameAqui>;
+  }
+  return conn.model<IReclamacaoReclameAqui>(RA_MODEL_NAME, ReclamacaoReclameAquiSchema, RA_COLLECTION);
 }
 
 export function getReclamacaoProconModel(): Model<IReclamacao> {
@@ -41,3 +55,4 @@ export function getReclamacaoConsumidorGovModel(): Model<IReclamacao> {
 }
 
 export type { IReclamacao };
+export type { IReclamacaoReclameAqui };

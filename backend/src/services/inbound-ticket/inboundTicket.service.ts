@@ -12,6 +12,7 @@ import type {
   InboundTicketResult,
 } from './types';
 import { ORIGIN_CANAL_CONFIG } from './types';
+import { normalizeBrPhoneLocal } from '../phone.util';
 
 function trim(value: unknown): string {
   return String(value ?? '').trim();
@@ -28,7 +29,7 @@ export function parseInboundTicketPayload(body: Record<string, unknown>): Inboun
   const text = trim(body.text ?? body.description);
   const clientName = trim(body.clientName);
   const clientCPF = trim(body.clientCPF);
-  const clientPhone = trim(body.clientPhone);
+  const clientPhone = normalizeBrPhoneLocal(body.clientPhone);
   const clientEmail = trim(body.clientEmail);
 
   if (!externalId) throw new Error('externalId é obrigatório');

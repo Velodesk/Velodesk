@@ -1,5 +1,5 @@
-/** emailHtml.util v1.1.0 — permite img cid: no HTML do e-mail outbound */
-const ALLOWED_TAGS = new Set(['b', 'strong', 'i', 'em', 'u', 'br', 'p', 'div', 'ul', 'ol', 'li', 'img']);
+/** emailHtml.util v1.2.0 — preserva hyperlinks (<a href>) no HTML do e-mail outbound */
+const ALLOWED_TAGS = new Set(['b', 'strong', 'i', 'em', 'u', 'br', 'p', 'div', 'ul', 'ol', 'li', 'img', 'a']);
 
 export function decodeBasicHtmlEntities(text: string): string {
   return text
@@ -45,10 +45,17 @@ function sanitizeComposeHtmlForEmail(html: string): string {
     return '';
   });
 
-  result = result.replace(/<\s*(\/?)\s*([a-z][a-z0-9]*)\b[^>]*>/gi, (_full, slash, name) => {
+  result = result.replace(/<\s*(\/?)\s*([a-z][a-z0-9]*)\b([^>]*)>/gi, (_full, slash, name, attrs) => {
     const tag = String(name).toLowerCase();
     if (!ALLOWED_TAGS.has(tag) || tag === 'img') return '';
     if (tag === 'br' && slash) return '';
+    if (tag === 'a') {
+      if (slash) return '</a>';
+      const hrefMatch = String(attrs ?? '').match(/\bhref\s*=\s*["']([^"']+)["']/i);
+      const href = String(hrefMatch?.[1] ?? '').trim();
+      if (!/^https?:\/\//i.test(href)) return '';
+      return `<a href="${escapeHtmlAttribute(href)}" target="_blank" rel="noopener noreferrer">`;
+    }
     return `<${slash ? '/' : ''}${tag}>`;
   });
 

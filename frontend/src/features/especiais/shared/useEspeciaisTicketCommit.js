@@ -25,6 +25,9 @@ export function useEspeciaisTicketCommit({
     if (result.hadInternalPayload) {
       clearCompose({ internalText: true });
     }
+    if (result.hadClientePayload) {
+      clearCompose({ clienteText: true });
+    }
   }, []);
 
   const handleSaveTicket = useCallback(async () => {

@@ -1,4 +1,8 @@
-/** whatsappInbound.service v1.10.0 — janela 48h reabre; fechado gera ticket derivado */
+/**
+ * whatsappInbound.service v2.0.0 — WhatsApp nunca abre ticket por iniciativa do cliente:
+ * sem chamado reabrível (janela 48h pra resolvido; fechado/cancelado nunca reabrem), a
+ * mensagem não cria ticket derivado — cliente recebe orientação padrão (telefone/app).
+ */
 import twilio from 'twilio';
 import { env } from '../../config/env';
 import { ChamadoN1 } from '../../models/ChamadoN1';
@@ -6,14 +10,11 @@ import { ChamadoIaAnalise } from '../../models/ChamadoIaAnalise';
 import { publishTicketEvent } from '../realtime/ticketEventsBroadcast.service';
 import {
   appendStatusTransition,
-  createChamadoFromBody,
   currentStatus,
   normalizeStatusValue,
   resolveInboundClientReplyStatus,
   shouldSpawnNewTicketOnInbound,
-  buildInboundDerivedTicketNote,
 } from '../chamado.mapper';
-import { runInboundPostCreateHooks } from '../agents/inboundAgentPipeline.service';
 import {
   getTwilioActiveAccountSid,
   getTwilioCredentialMode,
@@ -32,6 +33,11 @@ import {
   readWhatsAppMensagens,
   WHATSAPP_THREAD_SOURCE,
 } from './whatsappThread.service';
+import {
+  deactivateWaActiveConversationsForTicket,
+  findActiveWaConversationsByPhone,
+  upsertWaActiveConversation,
+} from './waActiveConversation.service';
 
 const { MessagingResponse } = twilio.twiml;
 
@@ -103,8 +109,36 @@ async function listChamadosForWhatsAppInbound(waFrom: string) {
 }
 
 export async function findChamadoForWhatsAppInbound(waFrom: string) {
+  const viaPointer = await resolveChamadoViaActivePointer(waFrom);
+  if (viaPointer) return viaPointer;
   const candidates = await listChamadosForWhatsAppInbound(waFrom);
   return candidates.find((chamado) => !shouldSpawnNewTicketOnInbound(chamado)) || null;
+}
+
+/**
+ * Caminho rápido e não-ambíguo: resolve direto pelo ponteiro WaActiveConversation em vez do
+ * scan por sufixo de telefone (que não distingue canal). Só cobre ticketCollection
+ * 'chamados_n1' por enquanto — os módulos de casos especiais ainda não têm WhatsApp real
+ * (Fase 4 do plano). Ponteiro apontando pra ticket já terminal é desativado e ignorado aqui —
+ * correção "lazy", sem precisar instrumentar todo call site de fechamento de ticket.
+ */
+async function resolveChamadoViaActivePointer(
+  waFrom: string,
+): Promise<InstanceType<typeof ChamadoN1> | null> {
+  const digits = normalizeWaChatId(waFrom);
+  if (!digits) return null;
+
+  const pointers = await findActiveWaConversationsByPhone(digits);
+  for (const pointer of pointers) {
+    if (pointer.canal !== 'whatsapp' || pointer.ticketCollection !== 'chamados_n1') continue;
+    const chamado = await ChamadoN1.findById(pointer.ticketId);
+    if (!chamado || shouldSpawnNewTicketOnInbound(chamado)) {
+      await deactivateWaActiveConversationsForTicket(pointer.ticketId, pointer.ticketCollection);
+      continue;
+    }
+    return chamado;
+  }
+  return null;
 }
 
 function appendInboundWhatsAppToChamado(
@@ -149,68 +183,40 @@ async function saveWhatsAppReplyOnChamado(
   chamado.markModified('registro');
   await chamado.save();
   void publishTicketEvent(chamado._id.toString(), 'whatsapp-inbound');
+  void upsertWaActiveConversation({
+    phoneE164: waChatId,
+    canal: 'whatsapp',
+    ticketId: chamado._id.toString(),
+    ticketCollection: 'chamados_n1',
+    ticketProtocolo: chamado.chamadoProtocolo,
+  });
   await ChamadoIaAnalise.updateOne(
     { chamadoId: chamado._id, origem: { $ne: 'manual' } },
     { $set: { needsReanalysis: true } },
   );
 }
 
-async function createDerivedWhatsAppChamado(
-  source: InstanceType<typeof ChamadoN1>,
+/**
+ * Política: WhatsApp nunca abre ticket por iniciativa do cliente — a conversa só existe depois
+ * que o agente Velotax manda a mensagem inicial (template) a partir de um ticket já aberto.
+ * Uma mensagem inbound sem chamado reabrível (nenhum candidato, ou todos fechado/cancelado/
+ * resolvido fora da janela de 48h) não cria ticket derivado — o cliente recebe esta resposta
+ * padrão orientando a abrir contato pelos canais corretos.
+ */
+export const WHATSAPP_NO_TICKET_REPLY_TEXT =
+  'Não localizamos um atendimento em aberto para esta conversa. Para dar continuidade, '
+  + 'entre em contato com a nossa Central de Atendimento por telefone ou abra um novo chamado '
+  + 'pelo aplicativo Velotax.';
+
+export type WhatsAppInboundOutcome =
+  | 'attached'
+  | 'duplicate'
+  | 'rejected_no_ticket'
+  | 'ignored_empty';
+
+export async function processInboundWhatsAppMessage(
   payload: TwilioWhatsAppWebhookPayload,
-  storedMedia: PersistedTwilioInboundMedia[],
-): Promise<InstanceType<typeof ChamadoN1>> {
-  const waChatId = normalizeWaChatId(payload.waId || payload.from);
-  const tab = source.tabulacao?.[source.tabulacao.length - 1];
-  const clientRef = source.cliente?.[0];
-  const ticketBody: Record<string, unknown> = {
-    title: source.chamadoTitulo || `WhatsApp ${waChatId}`,
-    chamadoTitulo: source.chamadoTitulo || `WhatsApp ${waChatId}`,
-    text: buildInboundDerivedTicketNote(source.chamadoProtocolo),
-    internal: true,
-    status: 'novo',
-    clientName: payload.profileName || waChatId,
-    source: 'whatsapp-thread',
-    channel: 'whatsapp',
-    messageOrigin: 'agente',
-    lateralForm: {
-      canal: tab?.canal || 'WhatsApp',
-      clienteNome: payload.profileName || '',
-      responsavel: tab?.responsavel || '',
-      atribuido: tab?.atribuido || '',
-      produto: tab?.produto || '',
-      motivo: tab?.motivo || source.chamadoTitulo || '',
-      detalhe: tab?.detalhe || '',
-      tipoChamado: tab?.tipoChamado || '',
-    },
-  };
-  if (clientRef?.clienteId) ticketBody.clienteId = clientRef.clienteId.toString();
-  if (clientRef?.clienteCpf) ticketBody.clientCPF = clientRef.clienteCpf;
-
-  const partial = await createChamadoFromBody(ticketBody, 'novo');
-  if (source.cliente?.length && (!partial.cliente || partial.cliente.length === 0)) {
-    partial.cliente = source.cliente;
-  }
-  if (partial.registro?.[0]) {
-    partial.registro[0].metadados = {
-      ...(partial.registro[0].metadados ?? {}),
-      trigger: 'inbound-derived-ticket',
-      sourceProtocolo: String(source.chamadoProtocolo ?? '').trim(),
-    };
-  }
-
-  const chamado = await ChamadoN1.create(partial);
-  appendInboundWhatsAppToChamado(chamado, payload, storedMedia);
-  chamado.markModified('registro');
-  await chamado.save();
-  void publishTicketEvent(chamado._id.toString(), 'whatsapp-inbound');
-  void runInboundPostCreateHooks(chamado, { source: 'whatsapp-inbound' }).catch((err: Error) => {
-    console.warn('[whatsapp-inbound] hooks inbound fail-soft:', err.message);
-  });
-  return chamado;
-}
-
-export async function processInboundWhatsAppMessage(payload: TwilioWhatsAppWebhookPayload): Promise<void> {
+): Promise<WhatsAppInboundOutcome> {
   console.info('[whatsapp-inbound] mensagem recebida', {
     messageSid: payload.messageSid,
     from: payload.from,
@@ -221,19 +227,26 @@ export async function processInboundWhatsAppMessage(payload: TwilioWhatsAppWebho
   });
 
   const texto = String(payload.body ?? '').trim();
-  if (!texto && payload.numMedia <= 0) return;
+  if (!texto && payload.numMedia <= 0) return 'ignored_empty';
 
-  const candidates = await listChamadosForWhatsAppInbound(payload.from);
+  // Caminho rápido e não-ambíguo pelo ponteiro; só faz o scan legado por sufixo de telefone
+  // (que não distingue canal) se não houver ponteiro ativo pra esse número ainda.
+  let reopenable = await resolveChamadoViaActivePointer(payload.from);
+  let candidates: InstanceType<typeof ChamadoN1>[] = reopenable ? [reopenable] : [];
+  if (!reopenable) {
+    candidates = await listChamadosForWhatsAppInbound(payload.from);
+    reopenable = candidates.find((chamado) => !shouldSpawnNewTicketOnInbound(chamado)) || null;
+  }
+
   if (payload.messageSid && candidates.some((item) => hasWhatsAppMessageSid(item, payload.messageSid))) {
     console.info('[whatsapp-inbound] mensagem duplicada ignorada', { messageSid: payload.messageSid });
-    return;
+    return 'duplicate';
   }
 
   const storedMedia = payload.media.length
     ? await persistTwilioInboundMedia(payload.messageSid, payload.accountSid, payload.media)
     : [];
 
-  const reopenable = candidates.find((chamado) => !shouldSpawnNewTicketOnInbound(chamado));
   if (reopenable) {
     await saveWhatsAppReplyOnChamado(reopenable, payload, storedMedia);
     console.info('[whatsapp-inbound] mensagem anexada ao ticket', {
@@ -241,23 +254,17 @@ export async function processInboundWhatsAppMessage(payload: TwilioWhatsAppWebho
       ticketId: reopenable._id.toString(),
       attachments: storedMedia.length,
     });
-    return;
+    return 'attached';
   }
 
-  const source = candidates[0];
-  if (source) {
-    const derived = await createDerivedWhatsAppChamado(source, payload, storedMedia);
-    console.info('[whatsapp-inbound] ticket derivado criado', {
-      origemProtocolo: source.chamadoProtocolo,
-      chamadoProtocolo: derived.chamadoProtocolo,
-      ticketId: derived._id.toString(),
-    });
-    return;
-  }
-
-  console.info('[whatsapp-inbound] nenhum ticket para o número — mensagem ignorada', {
+  // Nenhum chamado reabrível (nenhum candidato, ou todos fechado/cancelado/resolvido fora da
+  // janela) — política: não cria ticket. Cliente recebe a orientação padrão via TwiML (ver
+  // rota inbound.routes.ts, que usa WHATSAPP_NO_TICKET_REPLY_TEXT para este outcome).
+  console.info('[whatsapp-inbound] sem ticket reabrível — resposta padrão enviada, nenhum ticket criado', {
     from: payload.from,
+    candidatos: candidates.length,
   });
+  return 'rejected_no_ticket';
 }
 
 export function getWhatsAppInboundHealth(baseUrl: string) {

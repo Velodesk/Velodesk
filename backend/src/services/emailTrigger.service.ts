@@ -9,7 +9,7 @@ import {
   resolveCanalLabelFromSource,
 } from './chamado.mapper';
 import { listActiveEmailConteudos } from './emailConteudo.service';
-import { applyTicketPlaceholders } from './placeholders.util';
+import { applyTicketPlaceholders, resolveTicketSaudacao } from './placeholders.util';
 import { EMAIL_SLA_LIMIT_HOURS } from './emailOutbound.constants';
 import { businessMsBetween } from './dates/businessHours.util';
 import { assembleClientEmail } from './emailSkeleton.service';
@@ -151,7 +151,7 @@ async function sendTemplateEmail(chamado: IChamadoN1, doc: {
   const to = await resolveClienteEmailFromChamado(chamado);
   if (!to) return false;
 
-  const saudacao = await applyTicketPlaceholders(doc.saudacao ?? '', chamado);
+  const saudacao = await resolveTicketSaudacao(doc.saudacao ?? '', chamado);
   const corpo = await applyTicketPlaceholders(doc.corpo ?? '', chamado);
 
   const assembled = await assembleClientEmail({

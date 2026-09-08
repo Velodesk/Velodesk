@@ -5,6 +5,7 @@
 import type { IChamadoN1 } from '../models/ChamadoN1';
 import { escapeHtmlAttribute } from './emailHtml.util';
 import { EMAIL_BRAND_COLORS } from './emailBrand.util';
+import { resolveClientFirstName } from './agents/openaiAgent.util';
 
 export interface SendMaskChamadoContext {
   protocolo: string;
@@ -107,18 +108,38 @@ export function buildSendMaskClosingPlain(chamado: IChamadoN1): string {
   return lines.join('\n');
 }
 
-/** Suffix curto para WhatsApp — enviado ao cliente, não persiste no Mongo. */
-export function buildWhatsAppSendMaskSuffix(chamado: IChamadoN1): string {
+/**
+ * Suffix curto para WhatsApp — enviado ao cliente, não persiste no Mongo. O protocolo só é
+ * incluído na primeira mensagem ativa da conversa; nas seguintes o nome do agente no início já
+ * identifica quem está falando, então repetir protocolo + assinatura a cada mensagem é ruído.
+ */
+export function buildWhatsAppSendMaskSuffix(chamado: IChamadoN1, isFirstOutboundMessage: boolean): string {
+  if (!isFirstOutboundMessage) return '';
   const protocolo = String(chamado.chamadoProtocolo ?? '').trim();
-  if (!protocolo) {
-    return '\n\nTime de Atendimento Velotax';
-  }
-  return `\n\nProtocolo: ${protocolo}\nTime de Atendimento Velotax`;
+  if (!protocolo) return '';
+  return `\n\nProtocolo: ${protocolo}`;
 }
 
-/** Monta body Twilio = composer + suffix curto. */
-export function applyWhatsAppSendMask(composerText: string, chamado: IChamadoN1): string {
+/** Prefixo "Nome: " com o primeiro nome do agente, para identificação na conversa. */
+export function buildWhatsAppSendMaskPrefix(agentName?: string): string {
+  const first = resolveClientFirstName(String(agentName ?? '').trim());
+  return first ? `${first}: ` : '';
+}
+
+export interface WhatsAppSendMaskOptions {
+  agentName?: string;
+  isFirstOutboundMessage?: boolean;
+}
+
+/** Monta body Twilio = "Agente: " + composer + (protocolo, só na 1ª mensagem). */
+export function applyWhatsAppSendMask(
+  composerText: string,
+  chamado: IChamadoN1,
+  opts: WhatsAppSendMaskOptions = {},
+): string {
   const base = String(composerText ?? '').trim();
   if (!base) return '';
-  return base + buildWhatsAppSendMaskSuffix(chamado);
+  const prefix = buildWhatsAppSendMaskPrefix(opts.agentName);
+  const suffix = buildWhatsAppSendMaskSuffix(chamado, opts.isFirstOutboundMessage ?? false);
+  return `${prefix}${base}${suffix}`;
 }

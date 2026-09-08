@@ -13,10 +13,10 @@ import {
 import type { IReclameAquiHugmeRegistro } from '../../models/reclamacoes/ReclameAquiHugmeRegistro.schema';
 import type { ParsedHugmeRow } from './hugmeSpreadsheet.service';
 import { getActiveTabulation } from '../tabulation.service';
+import { getReclamacaoReclameAquiModel } from '../../models/reclamacoes/reclamacaoModels';
 
 export interface RaTicketSource {
   idOrigem: string;
-  idHugme?: string;
   consumidor: string;
   cpf?: string;
   email?: string;
@@ -25,14 +25,25 @@ export interface RaTicketSource {
   descricao: string;
   produto?: string;
   tipo?: string;
+  /** Coluna A (Origem) — canal de entrada da reclamação na plataforma RA. */
+  canal?: string;
   hugmeMotivoRa?: string;
   hugmeCategoriaRa?: string;
   hugmeProblemaRa?: string;
+  hugmeSentimentoRa?: string;
   statusRa?: string;
+  statusRaLabel?: string;
+  statusHugme?: string;
   dataReclamacao?: string | Date;
+  dataResposta?: string | Date;
   respostaPublica?: string;
   cidade?: string;
   uf?: string;
+  nomeSocial?: string;
+  nota?: string;
+  /** Captura literal de todas as colunas da planilha (nome da coluna = chave) — só presente
+   * quando a origem é a planilha HugMe; cadastro manual no CRM não tem isso. */
+  dadosPlanilha?: Record<string, string>;
 }
 
 function asIso(value: string | Date | undefined): string | undefined {
@@ -74,7 +85,6 @@ export function registroToRaTicketSource(
   const cols = (registro.colunasOriginais || {}) as Record<string, string>;
   return {
     idOrigem: String(registro.idOrigem || '').trim(),
-    idHugme: String(registro.idHugme || '').trim(),
     consumidor: String(registro.consumidor || '').trim(),
     cpf: String(registro.cpf || '').trim(),
     email: String(registro.email || '').trim(),
@@ -97,7 +107,6 @@ export function registroToRaTicketSource(
 export function parsedRowToRaTicketSource(row: ParsedHugmeRow): RaTicketSource {
   return {
     idOrigem: String(row.idOrigem || '').trim(),
-    idHugme: String(row.idHugme || '').trim(),
     consumidor: String(row.consumidor || '').trim(),
     cpf: String(row.cpf || '').trim(),
     email: String(row.email || '').trim(),
@@ -106,14 +115,22 @@ export function parsedRowToRaTicketSource(row: ParsedHugmeRow): RaTicketSource {
     descricao: String(row.descricao || '').trim(),
     produto: String(row.produto || '').trim(),
     tipo: String(row.tipo || 'Reclamação').trim(),
+    canal: row.canal || '',
+    nomeSocial: row.nomeSocial || '',
     hugmeMotivoRa: row.hugmeMotivoRa || '',
     hugmeCategoriaRa: row.hugmeCategoriaRa || '',
     hugmeProblemaRa: row.hugmeProblemaRa || '',
+    hugmeSentimentoRa: row.hugmeSentimentoRa || '',
     statusRa: String(row.statusRa || '').trim() || 'nao-respondida',
+    statusRaLabel: String(row.statusRaLabel || '').trim(),
+    statusHugme: String(row.statusHugme || '').trim(),
     dataReclamacao: row.dataReclamacao,
+    dataResposta: row.dataResposta,
     respostaPublica: String(row.respostaPublica || '').trim(),
     cidade: String(row.cidade || '').trim(),
     uf: String(row.uf || '').trim(),
+    nota: String(row.nota || '').trim(),
+    dadosPlanilha: row.colunasOriginais,
   };
 }
 
@@ -123,7 +140,7 @@ function buildReclameAquiMeta(source: RaTicketSource) {
     protocoloRa: idOrigem,
     idReclamacaoRa: idOrigem,
     idOrigem,
-    idHugme: String(source.idHugme || '').trim(),
+    canal: String(source.canal || '').trim(),
     statusRa: source.statusRa || 'nao-respondida',
     dataReclamacao: asIso(source.dataReclamacao),
     assunto: source.assunto,
@@ -192,6 +209,40 @@ function buildPersistedTriagem(idOrigem: string, origemEntrada: string) {
   };
 }
 
+/**
+ * Promove os campos específicos do RA a campos de primeira classe no documento
+ * reclamacoes_reclameAqui — em vez de ficarem só dentro do `meta: Mixed` genérico que
+ * upsertFromChamado/routeCasoEspecialFormal (compartilhados com Procon/Bacen/Consumidor.gov)
+ * conseguem preencher. Roda depois do fluxo padrão, sem alterar nada desse fluxo.
+ */
+async function enrichRaReclamacaoFirstClassFields(
+  reclamacaoId: Types.ObjectId,
+  source: RaTicketSource,
+): Promise<void> {
+  const set: Record<string, unknown> = {
+    idOrigem: source.idOrigem,
+    canal: source.canal || '',
+    nomeSocial: source.nomeSocial || '',
+    motivoRa: source.hugmeMotivoRa || '',
+    categoriaRa: source.hugmeCategoriaRa || '',
+    problemaRa: source.hugmeProblemaRa || '',
+    sentimentoRa: source.hugmeSentimentoRa || '',
+    nota: source.nota || '',
+    statusRaLabel: source.statusRaLabel || '',
+    statusHugme: source.statusHugme || '',
+  };
+  const dataResposta = asIso(source.dataResposta);
+  if (dataResposta) set.dataResposta = new Date(dataResposta);
+  if (source.dadosPlanilha && Object.keys(source.dadosPlanilha).length) {
+    set.dadosPlanilha = source.dadosPlanilha;
+  }
+
+  await getReclamacaoReclameAquiModel().updateOne(
+    { _id: reclamacaoId },
+    { $set: set },
+  ).exec();
+}
+
 async function persistRaReclamacao(
   chamado: IChamadoN1,
   source: RaTicketSource,
@@ -213,6 +264,9 @@ async function persistRaReclamacao(
   if (!reclamacao) {
     throw new Error('Falha ao persistir reclamacao em reclamacoes_reclameAqui');
   }
+
+  await enrichRaReclamacaoFirstClassFields(reclamacao._id as Types.ObjectId, source);
+
   return reclamacao;
 }
 

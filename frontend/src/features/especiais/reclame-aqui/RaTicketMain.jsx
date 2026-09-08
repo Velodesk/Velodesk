@@ -33,6 +33,8 @@ export default function RaTicketMain({
   onInternalTextChange,
   composeAttachments,
   onComposeAttachmentsChange,
+  clienteText,
+  onClienteTextChange,
 }) {
   const { showNotification } = useNotifications();
   const [mergeInProgress, setMergeInProgress] = useState(false);
@@ -134,6 +136,12 @@ export default function RaTicketMain({
       onInternalTextChange={onInternalTextChange}
       composeAttachments={composeAttachments}
       onComposeAttachmentsChange={onComposeAttachmentsChange}
+      publicTabLabel="Mensagem Agente"
+      internalTabLabel="Notas internas"
+      showClienteTab
+      clienteTabLabel="Mensagem Cliente"
+      clienteText={clienteText}
+      onClienteTextChange={onClienteTextChange}
     />
   );
 }

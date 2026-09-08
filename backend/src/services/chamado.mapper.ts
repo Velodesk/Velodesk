@@ -304,6 +304,21 @@ export function reclameAquiChannelMongoFilter(): Record<string, unknown> {
   };
 }
 
+/**
+ * Checagem em memória (documento já carregado) equivalente a reclameAquiChannelMongoFilter —
+ * usada pra decisões em runtime (ex.: suprimir e-mail de saída) sem nova query. Reclame Aqui
+ * não tem outbound de e-mail — todo o contato real acontece por fora do Velodesk (plataforma RA/
+ * WhatsApp); o compose desse canal só registra histórico pra acompanhamento interno.
+ */
+export function isReclameAquiChamado(chamado: IChamadoN1): boolean {
+  return (chamado.registro ?? []).some((reg) => {
+    const meta = reg.metadados;
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
+    const m = meta as Record<string, unknown>;
+    return m.source === 'reclame-aqui' || (m.reclameAqui != null && typeof m.reclameAqui === 'object');
+  });
+}
+
 export function excludeEspeciaisChannelsMongoFilter(): Record<string, unknown> {
   return {
     $nor: [

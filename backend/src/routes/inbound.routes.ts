@@ -11,6 +11,7 @@ import {
   getWhatsAppInboundHealth,
   parseTwilioWhatsAppWebhook,
   processInboundWhatsAppMessage,
+  WHATSAPP_NO_TICKET_REPLY_TEXT,
 } from '../services/twilio/whatsappInbound.service';
 import {
   parseTwilioMessageStatusWebhook,
@@ -234,7 +235,11 @@ router.get('/whatsapp/outbound-media/:token', async (req: Request, res: Response
   }
 });
 
-/** WhatsApp Twilio — webhook inbound (registra mensagem; auto-reply só se TWILIO_WHATSAPP_AUTO_REPLY definido) */
+/**
+ * WhatsApp Twilio — webhook inbound. Anexa ao ticket reabrível existente (auto-reply só se
+ * TWILIO_WHATSAPP_AUTO_REPLY definido); sem ticket reabrível, não cria ticket — responde com
+ * a orientação padrão (WHATSAPP_NO_TICKET_REPLY_TEXT) pra abrir contato por telefone ou app.
+ */
 router.post('/whatsapp/messages', twilioWebhookAuthMiddleware, async (req, res: Response) => {
   try {
     const payload = parseTwilioWhatsAppWebhook(req.body as Record<string, unknown>);
@@ -242,12 +247,12 @@ router.post('/whatsapp/messages', twilioWebhookAuthMiddleware, async (req, res: 
       return res.status(400).type('text/plain').send('MessageSid ausente');
     }
 
-    await processInboundWhatsAppMessage(payload);
+    const outcome = await processInboundWhatsAppMessage(payload);
 
     return res
       .status(200)
       .type('text/xml')
-      .send(buildInboundTwimlReply());
+      .send(buildInboundTwimlReply(outcome === 'rejected_no_ticket' ? WHATSAPP_NO_TICKET_REPLY_TEXT : undefined));
   } catch (err) {
     console.error('[inbound/whatsapp/messages]', err);
     return res.status(500).type('text/plain').send('Falha ao processar mensagem WhatsApp');

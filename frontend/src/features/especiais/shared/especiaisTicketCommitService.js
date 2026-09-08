@@ -31,6 +31,7 @@ import {
 } from '../../../services/especiais/bacenStore';
 import { syncEspeciaisGroupFromTicket } from '../../../services/especiais/especiaisTicketGroupSync';
 import { commitTicketViaApi, loadTicketDetailFromApi } from '../../../services/ticketsCache';
+import { ticketsApi } from '../../../api/client';
 
 const CHANNEL_CONFIG = {
   ra: {
@@ -80,8 +81,10 @@ export function buildEspeciaisCommitPayload(ticket, session, { finalize = false,
   const config = CHANNEL_CONFIG[channelId] || CHANNEL_CONFIG.ra;
   const messageHtml = String(session?.composeText || '').trim();
   const internalNoteHtml = String(session?.internalText || '').trim();
+  const clienteHtml = String(session?.clienteText || '').trim();
   const messageText = htmlToPlainText(messageHtml).trim();
   const internalNoteText = htmlToPlainText(internalNoteHtml).trim();
+  const clienteText = htmlToPlainText(clienteHtml).trim();
   const attachmentUrls = (session?.composeAttachments || [])
     .map((item) => String(item?.url || '').trim())
     .filter(Boolean);
@@ -120,6 +123,12 @@ export function buildEspeciaisCommitPayload(ticket, session, { finalize = false,
   }
   apiLf[config.metaKey] = apiUpdatedMeta;
 
+  // O backend valida a tabulação a partir de lateralForm.produto/motivo no nível raiz
+  // (chamado.tabulacao), não do bag aninhado por canal acima — sem isto, o Salvar falha
+  // com "Preencha a tabulação" mesmo com produto/motivo do RA/Procon/Bacen/CG preenchidos.
+  if (classificacaoDraft?.produto) apiLf.produto = classificacaoDraft.produto;
+  if (classificacaoDraft?.motivo) apiLf.motivo = classificacaoDraft.motivo;
+
   return {
     payload: {
       ...base,
@@ -132,6 +141,8 @@ export function buildEspeciaisCommitPayload(ticket, session, { finalize = false,
     },
     hadPublicPayload: hasPublicPayload,
     hadInternalPayload: Boolean(internalNoteText),
+    hadClientePayload: Boolean(clienteText),
+    clienteHtml,
   };
 }
 
@@ -167,13 +178,20 @@ export async function commitEspeciaisTicket({
     throw new Error('Ticket inválido.');
   }
 
-  const { payload, hadPublicPayload, hadInternalPayload } = buildEspeciaisCommitPayload(
+  const { payload, hadPublicPayload, hadInternalPayload, hadClientePayload, clienteHtml } = buildEspeciaisCommitPayload(
     ticket,
     session,
     { finalize, channelId },
   );
 
   await commitTicketViaApi(ticketId, payload);
+  if (hadClientePayload) {
+    await ticketsApi.addMessage(ticketId, {
+      text: clienteHtml,
+      sender: 'them',
+      author: getAgentName(),
+    });
+  }
   let updatedTicket = await loadTicketDetailFromApi(ticketId);
   if (!updatedTicket) {
     updatedTicket = { ...ticket, status: payload.status };
@@ -203,6 +221,7 @@ export async function commitEspeciaisTicket({
     channelItem: updatedChannelItem,
     hadPublicPayload,
     hadInternalPayload,
+    hadClientePayload,
   };
 }
 

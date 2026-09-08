@@ -547,11 +547,19 @@ export default function DeskComposePanel({
   ticketReadOnly = false,
   onSendInternalNote,
   sendInternalNoteBusy = false,
+  publicTabLabel = 'Resposta pública',
+  internalTabLabel = 'Anotação interna',
+  showClienteTab = false,
+  clienteTabLabel = 'Mensagem Cliente',
+  clienteText = '',
+  onClienteTextChange,
 }) {
   const tid = String(ticketId);
   const publicEditorRef = useRef(null);
   const internalEditorRef = useRef(null);
+  const clienteEditorRef = useRef(null);
   const [internalFormatState, setInternalFormatState] = useState(null);
+  const [clienteFormatState, setClienteFormatState] = useState(null);
   const useSharedBottomBar = variant === 'full';
   const composePlainText = useMemo(() => htmlToPlainText(composeText), [composeText]);
   const { user, colaborador } = useAuth();
@@ -561,6 +569,7 @@ export default function DeskComposePanel({
   const [attachUploading, setAttachUploading] = useState(false);
   const showPublic = variant === 'full' || variant === 'public-only';
   const showInternal = variant === 'full' || variant === 'internal-only';
+  const showCliente = variant === 'full' && showClienteTab;
   const publicComposeLocked = Boolean(workflowLocked || ticketReadOnly);
   const internalLocked = Boolean(internalComposeLocked || ticketReadOnly);
   const publicLocked = publicComposeLocked;
@@ -587,9 +596,22 @@ export default function DeskComposePanel({
     mode: 'rich',
   });
 
+  const clienteFormat = useComposeFormat({
+    richEditorRef: clienteEditorRef,
+    mode: 'rich',
+  });
+
   const handlePublicChange = useCallback(({ html }) => {
     onComposeTextChange(html);
   }, [onComposeTextChange]);
+
+  const handleClienteChange = useCallback(({ html }) => {
+    onClienteTextChange?.(html);
+  }, [onClienteTextChange]);
+
+  const handleClienteFormatStateChange = useCallback((formatState) => {
+    setClienteFormatState(formatState);
+  }, []);
 
   const handlePublicKeyDown = (event) => {
     publicFormat.handleKeyDown(event);
@@ -698,10 +720,10 @@ export default function DeskComposePanel({
       overlay
       showAiAssistant={composeMode === 'public' && !ticketReadOnly}
       onOpenRefinar={ticketReadOnly ? undefined : handleOpenRefinar}
-      onAttachFiles={ticketReadOnly || publicLocked ? undefined : handleAttachFiles}
+      onAttachFiles={composeMode === 'public' && !(ticketReadOnly || publicLocked) ? handleAttachFiles : undefined}
       attachUploading={attachUploading}
       attachDisabled={publicLocked || ticketReadOnly}
-      onSelectMacro={ticketReadOnly || publicLocked ? undefined : handleApplyMacro}
+      onSelectMacro={composeMode === 'public' && !(ticketReadOnly || publicLocked) ? handleApplyMacro : undefined}
       showSendInternalNote={composeMode === 'internal' && Boolean(onSendInternalNote) && !internalLocked}
       onSendInternalNote={onSendInternalNote}
       sendInternalNoteBusy={sendInternalNoteBusy}
@@ -717,6 +739,17 @@ export default function DeskComposePanel({
           beginLink={publicFormat.beginLink}
           applyLink={publicFormat.applyLink}
           removeLink={publicFormat.removeLink}
+        />
+      ) : composeMode === 'cliente' ? (
+        <ComposeFormatToolbar
+          applyAction={clienteFormat.applyAction}
+          activeFormats={clienteFormat.activeFormats}
+          variant="internal"
+          embedded
+          attachDisabled
+          beginLink={clienteFormat.beginLink}
+          applyLink={clienteFormat.applyLink}
+          removeLink={clienteFormat.removeLink}
         />
       ) : (
         <ComposeFormatToolbar
@@ -764,15 +797,25 @@ export default function DeskComposePanel({
                   onComposeModeChange('public');
                 }}
               >
-                <i className="fas fa-envelope" /> Resposta pública
+                <i className="fas fa-envelope" /> {publicTabLabel}
               </button>
+              {showCliente ? (
+              <button
+                type="button"
+                className={'response-tab octa-nav-tab octa-tab-cliente' + (composeMode === 'cliente' ? ' active' : '')}
+                data-compose="cliente"
+                onClick={() => onComposeModeChange('cliente')}
+              >
+                <i className="fas fa-comment-dots" /> {clienteTabLabel}
+              </button>
+              ) : null}
               <button
                 type="button"
                 className={'response-tab octa-nav-tab octa-tab-internal' + (composeMode === 'internal' ? ' active' : '')}
                 data-compose="internal"
                 onClick={() => onComposeModeChange('internal')}
               >
-                <i className="fas fa-edit" /> Anotação interna
+                <i className="fas fa-edit" /> {internalTabLabel}
               </button>
             </div>
             ) : null}
@@ -838,6 +881,23 @@ export default function DeskComposePanel({
                   onApply={handleApplyRefinar}
                   onReviewComplete={onComposeReviewed}
                 />
+              </div>
+              ) : null}
+              {showCliente ? (
+              <div className={'response-tab-content' + (variant === 'full' && composeMode !== 'cliente' ? '' : ' active')} id={'cliente-' + tid}>
+                <div className="crm-compose-editor-zone response-form">
+                  <ComposeRichEditor
+                    ref={clienteEditorRef}
+                    id={'clienteMessage-' + tid}
+                    className="response-textarea"
+                    placeholder={ticketReadOnly ? 'Ticket fechado — indisponível' : 'Transcreva a mensagem do cliente...'}
+                    value={clienteText}
+                    expandable
+                    readOnly={ticketReadOnly}
+                    onFormatStateChange={handleClienteFormatStateChange}
+                    onChange={handleClienteChange}
+                  />
+                </div>
               </div>
               ) : null}
               {showInternal ? (

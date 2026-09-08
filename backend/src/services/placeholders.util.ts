@@ -156,3 +156,38 @@ export async function applyTicketPlaceholders(
     raw,
   );
 }
+
+const NOME_CLIENTE_ALIASES = PLACEHOLDER_CATALOG.find((item) => item.key === 'nomeCliente')!.aliases;
+
+/** Testa presença de um alias sem herdar o estado do `lastIndex` (aliases são regex globais). */
+function containsAlias(text: string, aliases: RegExp[]): boolean {
+  return aliases.some((re) => {
+    re.lastIndex = 0;
+    const found = re.test(text);
+    re.lastIndex = 0;
+    return found;
+  });
+}
+
+/**
+ * Aplica os placeholders na linha de saudação do e-mail padrão. Quando não há nome de cliente
+ * disponível (cadastro sem nome ou nenhum cadastro associado), o template configurado — que
+ * normalmente é algo como "Olá, {nome}, tudo bem?" — é descartado e substituído pela saudação
+ * genérica "Oi, tudo bem?", seguindo direto para o corpo. Isso evita tanto vazar o placeholder
+ * cru quanto usar o título "Cliente" como se fosse um nome.
+ */
+export async function resolveTicketSaudacao(
+  saudacaoTemplate: string,
+  chamado: IChamadoN1,
+  opts: { clientName?: string } = {},
+): Promise<string> {
+  const raw = String(saudacaoTemplate ?? '').trim();
+  if (!raw) return '';
+
+  const clientName = opts.clientName ?? (await resolveChamadoClientName(chamado));
+  if (!clientName && containsAlias(raw, NOME_CLIENTE_ALIASES)) {
+    return 'Oi, tudo bem?';
+  }
+
+  return applyTicketPlaceholders(raw, chamado, { clientName });
+}

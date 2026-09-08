@@ -1,9 +1,10 @@
 /**
- * telecom55B2c.adapter v1.0.0 — payload do webhook "55" (call center humano) para
+ * telecom55B2c.adapter v1.1.0 — payload do webhook "55" (call center humano) para
  * abertura de ticket em /api/inbound/telephony/inbound_b2c. Distinto do adapter Contact
  * Tel (partner.adapter.ts) e do parser do painel ao vivo (realtime/telecom55/webhookPayload.ts)
  * — mesmo provedor, propósito e payload diferentes.
  */
+import { normalizeBrPhoneLocal } from '../../phone.util';
 
 export interface Telecom55B2cEvent {
   callType: string;
@@ -40,7 +41,7 @@ export function parseTelecom55B2cPayload(body: Record<string, unknown>): Telecom
     callUrlAudio: pickString(body, 'call_url_audio'),
     callUra: pickString(body, 'call_ura'),
     callDocument: normalizeCpf(pickString(body, 'call_document')),
-    callNumber: normalizePhone(pickString(body, 'call_number')),
+    callNumber: normalizeBrPhoneLocal(pickString(body, 'call_number')),
     branchEmail: pickString(body, 'branch_email').toLowerCase(),
   };
 }

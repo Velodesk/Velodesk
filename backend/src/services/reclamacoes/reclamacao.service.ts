@@ -85,7 +85,9 @@ export function orgaoToRoute(orgao: CasoEspecialOrgao): ReclamacaoOrgaoRoute | n
 export function resolveReclamacaoModel(orgao: CasoEspecialOrgao): Model<IReclamacao> | null {
   switch (orgao) {
     case 'reclame_aqui':
-      return getReclamacaoReclameAquiModel();
+      // Schema próprio (campos de primeira classe) — compatível estruturalmente com o uso
+      // genérico deste resolver (list/count/search/patch só tocam campos comuns às duas formas).
+      return getReclamacaoReclameAquiModel() as unknown as Model<IReclamacao>;
     case 'procon':
       return getReclamacaoProconModel();
     case 'bacen':
@@ -733,6 +735,28 @@ export function reclamacaoToPortalDto(doc: IReclamacao): Record<string, unknown>
     meta,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+    // Campos de primeira classe do schema próprio do RA (ReclamacaoReclameAquiSchema) — só
+    // existem quando orgao === 'reclame_aqui'; undefined nos outros 3 órgãos (schema genérico).
+    ...(doc.orgao === 'reclame_aqui' ? (() => {
+      const ra = doc as unknown as Record<string, unknown>;
+      return {
+        idOrigem: ra.idOrigem,
+        canal: ra.canal,
+        nomeSocial: ra.nomeSocial,
+        motivoRa: ra.motivoRa,
+        categoriaRa: ra.categoriaRa,
+        problemaRa: ra.problemaRa,
+        produtoRa: ra.produtoRa,
+        sentimentoRa: ra.sentimentoRa,
+        nota: ra.nota,
+        statusHugme: ra.statusHugme,
+        statusRaLabelPlanilha: ra.statusRaLabel,
+        dataResposta: ra.dataResposta,
+        respostaPublica: ra.respostaPublica,
+        dadosPlanilha: ra.dadosPlanilha,
+        fusao: ra.fusao,
+      };
+    })() : {}),
   };
 }
 
@@ -804,7 +828,7 @@ export async function findReclamacoesByCpf(
   };
   const capped = Math.min(Math.max(limitPerOrgao, 1), 500);
   const models = [
-    getReclamacaoReclameAquiModel(),
+    getReclamacaoReclameAquiModel() as unknown as Model<IReclamacao>,
     getReclamacaoProconModel(),
     getReclamacaoBacenModel(),
     getReclamacaoConsumidorGovModel(),

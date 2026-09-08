@@ -4,6 +4,7 @@
 import { isContactTelPayload, parseContactTelPayload } from './contact-tel.adapter';
 import type { TelephonyCallInput } from '../types';
 import { parseExternalTimestampToDate } from '../../dates/brDateTime.util';
+import { normalizeBrPhoneLocal } from '../../phone.util';
 
 function pickString(body: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
@@ -31,10 +32,6 @@ function pickNumber(body: Record<string, unknown>, keys: string[]): number | und
     if (Number.isFinite(num) && num >= 0) return Math.round(num);
   }
   return undefined;
-}
-
-function normalizePhone(value: string): string {
-  return String(value ?? '').replace(/\D/g, '');
 }
 
 function normalizeCpf(value: string): string {
@@ -66,7 +63,7 @@ function parseLegacyPayload(body: Record<string, unknown>): TelephonyCallInput {
     durationSeconds = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 1000));
   }
 
-  const clientPhone = normalizePhone(pickString(body, ['clientPhone', 'client_phone', 'telefone', 'phone'])
+  const clientPhone = normalizeBrPhoneLocal(pickString(body, ['clientPhone', 'client_phone', 'telefone', 'phone'])
     || pickString(client, ['telefone', 'phone', 'clientPhone']));
   const clientCpf = normalizeCpf(pickString(body, ['clientCpf', 'client_cpf', 'cpf'])
     || pickString(client, ['cpf', 'clientCpf']));

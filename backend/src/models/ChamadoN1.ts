@@ -1,20 +1,20 @@
-/** ChamadoN1 v1.14.0 — campo aiSuggestionCache (rascunho de sugestão pré-gerada, fora do registro[]) */
+/**
+ * ChamadoN1 v1.15.0 — IRegistro/ITabulacao (schema+tipos) movidos pra models/shared/registro.schema.ts,
+ * reaproveitados pelas coleções próprias de casos especiais (Fase 3 da separação de persistência);
+ * reexportados aqui por compatibilidade — nenhum import existente muda.
+ */
 import mongoose, { Schema, Document, Types } from 'mongoose';
 import type { IChamadoWorkflowRequisicao } from '../config/workflowRequisicaoDefaults';
+import {
+  CHAMADO_STATUS_VALUES,
+  RegistroSchema,
+  TabulacaoSchema,
+  type ChamadoStatus,
+  type IRegistro,
+  type ITabulacao,
+} from './shared/registro.schema';
 
-/** Valores canônicos de registro.status */
-export const CHAMADO_STATUS_VALUES = [
-  'novo',
-  'em-aberto',
-  'em-andamento',
-  'em-espera',
-  'pendente',
-  'resolvido',
-  'cancelado',
-  'fechado',
-] as const;
-
-export type ChamadoStatus = (typeof CHAMADO_STATUS_VALUES)[number];
+export { CHAMADO_STATUS_VALUES, type ChamadoStatus, type IRegistro, type ITabulacao };
 
 export type FusaoHierarquia = 'superior' | 'inferior' | 'redundante';
 
@@ -83,31 +83,6 @@ export interface IClienteRef {
   clienteId: Types.ObjectId | null;
 }
 
-export interface ITabulacao {
-  tipoChamado: string;
-  produto: string;
-  motivo: string;
-  detalhe: string;
-  canal: string;
-  responsavel: string;
-  atribuido: string;
-}
-
-export interface IRegistro {
-  data: Date;
-  origin: string;
-  autor: string;
-  mensagemPublica: string;
-  anexosMensagemPublica: string[];
-  anotacaoInterna: string;
-  anexosAnotacaoInterna: string[];
-  /** Histórico de campos alterados neste evento (valores novos). */
-  alteracoes: unknown[];
-  /** Metadados técnicos do evento (ex.: e-mail inbound), fora do histórico de negócio. */
-  metadados: Record<string, unknown>;
-  status: string;
-}
-
 export interface IChamadoN1 extends Document {
   chamadoProtocolo: string;
   chamadoTitulo: string;
@@ -126,39 +101,6 @@ const ClienteRefSchema = new Schema<IClienteRef>(
   {
     clienteCpf: { type: String, default: '' },
     clienteId: { type: Schema.Types.ObjectId, default: null },
-  },
-  { _id: false }
-);
-
-const TabulacaoSchema = new Schema<ITabulacao>(
-  {
-    tipoChamado: { type: String, default: '' },
-    produto: { type: String, default: '' },
-    motivo: { type: String, default: '' },
-    detalhe: { type: String, default: '' },
-    canal: { type: String, default: '' },
-    responsavel: { type: String, default: '' },
-    atribuido: { type: String, default: '' },
-  },
-  { _id: false }
-);
-
-const RegistroSchema = new Schema<IRegistro>(
-  {
-    data: { type: Date, default: Date.now },
-    origin: { type: String, default: '' },
-    autor: { type: String, default: '' },
-    mensagemPublica: { type: String, default: '' },
-    anexosMensagemPublica: { type: [String], default: [] },
-    anotacaoInterna: { type: String, default: '' },
-    anexosAnotacaoInterna: { type: [String], default: [] },
-    alteracoes: { type: [Schema.Types.Mixed], default: [] },
-    metadados: { type: Schema.Types.Mixed, default: {} },
-    status: {
-      type: String,
-      enum: CHAMADO_STATUS_VALUES,
-      default: 'novo',
-    },
   },
   { _id: false }
 );

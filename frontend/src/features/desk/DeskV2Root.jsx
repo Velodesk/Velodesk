@@ -606,6 +606,12 @@ export default function DeskV2Root() {
           ? mergeApiTicketPreservingPendingWorkflow(entry.ticket, full)
           : full;
         patchTicket(ticketId, merged);
+        // Ticket aberto já com sessão WhatsApp ativa (cliente respondeu há menos de 24h): abre o
+        // painel certo de cara, senão o agente compõe no compose de e-mail sem perceber que a
+        // conversa é WhatsApp (mesmo risco do ticket 2609080001, agora na carga inicial).
+        if (!waChatOpenRef.current && getWhatsAppDeskUiState(merged)?.composeEnabled) {
+          setWaChatOpen(true);
+        }
       })
       .catch(() => {
         if (!cancelled && detailLoadRef.current === ticketId) {
@@ -742,6 +748,12 @@ export default function DeskV2Root() {
           && (threadChanged || waThreadChanged || internalNotesChanged || statusOrWorkflowChanged || attachmentScanChanged)
         ) {
           patchTicket(ticketId, merged);
+          // Cliente respondeu por WhatsApp com o compose padrão (e-mail) em tela: sem isso, o
+          // agente compõe/usa sugestão no painel errado e o envio sai como e-mail em vez de
+          // WhatsApp (o texto some no compose de e-mail, sem aviso — ver ticket 2609080001).
+          if (waThreadChanged && !waChatOpenRef.current) {
+            setWaChatOpen(true);
+          }
         }
       } catch (err) {
         deskPlatformTrace('auto-refresh', 'poll:erro', { ticketId, message: String(err?.message || err) }, 'warn');

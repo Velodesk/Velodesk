@@ -168,7 +168,7 @@ export function buildAuditoriaUserBlock(
     parts.push('', '## Contexto original do cliente (mensagens públicas)', '', formatMessagesBlock(params.messages));
   }
   if (params.internalNote?.trim()) {
-    parts.push('', '## Anotações internas do agente (contexto operacional)', '', params.internalNote.trim());
+    parts.push('', '## Anotações internas do agente (contexto operacional — NÃO deve aparecer literalmente na resposta ao cliente)', '', params.internalNote.trim());
   }
   if (params.ultimaMensagemCliente) {
     parts.push('', '## Última mensagem do cliente', '', params.ultimaMensagemCliente);

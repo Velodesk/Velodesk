@@ -204,26 +204,13 @@ export function validateTicketAiInput(body: unknown):
   }
 
   const b = body as Record<string, unknown>;
-  const contextSource = b.contextSource === 'internal' ? 'internal' : b.contextSource === 'public' ? 'public' : null;
-  if (!contextSource) {
-    return { ok: false, error: 'contextSource é obrigatório (public ou internal)' };
-  }
+  // contextSource é aceito por compatibilidade com clientes antigos, mas descontinuado: o
+  // contexto agora é sempre a mescla de mensagens públicas + anotações internas, nunca uma
+  // escolha exclusiva entre as duas — ver generateTicketAiSuggest.
+  const contextSource = b.contextSource === 'internal' ? 'internal' : 'public';
 
   const messages = normalizeMessages(b.messages);
   const internalNote = trimStr(b.internalNote, MAX_INTERNAL_NOTE_CHARS);
-
-  if (contextSource === 'public') {
-    const hasClientMsg = messages.some(
-      (m) => m.role === 'cliente' && !isPlaceholderClientMessageText(m.text),
-    );
-    if (!hasClientMsg) {
-      return { ok: false, error: 'Informe ao menos uma mensagem do cliente para contextSource public' };
-    }
-  }
-
-  if (contextSource === 'internal' && !internalNote) {
-    return { ok: false, error: 'internalNote é obrigatório para contextSource internal' };
-  }
 
   return {
     ok: true,
@@ -265,7 +252,7 @@ function buildUserBlock(params: TicketAiSuggestInput, tabulationCatalog: string)
     `- **Cliente:** ${clientFullName || 'não informado'}`,
     `- **Nome do agente:** ${params.nomeOperador || 'não informado'}`,
     `- **Título:** ${params.titulo || 'não informado'}`,
-    `- **Fonte de contexto:** ${params.contextSource === 'internal' ? 'anotação interna do agente (sem 1ª mensagem do cliente)' : 'mensagens públicas'}`,
+    `- **Fonte de contexto:** ${[params.messages?.length ? 'mensagens públicas' : '', params.internalNote?.trim() ? 'anotações internas' : ''].filter(Boolean).join(' + ') || 'nenhuma'}`,
   ];
 
   if (clientFirstName) {
@@ -378,22 +365,14 @@ export async function generateTicketAiSuggest(
     internalNote: resolvedInternalNote || params.internalNote,
   };
 
-  if (enrichedParams.contextSource === 'internal') {
-    const note = trimStr(enrichedParams.internalNote, MAX_INTERNAL_NOTE_CHARS);
-    if (!note) {
-      return { success: false, error: 'internalNote é obrigatório para contextSource internal' };
-    }
-    enrichedParams.internalNote = note;
-    enrichedParams.messages = undefined;
-  }
-
-  if (enrichedParams.contextSource === 'public') {
-    const hasClientMsg = (enrichedParams.messages || []).some(
-      (m) => m.role === 'cliente' && !isPlaceholderClientMessageText(m.text),
-    );
-    if (!hasClientMsg) {
-      return { success: false, error: 'Informe ao menos uma mensagem do cliente para contextSource public' };
-    }
+  // Política: contexto sempre mesclado (mensagens públicas + anotações internas), nunca uma
+  // escolha exclusiva — contextSource não filtra mais o que é enviado à IA, só falha se não
+  // houver NENHUM contexto disponível (nem mensagem, nem nota).
+  const hasAnyContext = (enrichedParams.messages || []).some(
+    (m) => m.role === 'agente' || !isPlaceholderClientMessageText(m.text),
+  ) || Boolean(trimStr(enrichedParams.internalNote, MAX_INTERNAL_NOTE_CHARS));
+  if (!hasAnyContext) {
+    return { success: false, error: 'Nenhum contexto disponível (mensagens públicas ou anotação interna) para gerar sugestão' };
   }
 
   if (env.agentsEnabled && isPersistedMongoTicketId(enrichedParams.ticketId)) {
