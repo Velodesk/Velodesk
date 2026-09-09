@@ -1413,7 +1413,7 @@ export async function createChamadoFromBody(
     const effectiveSource = String(
       (registro[0]?.metadados as Record<string, unknown> | undefined)?.source ?? '',
     );
-    tab.canal = resolveCanalLabelFromSource(effectiveSource) || 'Portal';
+    tab.canal = resolveCanalLabelFromSource(effectiveSource);
   }
 
   await assertTabulacaoForStatus(tab, status);
@@ -2073,6 +2073,7 @@ function buildTicketDtoCore(
   // Canal real de contato: prioriza órgão especial detectado, depois tabulacao.canal persistido
   // (a partir daqui, todo ticket novo já é criado com canal correto — ver createChamadoFromBody),
   // com fallback para tickets antigos sem canal persistido (deriva de registro[0].metadados.source).
+  // Sem "Portal" como default artificial — canal vazio fica vazio, sem inventar valor.
   const canalLabel = reclameAquiMeta
     ? 'Reclame Aqui'
     : proconMeta
@@ -2081,7 +2082,7 @@ function buildTicketDtoCore(
         ? 'Consumidor.Gov'
         : bacenMeta
           ? 'Bacen'
-          : (tab?.canal || resolveCanalLabelFromSource(readChamadoOriginSource(chamado)) || 'Portal');
+          : (tab?.canal || resolveCanalLabelFromSource(readChamadoOriginSource(chamado)));
 
   return {
     _id: chamado._id.toString(),

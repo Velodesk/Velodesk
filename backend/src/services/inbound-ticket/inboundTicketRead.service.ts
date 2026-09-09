@@ -60,8 +60,7 @@ function resolveUltimaMensagem(chamado: IChamadoN1): ClientTicketMessageSummary 
 function serializeForClientRead(chamado: IChamadoN1): ClientTicketSummary {
   const tabs = chamado.tabulacao ?? [];
   const canal = String(tabs[tabs.length - 1]?.canal ?? '').trim()
-    || resolveCanalLabelFromSource(readChamadoOriginSource(chamado))
-    || 'Portal';
+    || resolveCanalLabelFromSource(readChamadoOriginSource(chamado));
 
   return {
     chamadoProtocolo: String(chamado.chamadoProtocolo ?? ''),

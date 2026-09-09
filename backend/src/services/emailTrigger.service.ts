@@ -35,7 +35,7 @@ export function resolveTicketCanal(chamado: IChamadoN1): string {
   const tabs = chamado.tabulacao ?? [];
   const tabCanal = String(tabs[tabs.length - 1]?.canal ?? '').trim();
   if (tabCanal) return tabCanal;
-  return resolveCanalLabelFromSource(readChamadoOriginSource(chamado)) || 'Portal';
+  return resolveCanalLabelFromSource(readChamadoOriginSource(chamado));
 }
 
 /** Instante em que o ticket entrou no status atual. */

@@ -344,7 +344,6 @@ export const DEFAULT_TABULACAO_OPCOES: Array<{
       { valor: 'WhatsApp', ordem: 0, ativo: true },
       { valor: 'Telefone', ordem: 1, ativo: true },
       { valor: 'E-mail', ordem: 2, ativo: true },
-      { valor: 'Portal', ordem: 3, ativo: true },
     ],
   },
   {

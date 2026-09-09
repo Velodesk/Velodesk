@@ -8,7 +8,6 @@ export const EMAIL_CANAL_OPCOES = [
   'WhatsApp',
   'Telefone',
   'E-mail',
-  'Portal',
   'App',
   'Agente IA',
   'Reclame Aqui',
@@ -52,7 +51,7 @@ export const EMAIL_CONTEUDO_SEED = [
     corpo: 'Seu chamado foi registrado com sucesso.\n\nPara responder, utilize este e-mail mantendo o protocolo no assunto.',
     gatilho: {
       criterios: [
-        { tipo: 'canal' as const, valores: ['E-mail', 'App', 'Portal', 'WhatsApp', 'Agente IA'] },
+        { tipo: 'canal' as const, valores: ['E-mail', 'App', 'WhatsApp', 'Agente IA'] },
         { tipo: 'status' as const, valores: ['novo'] },
       ],
     },
