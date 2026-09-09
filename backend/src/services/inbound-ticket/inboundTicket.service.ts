@@ -1,13 +1,25 @@
 /** inboundTicket.service v1.1.0 — clientPhone no cadastro + enriquecimento parcial via API */
 import { ChamadoN1 } from '../../models/ChamadoN1';
 import type { IChamadoN1 } from '../../models/ChamadoN1';
+import { ChamadoIaAnalise } from '../../models/ChamadoIaAnalise';
 import { applyAssignmentIfNeeded } from '../assignmentRouter.service';
-import { createChamadoFromBody } from '../chamado.mapper';
+import {
+  appendMessage,
+  appendStatusTransition,
+  createChamadoFromBody,
+  currentStatus,
+  normalizeStatusValue,
+  prependInboundDerivedTicketNote,
+  resolveInboundClientReplyStatus,
+  shouldSpawnNewTicketOnInbound,
+} from '../chamado.mapper';
 import { findClienteByPhone, resolveClienteRefFromBody } from '../cliente.service';
 import { notifyTicketOpenedAsync } from '../emailNotification.service';
 import { runInboundPostCreateHooks } from '../agents/inboundAgentPipeline.service';
+import { publishTicketEvent } from '../realtime/ticketEventsBroadcast.service';
 import type {
   InboundTicketOrigin,
+  InboundTicketOriginConfig,
   InboundTicketPayload,
   InboundTicketResult,
 } from './types';
@@ -31,9 +43,11 @@ export function parseInboundTicketPayload(body: Record<string, unknown>): Inboun
   const clientCPF = trim(body.clientCPF);
   const clientPhone = normalizeBrPhoneLocal(body.clientPhone);
   const clientEmail = trim(body.clientEmail);
+  const chamadoProtocolo = trim(body.chamadoProtocolo);
 
   if (!externalId) throw new Error('externalId é obrigatório');
-  if (!title) throw new Error('title ou chamadoTitulo é obrigatório');
+  // title só é exigido pra abrir ticket novo — uma resposta (chamadoProtocolo informado) não precisa.
+  if (!title && !chamadoProtocolo) throw new Error('title ou chamadoTitulo é obrigatório');
   if (!text) throw new Error('text ou description é obrigatório');
   if (!clientName) throw new Error('clientName é obrigatório');
   if (!clientCPF && !clientPhone && !clientEmail) {
@@ -55,6 +69,7 @@ export function parseInboundTicketPayload(body: Record<string, unknown>): Inboun
     title,
     text,
     clientName,
+    chamadoProtocolo: chamadoProtocolo || undefined,
     clientCPF: clientCPF || undefined,
     clientPhone: clientPhone || undefined,
     clientEmail: clientEmail || undefined,
@@ -168,6 +183,51 @@ function buildTicketBody(
   };
 }
 
+/** Anexa a mensagem do cliente a um ticket existente ainda "vivo" (não fechado/cancelado/resolvido há +48h). */
+async function appendInboundReply(
+  chamado: IChamadoN1,
+  origin: InboundTicketOrigin,
+  payload: InboundTicketPayload,
+  config: InboundTicketOriginConfig,
+): Promise<InboundTicketResult> {
+  const statusOverride = resolveInboundClientReplyStatus(chamado);
+  const metadados: Record<string, unknown> = {
+    source: config.source,
+    inboundTicketOrigin: origin,
+    inboundTicketExternalId: payload.externalId,
+    ...(payload.metadata ? { inboundTicketMetadata: payload.metadata } : {}),
+  };
+
+  // sender 'them' → origin 'cliente' (originFromSender em chamado.mapper.ts)
+  appendMessage(chamado, payload.text, false, 'them', payload.attachments ?? [], metadados, statusOverride);
+
+  if (statusOverride && statusOverride !== normalizeStatusValue(currentStatus(chamado))) {
+    appendStatusTransition(chamado, statusOverride, {
+      origin: 'cliente',
+      autor: payload.clientName,
+      metadados: { trigger: `inbound-ticket-${origin}-reply` },
+    });
+  }
+
+  chamado.markModified('registro');
+  await chamado.save();
+  void publishTicketEvent(chamado._id.toString(), 'message');
+  await ChamadoIaAnalise.updateOne(
+    { chamadoId: chamado._id, origem: { $ne: 'manual' } },
+    { $set: { needsReanalysis: true } },
+  );
+
+  console.info('[inbound-ticket] replied origin=%s externalId=%s ticketId=%s protocolo=%s',
+    origin, payload.externalId, chamado._id, chamado.chamadoProtocolo);
+
+  return {
+    action: 'replied',
+    ticketId: chamado._id.toString(),
+    chamadoProtocolo: String(chamado.chamadoProtocolo ?? ''),
+    canal: config.canal,
+  };
+}
+
 export async function processInboundTicket(
   origin: InboundTicketOrigin,
   rawBody: Record<string, unknown>,
@@ -184,6 +244,19 @@ export async function processInboundTicket(
       chamadoProtocolo: String(existing.chamadoProtocolo ?? ''),
       canal: config.canal,
     };
+  }
+
+  let derivedFromProtocolo: string | undefined;
+  if (payload.chamadoProtocolo) {
+    const target = await ChamadoN1.findOne({ chamadoProtocolo: payload.chamadoProtocolo });
+    if (!target) {
+      throw new Error('chamadoProtocolo inválido — ticket não encontrado');
+    }
+    if (!shouldSpawnNewTicketOnInbound(target)) {
+      return appendInboundReply(target, origin, payload, config);
+    }
+    // fechado/cancelado/resolvido há +48h — não anexa mais; abre ticket novo com nota de origem.
+    derivedFromProtocolo = payload.chamadoProtocolo;
   }
 
   const ticketBody = buildTicketBody(origin, payload, config);
@@ -211,6 +284,10 @@ export async function processInboundTicket(
 
   if (clienteRefs.length > 0 && (!partial.cliente || partial.cliente.length === 0)) {
     partial.cliente = clienteRefs;
+  }
+
+  if (derivedFromProtocolo) {
+    prependInboundDerivedTicketNote(partial, derivedFromProtocolo);
   }
 
   await applyAssignmentIfNeeded(partial, {

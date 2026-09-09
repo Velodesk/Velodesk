@@ -40,6 +40,7 @@ import {
 } from '../services/realtime/telecom55/webhook.service';
 import { isRealtimeSupabaseConfigured } from '../config/supabaseRealtime';
 import { processInboundTicket } from '../services/inbound-ticket/inboundTicket.service';
+import { listClientTicketsForApp } from '../services/inbound-ticket/inboundTicketRead.service';
 import { ORIGIN_CANAL_CONFIG } from '../services/inbound-ticket/types';
 import { verifyWhatsAppOutboundMediaToken } from '../services/twilio/whatsappOutboundMedia.util';
 import { openSentAttachment } from '../services/sentAttachmentStorage.service';
@@ -366,6 +367,34 @@ router.post('/tickets', inboundTicketAuthMiddleware, async (req, res: Response) 
     }
     console.error('[inbound/tickets]', err);
     return res.status(500).json({ message: 'Falha ao criar ticket inbound' });
+  }
+});
+
+/** Leitura server-to-server dos tickets do cliente — só o backend do app tem motivo de chamar isso em nome de alguém. */
+router.get('/tickets/client', inboundTicketAuthMiddleware, async (req, res: Response) => {
+  try {
+    if (req.inboundTicketOrigin !== 'app') {
+      return res.status(403).json({ message: 'Leitura de tickets do cliente é exclusiva da origem app' });
+    }
+
+    const clientCPF = String(req.query.clientCPF ?? '').trim();
+    const clientPhone = String(req.query.clientPhone ?? '').trim();
+    const clientEmail = String(req.query.clientEmail ?? '').trim();
+    if (!clientCPF && !clientPhone && !clientEmail) {
+      return res.status(400).json({ message: 'Informe clientCPF, clientPhone ou clientEmail' });
+    }
+
+    const limitRaw = req.query.limit;
+    const limit = limitRaw !== undefined ? Number(limitRaw) : undefined;
+
+    const tickets = await listClientTicketsForApp(
+      { clientCPF, clientPhone, clientEmail },
+      limit,
+    );
+    return res.json({ tickets });
+  } catch (err) {
+    console.error('[inbound/tickets/client]', err);
+    return res.status(500).json({ message: 'Falha ao listar tickets do cliente' });
   }
 });
 

@@ -28,6 +28,8 @@ function getConfiguredSecret(origin: InboundTicketOrigin): string {
       return env.inboundTicketTelefoneSecret;
     case 'agente-ia':
       return env.inboundTicketAgenteIaSecret;
+    case 'chat':
+      return env.inboundTicketChatSecret;
     default:
       return '';
   }

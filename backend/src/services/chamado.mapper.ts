@@ -613,6 +613,8 @@ const CANAL_LABEL_BY_SOURCE: Record<string, string> = {
   telefone: 'Telefone',
   'inbound-ticket-agente-ia': 'Agente IA',
   'agente-ia': 'Agente IA',
+  'inbound-ticket-chat': 'Chat',
+  chat: 'Chat',
   'reclame-aqui': 'Reclame Aqui',
   procon: 'Procon',
   'consumidor-gov': 'Consumidor.Gov',

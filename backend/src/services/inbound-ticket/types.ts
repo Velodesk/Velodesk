@@ -1,6 +1,6 @@
 /** inbound-ticket/types v1.0.0 — contrato canônico POST /api/inbound/tickets */
 
-export type InboundTicketOrigin = 'app' | 'telefone' | 'agente-ia';
+export type InboundTicketOrigin = 'app' | 'telefone' | 'agente-ia' | 'chat';
 
 export interface InboundTicketOriginConfig {
   canal: string;
@@ -14,6 +14,7 @@ export interface InboundTicketPayload {
   title: string;
   text: string;
   clientName: string;
+  chamadoProtocolo?: string;
   clientCPF?: string;
   clientPhone?: string;
   clientEmail?: string;
@@ -29,7 +30,7 @@ export interface InboundTicketPayload {
 }
 
 export interface InboundTicketResult {
-  action: 'created' | 'duplicate';
+  action: 'created' | 'duplicate' | 'replied';
   ticketId: string;
   chamadoProtocolo: string;
   canal: string;
@@ -43,6 +44,7 @@ export const INBOUND_TICKET_ORIGIN_HEADERS: Record<InboundTicketOrigin, string> 
   app: 'x-inbound-app-secret',
   telefone: 'x-inbound-telefone-secret',
   'agente-ia': 'x-inbound-agente-ia-secret',
+  chat: 'x-inbound-chat-secret',
 };
 
 export const ORIGIN_CANAL_CONFIG: Record<InboundTicketOrigin, InboundTicketOriginConfig> = {
@@ -62,6 +64,12 @@ export const ORIGIN_CANAL_CONFIG: Record<InboundTicketOrigin, InboundTicketOrigi
     canal: 'Agente IA',
     channel: 'agente-ia',
     source: 'inbound-ticket-agente-ia',
+    assignmentSource: 'inbound-ticket',
+  },
+  chat: {
+    canal: 'Chat',
+    channel: 'chat',
+    source: 'inbound-ticket-chat',
     assignmentSource: 'inbound-ticket',
   },
 };

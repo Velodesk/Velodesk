@@ -286,6 +286,7 @@ export const env = {
   inboundTicketAppSecret: (process.env.INBOUND_TICKET_APP_SECRET || '').trim(),
   inboundTicketTelefoneSecret: (process.env.INBOUND_TICKET_TELEFONE_SECRET || '').trim(),
   inboundTicketAgenteIaSecret: (process.env.INBOUND_TICKET_AGENTE_IA_SECRET || '').trim(),
+  inboundTicketChatSecret: (process.env.INBOUND_TICKET_CHAT_SECRET || '').trim(),
   /** Intervalo do job que fecha tickets resolvidos (default 1h) */
   resolvedCloseIntervalMs: parseInt(process.env.RESOLVED_CLOSE_INTERVAL_MS || '3600000', 10),
   /** Idade mínima em Resolvido antes de virar Fechado (default 48h) */
