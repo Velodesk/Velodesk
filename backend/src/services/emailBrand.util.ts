@@ -15,7 +15,7 @@ export const EMAIL_BRAND_COLORS = {
 export const VELOTAX_LOGO_CID = 'velotax-logo';
 export const VELOTAX_LOGO_COMPLETO_CID = 'velotax-logo-completo';
 export const VELOTAX_HEADER_LOGO_CID = 'velotax-header-logo';
-export const EMAIL_HEADER_PREVIEW_STATUS = '• PROTOCOLO ABERTO · EM ATENDIMENTO';
+export const EMAIL_HEADER_PREVIEW_STATUS = '• PROTOCOLO · EM ATENDIMENTO';
 
 const HEADER_LOGO_FILENAME = 'velotax_ajustada_branco.png';
 const LOGO_COMPLETO_FILENAME = 'velotax_logo_completo.png';
@@ -61,22 +61,26 @@ export function loadVelotaxHeaderLogoInline(): {
   return loadLogoFromPath(logoPath, VELOTAX_HEADER_LOGO_CID, HEADER_LOGO_FILENAME);
 }
 
+/**
+ * Rótulo exibido pra cada status realmente usado no dia a dia — sempre "PROTOCOLO · <STATUS>".
+ * "em-aberto"/"em-espera"/"fechado" não têm rótulo próprio (não são usados na prática como
+ * estado final visível ao cliente) — herdam o selo do status equivalente mais próximo.
+ */
+const STATUS_LABEL_BY_KEY: Record<string, string> = {
+  novo: 'NOVO',
+  'em-andamento': 'EM ANDAMENTO',
+  'em-aberto': 'EM ANDAMENTO',
+  pendente: 'PENDENTE',
+  'em-espera': 'PENDENTE',
+  resolvido: 'RESOLVIDO',
+  fechado: 'RESOLVIDO',
+  cancelado: 'CANCELADO',
+};
+
 export function emailHeaderStatusLabel(status: string): string {
   const key = String(status || '').trim().toLowerCase();
-  switch (key) {
-    case 'pendente':
-      return '• PROTOCOLO ABERTO · PENDENTE';
-    case 'em-espera':
-      return '• PROTOCOLO ABERTO · EM ESPERA';
-    case 'resolvido':
-      return '• PROTOCOLO ABERTO · RESOLVIDO';
-    case 'fechado':
-      return '• PROTOCOLO ENCERRADO';
-    case 'cancelado':
-      return '• PROTOCOLO CANCELADO';
-    default:
-      return EMAIL_HEADER_PREVIEW_STATUS;
-  }
+  const label = STATUS_LABEL_BY_KEY[key];
+  return label ? `• PROTOCOLO · ${label}` : EMAIL_HEADER_PREVIEW_STATUS;
 }
 
 /** Cabeçalho padrão: faixa #000058 + logo branca + faixa de status. */
