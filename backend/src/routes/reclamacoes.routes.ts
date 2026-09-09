@@ -24,6 +24,7 @@ import { createChamadoFromBody } from '../services/chamado.mapper';
 import { ChamadoN1 } from '../models/ChamadoN1';
 import { runCasosEspeciaisTriagem } from '../services/agents/casosEspeciaisTrigger.service';
 import { buildFastPathTriagem } from '../services/agents/casosEspeciaisAgent.service';
+import { scheduleCasosEspeciaisRelacionadosAnalise } from '../services/agents/casosEspeciaisRelacionadosTrigger.service';
 
 const router = Router();
 
@@ -234,6 +235,9 @@ router.post('/:orgao', authMiddleware, async (req, res: Response) => {
           chamadoId,
         });
       }
+      if (orgao === 'reclame_aqui') {
+        scheduleCasosEspeciaisRelacionadosAnalise(doc, { source: 'reclamacoes-manual' });
+      }
       return res.status(201).json(reclamacaoToPortalDto(doc));
     }
 
@@ -257,11 +261,15 @@ router.post('/:orgao', authMiddleware, async (req, res: Response) => {
       if (!forced) {
         return res.status(500).json({ message: 'Falha ao persistir reclamação Reclame Aqui' });
       }
+      scheduleCasosEspeciaisRelacionadosAnalise(forced, { source: 'reclamacoes-register' });
       return res.status(201).json({
         chamadoId: chamado._id.toString(),
         chamadoProtocolo: chamado.chamadoProtocolo,
         reclamacao: reclamacaoToPortalDto(forced),
       });
+    }
+    if (doc && orgao === 'reclame_aqui') {
+      scheduleCasosEspeciaisRelacionadosAnalise(doc, { source: 'reclamacoes-register' });
     }
     return res.status(201).json({
       chamadoId: chamado._id.toString(),
@@ -286,6 +294,9 @@ router.patch('/:orgao/:id', authMiddleware, async (req, res: Response) => {
 
     const doc = await patchReclamacao(orgao, String(req.params.id), req.body ?? {});
     if (!doc) return res.status(404).json({ message: 'Reclamação não encontrada' });
+    if (orgao === 'reclame_aqui') {
+      scheduleCasosEspeciaisRelacionadosAnalise(doc, { source: 'reclamacoes-patch' });
+    }
     return res.json(reclamacaoToPortalDto(doc));
   } catch (err) {
     const status = (err as { status?: number }).status ?? 500;

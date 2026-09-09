@@ -250,6 +250,8 @@ export const env = {
   agentsAutonomyEnabled: process.env.AGENTS_AUTONOMY_ENABLED === 'true',
   /** Agente 4 — triagem silenciosa de casos especiais na entrada do ticket */
   agentCasosEspeciaisEnabled: process.env.AGENT_CASOS_ESPECIAIS_ENABLED === 'true',
+  /** Agente 5 — correlação de tickets relacionados no histórico do CPF (Reclame Aqui) */
+  agentCasosEspeciaisRelacionadosEnabled: process.env.AGENT_CASOS_ESPECIAIS_RELACIONADOS_ENABLED === 'true',
   agentAuditThresholdAuto: parseInt(process.env.AGENT_AUDIT_THRESHOLD_AUTO || '85', 10),
   agentAuditThresholdDesk: parseInt(process.env.AGENT_AUDIT_THRESHOLD_DESK || '70', 10),
   agentRevisionMaxAttempts: parseInt(process.env.AGENT_REVISION_MAX_ATTEMPTS || '1', 10),

@@ -24,6 +24,30 @@ export interface IReclamacaoTriagem {
   agenteVersao: string;
 }
 
+export interface IReclamacaoTicketRelacionado {
+  chamadoId: string;
+  chamadoProtocolo: string;
+  scoreSimilaridade: number;
+  criterios: string[];
+  motivo: string;
+}
+
+export type ReclamacaoAnaliseRelacionadosStatus =
+  | 'pendente'
+  | 'concluida'
+  | 'sem_candidatos'
+  | 'erro'
+  | 'desativado';
+
+export interface IReclamacaoAnaliseRelacionados {
+  status: ReclamacaoAnaliseRelacionadosStatus;
+  tickets: IReclamacaoTicketRelacionado[];
+  resumoExecutivo: string;
+  geradoEm: Date;
+  agenteVersao: string;
+  notaInternaCriada: boolean;
+}
+
 export interface IReclamacaoWorkflowRequisicao {
   preenchidaEm?: Date;
   preenchidaPor?: string;
@@ -75,6 +99,7 @@ export interface IReclamacaoReclameAqui extends Document {
   inboxDedicada: boolean;
   emailThreadRootId?: string;
   triagem?: IReclamacaoTriagem;
+  analiseRelacionados?: IReclamacaoAnaliseRelacionados;
 
   // Identidade — único id externo é idOrigem (Id HugMe descartado)
   idOrigem: string;
@@ -162,6 +187,29 @@ const ReclamacaoTriagemSchema = new Schema<IReclamacaoTriagem>(
   { _id: false },
 );
 
+const ReclamacaoTicketRelacionadoSchema = new Schema<IReclamacaoTicketRelacionado>(
+  {
+    chamadoId: { type: String, required: true },
+    chamadoProtocolo: { type: String, default: '' },
+    scoreSimilaridade: { type: Number, default: 0 },
+    criterios: { type: [String], default: [] },
+    motivo: { type: String, default: '' },
+  },
+  { _id: false },
+);
+
+const ReclamacaoAnaliseRelacionadosSchema = new Schema<IReclamacaoAnaliseRelacionados>(
+  {
+    status: { type: String, required: true },
+    tickets: { type: [ReclamacaoTicketRelacionadoSchema], default: [] },
+    resumoExecutivo: { type: String, default: '' },
+    geradoEm: { type: Date, default: Date.now },
+    agenteVersao: { type: String, default: 'casosEspeciaisRelacionadosAgent v1.0.0' },
+    notaInternaCriada: { type: Boolean, default: false },
+  },
+  { _id: false },
+);
+
 const ReclamacaoWorkflowComunicacaoSchema = new Schema(
   {
     mensagem: { type: String, default: '' },
@@ -222,6 +270,7 @@ export const ReclamacaoReclameAquiSchema = new Schema<IReclamacaoReclameAqui>(
     inboxDedicada: { type: Boolean, default: false },
     emailThreadRootId: { type: String, default: '' },
     triagem: { type: ReclamacaoTriagemSchema, default: undefined },
+    analiseRelacionados: { type: ReclamacaoAnaliseRelacionadosSchema, default: undefined },
 
     idOrigem: { type: String, required: true },
     idDemandaExterna: { type: String, default: undefined },

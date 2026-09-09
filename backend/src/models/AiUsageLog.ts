@@ -12,6 +12,7 @@ export type AiUsageFeature =
   | 'criticidade_triagem'
   | 'gestao_chamados'
   | 'casos_especiais'
+  | 'casos_especiais_relacionados'
   | 'ticket_suggest_legacy'
   | 'refinar_rascunho'
   | 'chamado_ia_analise'

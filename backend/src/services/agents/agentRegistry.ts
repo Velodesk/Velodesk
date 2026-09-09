@@ -3,13 +3,14 @@
  * VERSION: v1.1.0 | DATE: 2026-08-07
  */
 
-export type AgentNumber = 1 | 2 | 3 | 4;
+export type AgentNumber = 1 | 2 | 3 | 4 | 5;
 
 export type AgentCodigo =
   | 'agente_atendimento'
   | 'agente_auditoria'
   | 'agente_gestao'
-  | 'agente_casos_especiais';
+  | 'agente_casos_especiais'
+  | 'agente_casos_especiais_relacionados';
 
 export interface AgentRegistryEntry {
   numero: AgentNumber;
@@ -42,6 +43,12 @@ export const AGENT_REGISTRY: Record<AgentNumber, AgentRegistryEntry> = {
     codigo: 'agente_casos_especiais',
     nomeOficial: 'Agente de Casos especiais',
     serviceFile: 'casosEspeciaisAgent.service.ts',
+  },
+  5: {
+    numero: 5,
+    codigo: 'agente_casos_especiais_relacionados',
+    nomeOficial: 'Agente de Casos Especiais — Tickets Relacionados',
+    serviceFile: 'casosEspeciaisRelacionadosAgent.service.ts',
   },
 };
 

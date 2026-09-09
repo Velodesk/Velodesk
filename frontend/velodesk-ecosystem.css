@@ -800,6 +800,18 @@ body:has(.eco-prototype-banner) {
 .client360-row--clickable:hover { background: #f0f4ff; }
 .client360-row--merge-selected { background: #eef6ff; }
 .client360-row--merge-selected:hover { background: #e3efff; }
+.client360-row--related { background: #f5f3ff; }
+.client360-row--related:hover { background: #ede9fe; }
+.client360-related-badge {
+    display: inline-flex;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: #ede9fe;
+    color: #6d28d9;
+    white-space: nowrap;
+}
 .client360-merge-hint {
     margin: 0 0 0.65rem;
     font-size: 0.85rem;
@@ -12324,6 +12336,80 @@ label[for$="-classificacao-motivo"] {
     margin: 0 0 0.55rem;
     font-size: 0.84rem;
     color: #0f172a;
+}
+
+.ra-related-tickets__hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    font-style: italic;
+}
+
+.ra-related-tickets__summary {
+    margin: 0 0 0.65rem;
+    font-size: 0.8rem;
+    color: #475569;
+    line-height: 1.4;
+}
+
+.ra-related-tickets__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.ra-related-tickets__item {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.55rem 0.65rem;
+    background: #f8fafc;
+}
+
+.ra-related-tickets__item-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.3rem;
+}
+
+.ra-related-tickets__protocolo {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.ra-related-tickets__score {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #7c3aed;
+}
+
+.ra-related-tickets__criterios {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-bottom: 0.35rem;
+}
+
+.ra-related-tickets__chip {
+    display: inline-flex;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: #ede9fe;
+    color: #6d28d9;
+    white-space: nowrap;
+}
+
+.ra-related-tickets__motivo {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #475569;
+    line-height: 1.35;
 }
 
 #especiais-reclame-aqui .ra-ticket__side .ra-ticket__moderacao , #especiais-procon .ra-ticket__side .ra-ticket__moderacao, #especiais-consumidor-gov .ra-ticket__side .ra-ticket__moderacao, #especiais-bacen .ra-ticket__side .ra-ticket__moderacao {

@@ -7,6 +7,7 @@ import RaDadosEditableFields from './RaDadosEditableFields';
 import RaClassificacaoFields from './RaClassificacaoFields';
 import RaNotaContatoCard from './RaNotaContatoCard';
 import RaResponsavelCard from './RaResponsavelCard';
+import RaRelatedTicketsCard from './RaRelatedTicketsCard';
 import EspeciaisTicketSideFooter from '../shared/EspeciaisTicketSideFooter';
 
 export default function RaTicketSide({
@@ -56,6 +57,11 @@ export default function RaTicketSide({
         />
 
         <RaResponsavelCard
+          raItem={raItem}
+          onSaved={onRaItemUpdated}
+        />
+
+        <RaRelatedTicketsCard
           raItem={raItem}
           onSaved={onRaItemUpdated}
         />

@@ -37,6 +37,7 @@ function TicketRows({
   onToggle,
   onRowClick,
   merging,
+  relatedTicketIds,
 }) {
   if (!tickets.length) {
     return (
@@ -52,12 +53,17 @@ function TicketRows({
     const ticketId = ticketIdOf(t);
     const workflowIcon = getClient360WorkflowIconMeta(t);
     const isSelected = selectedIds.has(ticketId);
+    const isRelated = Boolean(
+      relatedTicketIds?.size
+      && (relatedTicketIds.has(ticketId) || relatedTicketIds.has(String(t.chamadoProtocolo || ''))),
+    );
     return (
       <tr
         key={ticketId}
         className={
           'client360-row--clickable'
           + (isSelected ? ' client360-row--merge-selected' : '')
+          + (isRelated ? ' client360-row--related' : '')
         }
         onClick={() => onRowClick(ticketId)}
         role="button"
@@ -93,6 +99,14 @@ function TicketRows({
               </span>
             ) : null}
             <FusaoFundidoBadge fusao={t.fusao} />
+            {isRelated ? (
+              <span
+                className="client360-related-badge"
+                title="Apontado pelo Agente IA como relacionado à reclamação atual"
+              >
+                Relacionado
+              </span>
+            ) : null}
           </span>
         </td>
         <td>{getTicketTitle(t)}</td>
@@ -114,6 +128,7 @@ export default function ClientTicketHistoryModal({
   onFundirTickets,
   merging = false,
   enableSimilarSubject = false,
+  relatedTicketIds,
 }) {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [tickets, setTickets] = useState([]);
@@ -321,6 +336,7 @@ export default function ClientTicketHistoryModal({
               onToggle={handleToggle}
               onRowClick={handleRowClick}
               merging={merging}
+              relatedTicketIds={relatedTicketIds}
             />
           </tbody>
         </table>

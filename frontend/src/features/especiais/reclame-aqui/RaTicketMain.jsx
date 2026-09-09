@@ -45,6 +45,17 @@ export default function RaTicketMain({
     return lookupClient(cpf);
   }, [ticket]);
 
+  const relatedTicketIds = useMemo(() => {
+    const relacionados = raItem?.analiseRelacionados?.tickets;
+    if (!relacionados?.length) return undefined;
+    const ids = new Set();
+    relacionados.forEach((t) => {
+      if (t.chamadoId) ids.add(String(t.chamadoId));
+      if (t.chamadoProtocolo) ids.add(String(t.chamadoProtocolo));
+    });
+    return ids;
+  }, [raItem?.analiseRelacionados]);
+
   const channelConfig = useMemo(() => ({
     statusLabel: raItem ? getStatusLabel(raItem.statusRa) : '—',
     statusClass: mapChannelStatusToBadgeClass(raItem?.statusRa),
@@ -128,6 +139,7 @@ export default function RaTicketMain({
       onSelectHistoryTicket={handleSelectHistoryTicket}
       onFundirTickets={handleFundirTickets}
       merging={mergeInProgress}
+      relatedTicketIds={relatedTicketIds}
       composeMode={composeMode}
       onComposeModeChange={onComposeModeChange}
       composeText={composeText}

@@ -760,3 +760,35 @@ export async function searchTicketsByCpfDeskBar(
   const merged = await mergeReclamacoesIntoCpfHistory(cpf, tickets, boxes, null);
   return { tickets: merged, total: merged.length, cpf };
 }
+
+const CPF_HISTORY_RAW_LIMIT = 300;
+
+/**
+ * Histórico bruto (documentos ChamadoN1 completos, sem DTO) do CPF — uso interno de jobs/agentes
+ * que precisam do texto completo do ticket (ex.: Agente 5, correlação de tickets relacionados).
+ * Mesma regra de match de CPF (tolerante a máscara) e exclusão de fusão de searchTicketsByCpfDeskBar,
+ * mas sem restrição de visibilidade nem mapeamento pra TicketDto.
+ */
+export async function fetchCpfHistoryChamadosRaw(
+  cpfRaw: string,
+  opts: { excludeChamadoId?: string; limit?: number } = {},
+): Promise<IChamadoN1[]> {
+  const cpf = digitsOnlyCpf(cpfRaw);
+  if (cpf.length !== 11) return [];
+
+  const andClauses: Record<string, unknown>[] = [
+    {
+      $or: [
+        { 'cliente.clienteCpf': cpf },
+        { 'cliente.clienteCpf': { $regex: cpfToleranceRegex(cpf) } },
+      ],
+    },
+    excludeFusaoAbsorvidosFilter(),
+  ];
+  if (opts.excludeChamadoId && mongoose.Types.ObjectId.isValid(opts.excludeChamadoId)) {
+    andClauses.push({ _id: { $ne: new mongoose.Types.ObjectId(opts.excludeChamadoId) } });
+  }
+
+  const limit = Math.min(Math.max(opts.limit ?? CPF_HISTORY_RAW_LIMIT, 1), CPF_HISTORY_RAW_LIMIT);
+  return ChamadoN1.find({ $and: andClauses }).sort({ updatedAt: -1 }).limit(limit).exec();
+}

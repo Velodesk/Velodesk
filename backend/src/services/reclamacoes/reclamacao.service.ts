@@ -780,6 +780,7 @@ export function reclamacaoToPortalDto(doc: IReclamacao): Record<string, unknown>
     aberta: doc.aberta,
     inboxDedicada: doc.inboxDedicada,
     triagem: doc.triagem,
+    analiseRelacionados: doc.analiseRelacionados,
     meta,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,

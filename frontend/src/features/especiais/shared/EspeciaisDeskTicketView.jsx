@@ -29,6 +29,7 @@ export default function EspeciaisDeskTicketView({
   onSelectHistoryTicket,
   onFundirTickets,
   merging = false,
+  relatedTicketIds,
   composeMode = 'public',
   onComposeModeChange,
   composeText = '',
@@ -151,6 +152,7 @@ export default function EspeciaisDeskTicketView({
           onFundirTickets={onFundirTickets}
           merging={merging}
           enableSimilarSubject
+          relatedTicketIds={relatedTicketIds}
         />
 
         <div className={'crm-conversation-wrap' + (waChatOpen ? ' crm-conversation-wrap--wa' : '')}>
