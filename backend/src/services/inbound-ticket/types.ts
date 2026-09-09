@@ -1,6 +1,6 @@
 /** inbound-ticket/types v1.0.0 — contrato canônico POST /api/inbound/tickets */
 
-export type InboundTicketOrigin = 'app' | 'telefone' | 'agente-ia' | 'chat';
+export type InboundTicketOrigin = 'app' | 'telefone' | 'agente-ia' | 'chat' | 'qa-teste';
 
 export interface InboundTicketOriginConfig {
   canal: string;
@@ -45,6 +45,7 @@ export const INBOUND_TICKET_ORIGIN_HEADERS: Record<InboundTicketOrigin, string> 
   telefone: 'x-inbound-telefone-secret',
   'agente-ia': 'x-inbound-agente-ia-secret',
   chat: 'x-inbound-chat-secret',
+  'qa-teste': 'x-inbound-qa-teste-secret',
 };
 
 export const ORIGIN_CANAL_CONFIG: Record<InboundTicketOrigin, InboundTicketOriginConfig> = {
@@ -70,6 +71,14 @@ export const ORIGIN_CANAL_CONFIG: Record<InboundTicketOrigin, InboundTicketOrigi
     canal: 'Chat',
     channel: 'chat',
     source: 'inbound-ticket-chat',
+    assignmentSource: 'inbound-ticket',
+  },
+  // canal vazio de propósito — QA-teste não deve popular o campo canal da tabulação
+  // (ver uso de config.canal em buildTicketBody, inboundTicket.service.ts).
+  'qa-teste': {
+    canal: '',
+    channel: 'qa-teste',
+    source: 'inbound-ticket-qa-teste',
     assignmentSource: 'inbound-ticket',
   },
 };

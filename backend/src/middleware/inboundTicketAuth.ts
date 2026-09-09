@@ -30,6 +30,8 @@ function getConfiguredSecret(origin: InboundTicketOrigin): string {
       return env.inboundTicketAgenteIaSecret;
     case 'chat':
       return env.inboundTicketChatSecret;
+    case 'qa-teste':
+      return env.inboundTicketQaTesteSecret;
     default:
       return '';
   }

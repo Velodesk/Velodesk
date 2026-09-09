@@ -147,13 +147,17 @@ function buildTicketBody(
 ): Record<string, unknown> {
   const lateralForm: Record<string, unknown> = {
     clienteNome: payload.clientName,
-    canal: config.canal,
     classificacaoTipo: payload.classificacaoTipo || payload.tipoChamado || 'Solicitação',
     tipoChamado: payload.tipoChamado || payload.classificacaoTipo || 'Solicitação',
     produto: payload.produto || '',
     motivo: payload.motivo || payload.title,
     detalhe: payload.detalhe || payload.text.slice(0, 500),
   };
+
+  // origens com config.canal vazio (ex.: qa-teste) não devem popular o campo canal da tabulação.
+  if (config.canal) {
+    lateralForm.canal = config.canal;
+  }
 
   if (payload.clientEmail) {
     lateralForm.clienteEmail = [payload.clientEmail];
