@@ -10,6 +10,7 @@ import { isBackendJwtUsable } from '../../utils/backendJwt';
 import { normalizeCriterioRow } from './customQueueBoxCriteria';
 
 const STORAGE_KEY = 'velodeskCustomQueues';
+const MIGRATED_FLAG_KEY = 'velodeskCustomQueuesMigrated';
 
 export const QUEUE_BOX_ACTIONS = [
   { id: 'novos', label: 'Receber tickets novos' },
@@ -147,7 +148,8 @@ export async function fetchAndHydrateCustomQueues() {
       let remote = await agentQueueBoxesApi.list();
       remote = (remote || []).map(normalizeBox).filter(Boolean);
 
-      if (!remote.length && local.length) {
+      const alreadyMigrated = localStorage.getItem(MIGRATED_FLAG_KEY) === '1';
+      if (!remote.length && local.length && !alreadyMigrated) {
         const migrated = await agentQueueBoxesApi.migrate(
           local.map((box) => ({
             boxId: box.id,
@@ -160,6 +162,7 @@ export async function fetchAndHydrateCustomQueues() {
         );
         remote = (migrated?.boxes || []).map(normalizeBox).filter(Boolean);
       }
+      localStorage.setItem(MIGRATED_FLAG_KEY, '1');
 
       setQueuesCache(remote);
       restoreCustomBoxes();
@@ -235,9 +238,15 @@ export async function updateCustomQueueBox(boxId, { name, action, criterios, dot
 export async function deleteCustomQueueBox(boxId) {
   const id = String(boxId || '').trim();
   if (!id) return false;
+
+  // Se a caixa existir no servidor mas a exclusão remota não puder ser confirmada,
+  // remover só do cache local faria a caixa "voltar" na próxima sincronização.
   if (canUseRemotePersistence()) {
     await agentQueueBoxesApi.remove(id);
+  } else if (isApiMode()) {
+    throw new Error('Sessão indisponível para excluir a caixa no servidor. Faça login novamente e tente de novo.');
   }
+
   const next = loadCustomQueues().filter((item) => item.id !== id);
   saveCustomQueues(next);
   return true;

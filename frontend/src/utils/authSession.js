@@ -11,6 +11,8 @@ export function clearStoredAuthSession() {
   localStorage.removeItem('velodesk_auth_mode');
   localStorage.removeItem('velodesk_profile_locked');
   localStorage.removeItem('velodeskProfile');
+  localStorage.removeItem('velodeskCustomQueues');
+  localStorage.removeItem('velodeskCustomQueuesMigrated');
 }
 
 export function isPublicAuthApiPath(url = '') {
