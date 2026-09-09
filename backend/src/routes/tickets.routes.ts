@@ -33,6 +33,7 @@ import {
 } from '../services/chamado.mapper';
 import { TabulacaoValidationError } from '../services/tabulation.service';
 import { notifyAgentReplyAsync, notifyChamadoCreatedAsync } from '../services/emailNotification.service';
+import { evaluateEmailTriggers } from '../services/emailTrigger.service';
 import { publishTicketEvent } from '../services/realtime/ticketEventsBroadcast.service';
 import { reconcileChamadoAttachmentScanStatuses } from '../services/attachmentScanReconcile.service';
 import { getCachedBoxes } from '../services/boxesCache.service';
@@ -271,6 +272,7 @@ router.put('/:id', authMiddleware, async (req, res: Response) => {
   const chamado = await ChamadoN1.findById(req.params.id);
   if (!chamado) return res.status(404).json({ message: 'Ticket não encontrado' });
   const titleBefore = chamado.chamadoTitulo;
+  const statusBefore = currentStatus(chamado);
 
   try {
     assertChamadoModifiable(chamado);
@@ -313,6 +315,14 @@ router.put('/:id', authMiddleware, async (req, res: Response) => {
         { chamadoId: chamado._id, origem: { $ne: 'manual' } },
         { $set: { needsReanalysis: true } },
       );
+    }
+    // Gatilhos de e-mail por status "imediato" (ex.: Encerramento s/CSAT) só avaliam na
+    // abertura do ticket ou no job de SLA (que ignora "imediato" de propósito) — sem isso,
+    // um template configurado pra disparar assim que o status vira X nunca dispara de fato.
+    if (currentStatus(chamado) !== statusBefore) {
+      evaluateEmailTriggers(chamado, 'event').catch((err) => {
+        console.warn('[tickets.routes] evaluateEmailTriggers (PUT status change) fail-soft:', (err as Error).message);
+      });
     }
 
     const boxes = await loadBoxes();
@@ -368,7 +378,8 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
     const targetStatus = req.body.status != null && String(req.body.status).trim()
       ? normalizeStatusValue(req.body.status)
       : currentStatus(chamado);
-    if (targetStatus !== normalizeStatusValue(currentStatus(chamado))) {
+    const statusChanged = targetStatus !== normalizeStatusValue(currentStatus(chamado));
+    if (statusChanged) {
       assertResponsavelForTerminalStatus(chamado, targetStatus);
       if (targetStatus === 'resolvido') {
         await assertCanResolveTicketWithOpenWorkflow(req.user!, chamado);
@@ -390,6 +401,15 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
       }
     }
     await chamado.save();
+
+    // Gatilhos de e-mail por status "imediato" (ex.: Encerramento s/CSAT) só avaliam na
+    // abertura do ticket ou no job de SLA (que ignora "imediato" de propósito) — sem isso,
+    // um template configurado pra disparar assim que o status vira X nunca dispara de fato.
+    if (statusChanged) {
+      evaluateEmailTriggers(chamado, 'event').catch((err) => {
+        console.warn('[tickets.routes] evaluateEmailTriggers (commit status change) fail-soft:', (err as Error).message);
+      });
+    }
 
     // fechado/cancelado nunca reabrem via WhatsApp — desativa o ponteiro já aqui (proativo);
     // resolvido fica ativo até o fim da janela de reabertura, verificado sob demanda no
