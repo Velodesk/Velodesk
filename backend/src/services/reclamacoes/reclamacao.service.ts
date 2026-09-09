@@ -432,6 +432,54 @@ export async function countByOrgao(
   return Model.countDocuments(query).exec();
 }
 
+export interface CasosEspeciaisPorCpfEntry {
+  orgao: Exclude<CasoEspecialOrgao, 'reclame_aqui' | 'indefinido'>;
+  count: number;
+}
+
+const CASOS_ESPECIAIS_CROSS_ORGAOS: Exclude<CasoEspecialOrgao, 'reclame_aqui' | 'indefinido'>[] = [
+  'procon', 'bacen', 'consumidor_gov',
+];
+
+/**
+ * Cruza CPFs com Procon/Bacen/Consumidor.Gov (nunca Reclame Aqui — quem chama isto é o próprio
+ * módulo RA, pra sinalizar ao agente "esse cliente já teve caso em outro órgão"). Usado pela
+ * coluna "Casos Especiais" da tabela do RA.
+ */
+export async function countCasosEspeciaisByCpf(
+  cpfs: string[],
+): Promise<Record<string, CasosEspeciaisPorCpfEntry[]>> {
+  const normalized = Array.from(new Set(
+    cpfs.map((c) => String(c ?? '').replace(/\D/g, '')).filter(Boolean),
+  ));
+  if (!normalized.length) return {};
+
+  const result: Record<string, CasosEspeciaisPorCpfEntry[]> = {};
+
+  await Promise.all(CASOS_ESPECIAIS_CROSS_ORGAOS.map(async (orgao) => {
+    const Model = resolveReclamacaoModel(orgao);
+    if (!Model) return;
+    const rows = await Model
+      .find({ cpf: { $in: normalized } })
+      .select({ cpf: 1 })
+      .lean()
+      .exec();
+
+    const counts = new Map<string, number>();
+    for (const row of rows as unknown as { cpf?: string }[]) {
+      const cpf = String(row.cpf ?? '').replace(/\D/g, '');
+      if (!cpf) continue;
+      counts.set(cpf, (counts.get(cpf) ?? 0) + 1);
+    }
+    counts.forEach((count, cpf) => {
+      if (!result[cpf]) result[cpf] = [];
+      result[cpf].push({ orgao, count });
+    });
+  }));
+
+  return result;
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

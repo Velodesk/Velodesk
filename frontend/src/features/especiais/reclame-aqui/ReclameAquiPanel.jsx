@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../../../context/NotificationContext';
+import { reclamacoesApi } from '../../../api/client';
 import { useRaNovaReclamacaoModals } from '../../../hooks/useRaNovaReclamacaoModals';
 import {
   getFooterSummary,
@@ -87,6 +88,47 @@ export default function ReclameAquiPanel() {
   const pagedItems = view.items.slice((page - 1) * RA_LIST_PAGE_SIZE, page * RA_LIST_PAGE_SIZE);
   const pagedGroups = groupReclamacoesByStatus(pagedItems);
 
+  // Contagem por CPF em toda a lista filtrada (não só a página atual), pra sinalizar cliente
+  // recorrente mesmo quando as outras reclamações dele caíram numa página diferente.
+  const clientRepeatCounts = useMemo(() => {
+    const counts = new Map();
+    view.items.forEach((item) => {
+      const cpf = String(item.cpf || '').trim();
+      if (!cpf) return;
+      counts.set(cpf, (counts.get(cpf) || 0) + 1);
+    });
+    return counts;
+  }, [view.items]);
+
+  // Cruzamento com Procon/Bacen/Consumidor.Gov — só pros CPFs visíveis na página atual, pra
+  // não sobrecarregar o backend com todo o filtro de uma vez.
+  const [casosEspeciaisByCpf, setCasosEspeciaisByCpf] = useState({});
+  const pagedCpfsKey = useMemo(() => {
+    const cpfs = new Set();
+    pagedItems.forEach((item) => {
+      const cpf = String(item.cpf || '').trim();
+      if (cpf) cpfs.add(cpf);
+    });
+    return Array.from(cpfs).sort().join(',');
+  }, [pagedItems]);
+
+  useEffect(() => {
+    const cpfs = pagedCpfsKey ? pagedCpfsKey.split(',') : [];
+    if (!cpfs.length) {
+      setCasosEspeciaisByCpf({});
+      return undefined;
+    }
+    let cancelled = false;
+    reclamacoesApi.casosEspeciaisPorCpf(cpfs)
+      .then((res) => {
+        if (!cancelled) setCasosEspeciaisByCpf(res?.byCpf || {});
+      })
+      .catch(() => {
+        if (!cancelled) setCasosEspeciaisByCpf({});
+      });
+    return () => { cancelled = true; };
+  }, [pagedCpfsKey]);
+
   const handleToggleChip = useCallback((chipId) => {
     setActiveChips((prev) =>
       prev.includes(chipId) ? prev.filter((c) => c !== chipId) : [...prev, chipId],
@@ -163,6 +205,8 @@ export default function ReclameAquiPanel() {
               onToggleSelect={handleToggleSelect}
               onToggleSelectAll={handleToggleSelectAll}
               onRowAction={handleRowAction}
+              clientRepeatCounts={clientRepeatCounts}
+              casosEspeciaisByCpf={casosEspeciaisByCpf}
             />
           )}
           {activeTab === 'relatorios' && (

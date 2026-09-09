@@ -434,6 +434,8 @@ export const ticketSearchApi = {
     api.get(`/ticket-search/by-cpf/${encodeURIComponent(String(cpf || '').replace(/\D/g, ''))}`).then((r) => r.data),
   deskBarByCpf: (cpf) =>
     api.get(`/ticket-search/desk-bar/cpf/${encodeURIComponent(String(cpf || '').replace(/\D/g, ''))}`).then((r) => r.data),
+  similarSubject: (payload) =>
+    api.post('/ticket-search/similar-subject', payload).then((r) => r.data),
 };
 
 export const ticketFusaoApi = {
@@ -457,6 +459,8 @@ export const reclamacoesApi = {
     api.post(`/reclamacoes/${encodeURIComponent(orgao)}`, body).then((r) => r.data),
   patch: (orgao, id, body) =>
     api.patch(`/reclamacoes/${encodeURIComponent(orgao)}/${encodeURIComponent(id)}`, body).then((r) => r.data),
+  casosEspeciaisPorCpf: (cpfs) =>
+    api.post('/reclamacoes/casos-especiais/por-cpf', { cpfs }).then((r) => r.data),
 };
 
 /** reclame-aqui/hugme — base Hugme persistida no MongoDB */

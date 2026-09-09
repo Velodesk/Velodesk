@@ -865,6 +865,53 @@ body:has(.eco-prototype-banner) {
 .client360-empty { text-align: center; color: #64748b; padding: 1rem !important; }
 .client360-analise { font-size: 0.9rem; color: #475569; margin: 0.85rem 0 1.15rem; line-height: 1.5; }
 .client360-section-title { margin: 1.25rem 0 0.65rem; font-size: 0.95rem; color: var(--eco-navy); }
+
+.client360-similar { margin: 0.85rem 0 1.15rem; }
+.client360-similar__title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--eco-navy);
+}
+.client360-similar__empty { margin: 0; font-size: 0.85rem; color: #64748b; }
+.client360-similar__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.client360-similar__item {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--eco-border);
+    border-radius: var(--eco-radius-sm);
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.client360-similar__item:hover { background: #f0f4ff; }
+.client360-similar__canal-badge {
+    flex-shrink: 0;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: #eef1ff;
+    color: #1634ff;
+}
+.client360-similar__subject { font-size: 0.85rem; color: #1e293b; font-weight: 600; }
+.client360-similar__motivo {
+    flex-basis: 100%;
+    font-size: 0.78rem;
+    color: #64748b;
+}
 .client360-table-wrap { max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--eco-border); border-radius: var(--eco-radius-sm); }
 .client360-profile { min-height: 320px; }
 .client360-profile .client360-card span { font-size: 0.95rem; font-weight: 600; color: #1e293b; }
@@ -11097,6 +11144,30 @@ body.desk-v2-mode #aiChatbotModal {
     font-size: 0.68rem;
     font-weight: 700;
     color: #64748b;
+}
+
+.ra-table__td-repeat {
+    text-align: center;
+}
+
+.ra-table__repeat-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background: #ffedd5;
+    color: #c2410c;
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: default;
+}
+
+.ra-table__repeat-count--especiais {
+    background: #eef1ff;
+    color: #1634ff;
 }
 
 .ra-table__btn {

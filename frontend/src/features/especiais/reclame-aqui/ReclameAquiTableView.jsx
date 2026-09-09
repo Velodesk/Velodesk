@@ -3,7 +3,12 @@
  */
 import React from 'react';
 import { getStatusLabel } from '../../../services/especiais/reclameAquiData';
-import { formatPrazoRa } from '../../../services/especiais/reclameAquiStore';
+
+const ORGAO_LABELS = {
+  bacen: 'Bacen',
+  procon: 'Procon',
+  consumidor_gov: 'Consumidor.Gov',
+};
 
 function RespostaButton({ action, item, onAction }) {
   if (action === 'responder') {
@@ -30,14 +35,35 @@ function RespostaButton({ action, item, onAction }) {
   return null;
 }
 
-function SlaBar({ pct, tone }) {
+function RaRepeatIndicator({ item, clientRepeatCounts }) {
+  const cpf = String(item.cpf || '').trim();
+  const count = cpf ? (clientRepeatCounts?.get(cpf) || 0) : 0;
+  if (count < 2) return null;
   return (
-    <div className="ra-sla">
-      <div className="ra-sla__track">
-        <div className={`ra-sla__fill ra-sla__fill--${tone}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="ra-sla__pct">{pct}%</span>
-    </div>
+    <span
+      className="ra-table__repeat-count"
+      title={`Cliente possui ${count} reclamações no Reclame Aqui`}
+    >
+      {count}
+    </span>
+  );
+}
+
+function CasosEspeciaisIndicator({ item, casosEspeciaisByCpf }) {
+  const cpf = String(item.cpf || '').trim();
+  const entries = cpf ? (casosEspeciaisByCpf?.[cpf] || []) : [];
+  const total = entries.reduce((sum, e) => sum + (e.count || 0), 0);
+  if (!total) return null;
+  const breakdown = entries
+    .map((e) => `${ORGAO_LABELS[e.orgao] || e.orgao} (${e.count})`)
+    .join(' · ');
+  return (
+    <span
+      className="ra-table__repeat-count ra-table__repeat-count--especiais"
+      title={`Cliente também tem caso em: ${breakdown}`}
+    >
+      {total}
+    </span>
   );
 }
 
@@ -47,6 +73,8 @@ export default function ReclameAquiTableView({
   onToggleSelect,
   onToggleSelectAll,
   onRowAction,
+  clientRepeatCounts,
+  casosEspeciaisByCpf,
 }) {
   const allIds = groups.flatMap((g) => g.items.map((i) => i.id));
   const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
@@ -66,8 +94,8 @@ export default function ReclameAquiTableView({
             </th>
             <th>Consumidor / Assunto</th>
             <th>Status RA</th>
-            <th>SLA</th>
-            <th>Prazo RA</th>
+            <th>RA</th>
+            <th>Casos Especiais</th>
             <th>Passível nota</th>
             <th>Motivo</th>
             <th>Atendente</th>
@@ -109,8 +137,12 @@ export default function ReclameAquiTableView({
                       {getStatusLabel(item.statusRa)}
                     </span>
                   </td>
-                  <td><SlaBar pct={item.slaPct} tone={item.slaTone} /></td>
-                  <td>{formatPrazoRa(item.prazoRa)}</td>
+                  <td className="ra-table__td-repeat">
+                    <RaRepeatIndicator item={item} clientRepeatCounts={clientRepeatCounts} />
+                  </td>
+                  <td className="ra-table__td-repeat">
+                    <CasosEspeciaisIndicator item={item} casosEspeciaisByCpf={casosEspeciaisByCpf} />
+                  </td>
                   <td>{item.passivelNota ? 'Sim' : 'Não'}</td>
                   <td>{item.motivo || item.tabulacao || '—'}</td>
                   <td>{item.atendente || '—'}</td>

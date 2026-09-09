@@ -12,6 +12,7 @@ import {
   findByChamadoId,
   listByOrgao,
   countByOrgao,
+  countCasosEspeciaisByCpf,
   parseReclamacaoOrgaoRoute,
   patchReclamacao,
   reclamacaoToPortalDto,
@@ -68,6 +69,27 @@ function parseOrgaoParam(raw: string): CasoEspecialOrgao {
   }
   return orgao;
 }
+
+/**
+ * Cruza CPFs com Procon/Bacen/Consumidor.Gov — alimenta a coluna "Casos Especiais" da tabela
+ * do RA. Precisa vir antes de '/:orgao' pra não ser engolida por esse param de 1 segmento
+ * (aqui o path tem 2 segmentos, então nem colidiria, mas mantém o registro no topo por clareza).
+ */
+router.post('/casos-especiais/por-cpf', authMiddleware, async (req, res: Response) => {
+  if (!isReclamacoesConnected()) {
+    return res.status(503).json({ message: 'Banco chamados_reclamacoes indisponível' });
+  }
+
+  try {
+    const cpfs = Array.isArray(req.body?.cpfs) ? req.body.cpfs.map(String) : [];
+    const byCpf = await countCasosEspeciaisByCpf(cpfs);
+    return res.json({ byCpf });
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 500;
+    const message = err instanceof Error ? err.message : 'Erro ao cruzar CPFs com casos especiais';
+    return res.status(status).json({ message });
+  }
+});
 
 router.get('/:orgao', authMiddleware, async (req, res: Response) => {
   if (!isReclamacoesConnected()) {

@@ -15,7 +15,8 @@ export type AiUsageFeature =
   | 'ticket_suggest_legacy'
   | 'refinar_rascunho'
   | 'chamado_ia_analise'
-  | 'telephony_ia_analise';
+  | 'telephony_ia_analise'
+  | 'assunto_semelhante';
 
 export interface IAiUsageLog extends Document {
   provider: AiUsageProvider;

@@ -138,3 +138,9 @@ export function getAgentsStatus(): {
 export function isAgentsConfigured(): boolean {
   return getAgentsStatus().configured;
 }
+
+/** Gate mais restrito que isAgentsConfigured() — não exige vector store, só a API key. Usar em
+ * features que fazem json_schema puro (sem file_search), pra não depender de env irrelevante. */
+export function isOpenAiApiKeyConfigured(): boolean {
+  return Boolean(env.openaiApiKey?.trim());
+}

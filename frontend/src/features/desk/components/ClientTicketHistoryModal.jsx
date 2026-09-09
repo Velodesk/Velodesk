@@ -113,6 +113,7 @@ export default function ClientTicketHistoryModal({
   sourceTicketId,
   onFundirTickets,
   merging = false,
+  enableSimilarSubject = false,
 }) {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [tickets, setTickets] = useState([]);
@@ -120,6 +121,9 @@ export default function ClientTicketHistoryModal({
   const [loadError, setLoadError] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [activePickId, setActivePickId] = useState('');
+  // null = checagem não rodou/indisponível (não afirma nada); [] = rodou e não achou nada.
+  const [similarMatches, setSimilarMatches] = useState(null);
+  const [similarLoading, setSimilarLoading] = useState(false);
 
   const contact = useMemo(
     () => (ticket ? getClientContactFields(ticket, client) : { cpf: '', name: '' }),
@@ -162,6 +166,8 @@ export default function ClientTicketHistoryModal({
       setActivePickId('');
       setTickets([]);
       setLoadError('');
+      setSimilarMatches(null);
+      setSimilarLoading(false);
       return undefined;
     }
     void refreshList();
@@ -179,6 +185,54 @@ export default function ClientTicketHistoryModal({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose, confirmOpen]);
+
+  // IA compara o assunto do ticket atual com o histórico do cliente — só roda no contexto de
+  // casos especiais (RA/Bacen/Procon/Consumidor.Gov). Reseta a cada nova lista de tickets (ex.:
+  // depois de uma fusão) pra nunca mostrar um resultado velho enquanto o novo ainda carrega.
+  useEffect(() => {
+    setSimilarMatches(null);
+    setSimilarLoading(false);
+
+    if (!enableSimilarSubject || !clientIdentified || !tickets.length) return undefined;
+
+    const currentSubject = getTicketTitle(ticket);
+    if (!currentSubject || currentSubject === 'Sem assunto') return undefined;
+
+    const currentId = ticketIdOf(ticket) || String(sourceTicketId || '');
+    const candidates = tickets
+      .filter((t) => ticketIdOf(t) !== currentId)
+      .filter((t) => getTicketTitle(t) !== 'Sem assunto')
+      .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+      .slice(0, 20)
+      .map((t) => ({ id: ticketIdOf(t), title: getTicketTitle(t) }));
+
+    if (!candidates.length) return undefined;
+
+    let cancelled = false;
+    setSimilarLoading(true);
+    ticketSearchApi.similarSubject({
+      currentSubject,
+      candidates,
+      ticketId: currentId || undefined,
+      protocolo: ticket?.chamadoProtocolo || undefined,
+    })
+      .then((data) => {
+        if (cancelled) return;
+        const byId = new Map(tickets.map((t) => [ticketIdOf(t), t]));
+        const resolved = (data?.matches || [])
+          .map((m) => ({ ticket: byId.get(String(m.id)), motivo: m.motivo }))
+          .filter((m) => Boolean(m.ticket));
+        setSimilarMatches(resolved);
+      })
+      .catch(() => {
+        // fail-soft: mantém null — nunca afirma "nenhuma reclamação semelhante" sem ter checado.
+      })
+      .finally(() => {
+        if (!cancelled) setSimilarLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [tickets, enableSimilarSubject, clientIdentified, ticket, sourceTicketId]);
 
   const { openTickets, closedTickets } = useMemo(() => {
     const openList = [];
@@ -308,10 +362,42 @@ export default function ClientTicketHistoryModal({
               </div>
             </div>
             {clientIdentified ? (
-              <>
-                <p><strong>Produtos:</strong> {products.length ? products.join(', ') : '—'}</p>
-                <p className="client360-analise"><i className="fas fa-brain" /> {analise}</p>
-              </>
+              enableSimilarSubject ? (
+                <div className="client360-similar">
+                  <h6 className="client360-similar__title">
+                    <i className="fas fa-brain" /> Assunto Semelhante
+                  </h6>
+                  {similarLoading ? (
+                    <p className="client360-similar__empty">Buscando reclamações semelhantes…</p>
+                  ) : similarMatches === null ? null : similarMatches.length === 0 ? (
+                    <p className="client360-similar__empty">Nenhuma reclamação semelhante encontrada.</p>
+                  ) : (
+                    <ul className="client360-similar__list">
+                      {similarMatches.map(({ ticket: t, motivo }) => (
+                        <li
+                          key={ticketIdOf(t)}
+                          className="client360-similar__item"
+                          onClick={() => handleRowClick(ticketIdOf(t))}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => e.key === 'Enter' && handleRowClick(ticketIdOf(t))}
+                        >
+                          <span className="client360-similar__canal-badge">
+                            {t.lateralForm?.canal || t.channel || t.source || '—'}
+                          </span>
+                          <span className="client360-similar__subject">{getTicketTitle(t)}</span>
+                          {motivo ? <span className="client360-similar__motivo">{motivo}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p><strong>Produtos:</strong> {products.length ? products.join(', ') : '—'}</p>
+                  <p className="client360-analise"><i className="fas fa-brain" /> {analise}</p>
+                </>
+              )
             ) : null}
             <h5 className="client360-section-title">
               {clientIdentified

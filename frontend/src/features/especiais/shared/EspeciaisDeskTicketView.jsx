@@ -150,6 +150,7 @@ export default function EspeciaisDeskTicketView({
           sourceTicketId={ticket?.id || ticket?._id}
           onFundirTickets={onFundirTickets}
           merging={merging}
+          enableSimilarSubject
         />
 
         <div className={'crm-conversation-wrap' + (waChatOpen ? ' crm-conversation-wrap--wa' : '')}>
