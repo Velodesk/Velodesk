@@ -19,6 +19,21 @@ import {
   persistOutboundEmailMeta,
 } from './emailThread.service';
 
+/** Casa "TESTE" como palavra isolada — evita falso positivo em palavras como "atestado". */
+const TESTE_MARKER_PATTERN = /\bteste\b/i;
+
+/**
+ * Ticket marcado como teste pelo próprio time (assunto do ticket ou qualquer anotação
+ * interna do histórico contendo "TESTE") nunca recebe CSAT — convenção pedida pra evitar
+ * poluir a nota real com tickets de teste manuais/telefone que não passam pelo agente de QA
+ * (esses já são cobertos por blockQaOutboundEmail).
+ */
+function hasTesteMarker(chamado: IChamadoN1): boolean {
+  if (TESTE_MARKER_PATTERN.test(String(chamado.chamadoTitulo ?? ''))) return true;
+  const registros = chamado.registro ?? [];
+  return registros.some((reg) => TESTE_MARKER_PATTERN.test(String(reg.anotacaoInterna ?? '')));
+}
+
 const CSAT_STAR_FILENAME = 'csat-star.png';
 
 function resolveCsatStarPath(): string | null {
@@ -96,6 +111,12 @@ async function composeAndSendCsatEmail(
 ): Promise<void> {
   // Guard: canal especial não recebe CSAT
   if (isEspeciaisChamado(chamado)) return;
+
+  // Guard: ticket marcado como teste (assunto ou anotação interna) nunca recebe CSAT
+  if (hasTesteMarker(chamado)) {
+    console.info('[csatEmail] envio pulado — ticket marcado como TESTE:', chamado.chamadoProtocolo);
+    return;
+  }
 
   // Guards de idempotência
   if (opts.isRepescagem) {
