@@ -1,6 +1,6 @@
 # API Inbound Tickets — Agente IA Telefônico
 
-<!-- VERSION: v1.0.0 | DATE: 2026-08-13 | AUTHOR: VeloHub Development Team -->
+<!-- VERSION: v1.1.0 | DATE: 2026-09-09 | AUTHOR: VeloHub Development Team -->
 
 Documento para **homologação e uso** da API de **abertura de tickets** no Velodesk após atendimento do **Agente IA Telefônico** (Contact Tel / LetícIA).
 
@@ -66,7 +66,7 @@ GET https://velodesk-278491073220.us-east1.run.app/api/inbound/tickets/health
   "status": "ok",
   "enabled": true,
   "apiVersion": "1.0.0",
-  "origins": ["app", "telefone", "agente-ia"],
+  "origins": ["app", "telefone", "agente-ia", "chat"],
   "secretFormat": "[a-z0-9]{35}"
 }
 ```
@@ -167,6 +167,67 @@ X-Inbound-Agente-Ia-Secret: <chave_35_caracteres>
 
 ---
 
+## POST — Responder a um ticket já aberto (continuidade)
+
+O **mesmo endpoint** `POST /api/inbound/tickets` serve para anexar uma nova mensagem a um ticket que o Agente IA (ou o cliente, via este canal) já abriu — por exemplo, quando a ligação retorna ao mesmo assunto ou o agente humano precisa que o histórico continue no mesmo protocolo em vez de abrir um novo.
+
+Basta incluir `chamadoProtocolo` no payload. Quando esse campo vem preenchido:
+
+- `title`/`chamadoTitulo` **deixa de ser obrigatório** (só importa para abrir ticket novo).
+- `externalId` continua obrigatório e **deve ser único por mensagem** (cada resposta tem seu próprio `externalId` — não reaproveite o da criação).
+- O `text`/`description` enviado é anexado como nova mensagem pública do cliente no ticket.
+
+### Payload (resposta)
+
+| Campo | Tipo | Obrigatório | Descrição |
+|-------|------|--------------|-----------|
+| `externalId` | string | Sim | ID único **desta mensagem** (não da conversa/ticket) |
+| `chamadoProtocolo` | string | Sim (para responder) | Protocolo retornado na criação (`VD-YYYYMMDD-####`) |
+| `text` ou `description` | string | Sim | Conteúdo da resposta |
+| `clientName` | string | Sim | Nome do cliente |
+| `clientCPF` / `clientPhone` / `clientEmail` | string | Ao menos um | Mesma identificação usada na criação |
+| `attachments` | string[] | Não | URLs de anexos já hospedados |
+| `metadata` | object | Não | Dados extras da mensagem |
+
+### Exemplo
+
+```json
+{
+  "externalId": "2ced4103-faa2-44ec-8b8e-7a86bbd2d410-msg2",
+  "chamadoProtocolo": "VD-20260813-0042",
+  "text": "Cliente ligou de novo confirmando que recebeu o link no WhatsApp.",
+  "clientName": "Mariana Silva",
+  "clientCPF": "12345678901"
+}
+```
+
+### Respostas
+
+**`200` — mensagem anexada ao ticket existente:**
+
+```json
+{
+  "action": "replied",
+  "ticketId": "674a1b2c3d4e5f6789012345",
+  "chamadoProtocolo": "VD-20260813-0042",
+  "canal": "Agente IA"
+}
+```
+
+**`400` — protocolo informado não existe:**
+
+```json
+{
+  "message": "chamadoProtocolo inválido — ticket não encontrado"
+}
+```
+
+**`201` — ticket **novo** criado (não anexado):** se o ticket referenciado por `chamadoProtocolo` já estiver **fechado**, **cancelado** ou **resolvido há mais de 48h**, o servidor não reabre — ele cria um ticket novo automaticamente, com uma nota interna registrando a origem (`Novo ticket derivado de VD-20260813-0042`). A resposta nesse caso é igual à de criação (`action: "created"`, com um `chamadoProtocolo` novo).
+
+> Reenviar o mesmo `externalId` de uma resposta (retry) devolve `200` com `action: "duplicate"`, sem duplicar a mensagem — mesma garantia de idempotência da criação.
+
+---
+
 ## Fluxo recomendado com telephony/calls
 
 ```mermaid
@@ -208,6 +269,9 @@ curl.exe -s -X POST "https://velodesk-278491073220.us-east1.run.app/api/inbound/
 - [ ] Requisição sem header retorna `401`
 - [ ] Ticket no Desk com canal **Agente IA**
 - [ ] Protocolo retornado na resposta
+- [ ] Resposta com `chamadoProtocolo` válido retorna `200 replied` e anexa a mensagem ao ticket
+- [ ] Resposta com `chamadoProtocolo` de ticket fechado/cancelado/resolvido há +48h retorna `201 created` (ticket novo derivado)
+- [ ] Resposta com `chamadoProtocolo` inexistente retorna `400`
 - [ ] (Opcional) Ligação ainda visível em Atendimento IA Telefônico via `telephony/calls`
 
 ---
