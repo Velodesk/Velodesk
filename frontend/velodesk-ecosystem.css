@@ -11956,6 +11956,69 @@ label[for$="-classificacao-motivo"] {
     color: #166534;
 }
 
+.ra-registro__assume-link {
+    display: inline-block;
+    margin: -0.35rem 0 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #1634FF;
+    cursor: pointer;
+    text-align: left;
+}
+
+.ra-registro__assume-link:hover:not(:disabled) {
+    color: #1694FF;
+    text-decoration: underline;
+}
+
+.ra-registro__assume-link:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.ra-dados-editable-value {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+}
+
+.ra-dados-editable-value .ra-registro__input {
+    margin: -0.15rem 0;
+}
+
+.ra-dados-edit-btn {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: #9ca3af;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    transition: background 0.15s, color 0.15s;
+}
+
+.ra-dados-edit-btn:hover:not(:disabled),
+.ra-dados-edit-btn.is-active {
+    background: #eef1ff;
+    color: #1634ff;
+}
+
+.ra-dados-edit-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
 .ra-moderacao-panel {
     max-width: 640px;
     padding: 1.25rem 0;

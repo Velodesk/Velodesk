@@ -1485,6 +1485,16 @@ body.velodesk-dark .ra-registro__input--readonly {
     color: var(--velo-dark-text-muted);
 }
 
+body.velodesk-dark .ra-dados-edit-btn {
+    color: var(--velo-dark-text-muted);
+}
+
+body.velodesk-dark .ra-dados-edit-btn:hover:not(:disabled),
+body.velodesk-dark .ra-dados-edit-btn.is-active {
+    background: var(--velo-dark-surface-inset);
+    color: var(--velo-dark-accent);
+}
+
 body.velodesk-dark .ra-registro__field label,
 body.velodesk-dark .ra-registro__side-label,
 body.velodesk-dark .ra-registro__char-count,

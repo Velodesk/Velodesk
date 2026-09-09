@@ -3,17 +3,10 @@
  */
 import React from 'react';
 import { getStatusLabel } from '../../../services/especiais/bacenData';
-import { formatBcDeadlineLabel } from '../../../services/especiais/bacenTicketService';
-import { formatComplaintDate } from './bcTicketFormatters';
+import BcDadosFields from './BcDadosFields';
 import BcClassificacaoFields from './BcClassificacaoFields';
+import BcResponsavelCard from './BcResponsavelCard';
 import EspeciaisTicketSideFooter from '../shared/EspeciaisTicketSideFooter';
-
-function formatLocal(value, uf) {
-  const city = String(value || '').trim();
-  const state = String(uf || '').trim();
-  if (city && state) return `${city} / ${state}`;
-  return city || state || '';
-}
 
 export default function BcTicketSide({
   bcItem,
@@ -27,12 +20,9 @@ export default function BcTicketSide({
   disabled = false,
   finalized = false,
   onClassificacaoDraftChange,
+  onBcItemUpdated,
 }) {
   if (!bcItem) return null;
-
-  const protocoloDisplay = bcItem.protocoloBacen ? `#${bcItem.protocoloBacen}` : '—';
-  const deadlineLabel = formatBcDeadlineLabel(bcItem.prazoLegal);
-  const localDisplay = formatLocal(bcItem.cidade, bcItem.uf);
 
   return (
     <aside className="ra-crm-side">
@@ -42,47 +32,17 @@ export default function BcTicketSide({
           <span className={`ra-badge ra-badge--${bcItem.statusBc}`}>
             {getStatusLabel(bcItem.statusBc)}
           </span>
-          <dl>
-            <div>
-              <dt>RDR</dt>
-              <dd>{protocoloDisplay}</dd>
-            </div>
-            <div>
-              <dt>Assunto</dt>
-              <dd>{bcItem.assunto || '—'}</dd>
-            </div>
-            {bcItem.orgaoBacen ? (
-              <div>
-                <dt>Órgão Bacen</dt>
-                <dd>{bcItem.orgaoBacen}</dd>
-              </div>
-            ) : null}
-            {localDisplay ? (
-              <div>
-                <dt>Local</dt>
-                <dd>{localDisplay}</dd>
-              </div>
-            ) : null}
-            <div>
-              <dt>Prazo de resposta</dt>
-              <dd className="ra-ticket__deadline-value">{deadlineLabel}</dd>
-            </div>
-            <div>
-              <dt>Data da demanda</dt>
-              <dd>{formatComplaintDate(bcItem.prazoLegal)}</dd>
-            </div>
-            {bcItem.workflowAtivo ? (
-              <div>
-                <dt>Workflow</dt>
-                <dd>{bcItem.workflow || 'Tratativa Bacen'}</dd>
-              </div>
-            ) : null}
-          </dl>
+          <BcDadosFields bcItem={bcItem} onSaved={onBcItemUpdated} />
         </section>
 
         <BcClassificacaoFields
           bcItem={bcItem}
           onClassificacaoDraftChange={onClassificacaoDraftChange}
+        />
+
+        <BcResponsavelCard
+          bcItem={bcItem}
+          onSaved={onBcItemUpdated}
         />
 
         <EspeciaisTicketSideFooter

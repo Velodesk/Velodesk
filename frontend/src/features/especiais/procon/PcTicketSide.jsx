@@ -6,6 +6,7 @@ import { getStatusLabel } from '../../../services/especiais/proconData';
 import { formatPcDeadlineLabel } from '../../../services/especiais/proconTicketService';
 import { formatComplaintDate } from './pcTicketFormatters';
 import PcClassificacaoFields from './PcClassificacaoFields';
+import PcResponsavelCard from './PcResponsavelCard';
 import EspeciaisTicketSideFooter from '../shared/EspeciaisTicketSideFooter';
 
 function formatLocal(value, uf) {
@@ -27,6 +28,7 @@ export default function PcTicketSide({
   disabled = false,
   finalized = false,
   onClassificacaoDraftChange,
+  onPcItemUpdated,
 }) {
   if (!pcItem) return null;
 
@@ -89,6 +91,11 @@ export default function PcTicketSide({
         <PcClassificacaoFields
           pcItem={pcItem}
           onClassificacaoDraftChange={onClassificacaoDraftChange}
+        />
+
+        <PcResponsavelCard
+          pcItem={pcItem}
+          onSaved={onPcItemUpdated}
         />
 
         <EspeciaisTicketSideFooter

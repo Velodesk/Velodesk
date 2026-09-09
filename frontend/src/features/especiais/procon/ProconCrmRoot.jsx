@@ -220,6 +220,11 @@ export default function ProconCrmRoot() {
     setClassificacaoDraft(draft);
   }, []);
 
+  const handlePcItemUpdated = useCallback((updated) => {
+    if (updated) setPcItem(updated);
+    setListVersion((v) => v + 1);
+  }, []);
+
   const handleOpenChat = useCallback(() => {
     setWaChatOpen(true);
   }, []);
@@ -309,6 +314,7 @@ export default function ProconCrmRoot() {
         disabled={readOnly || finalized}
         finalized={finalized}
         onClassificacaoDraftChange={handleClassificacaoDraftChange}
+        onPcItemUpdated={handlePcItemUpdated}
       />
 
       {demandaModals}

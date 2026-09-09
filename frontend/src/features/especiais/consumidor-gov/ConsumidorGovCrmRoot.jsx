@@ -220,6 +220,11 @@ export default function ConsumidorGovCrmRoot() {
     setClassificacaoDraft(draft);
   }, []);
 
+  const handleCgItemUpdated = useCallback((updated) => {
+    if (updated) setCgItem(updated);
+    setListVersion((v) => v + 1);
+  }, []);
+
   const handleOpenChat = useCallback(() => {
     setWaChatOpen(true);
   }, []);
@@ -309,6 +314,7 @@ export default function ConsumidorGovCrmRoot() {
         disabled={readOnly || finalized}
         finalized={finalized}
         onClassificacaoDraftChange={handleClassificacaoDraftChange}
+        onCgItemUpdated={handleCgItemUpdated}
       />
 
       {demandaModals}

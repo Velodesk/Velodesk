@@ -220,6 +220,11 @@ export default function BacenCrmRoot() {
     setClassificacaoDraft(draft);
   }, []);
 
+  const handleBcItemUpdated = useCallback((updated) => {
+    if (updated) setBcItem(updated);
+    setListVersion((v) => v + 1);
+  }, []);
+
   const handleOpenChat = useCallback(() => {
     setWaChatOpen(true);
   }, []);
@@ -309,6 +314,7 @@ export default function BacenCrmRoot() {
         disabled={readOnly || finalized}
         finalized={finalized}
         onClassificacaoDraftChange={handleClassificacaoDraftChange}
+        onBcItemUpdated={handleBcItemUpdated}
       />
 
       {demandaModals}

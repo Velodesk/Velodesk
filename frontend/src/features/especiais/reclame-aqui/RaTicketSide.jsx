@@ -3,10 +3,10 @@
  */
 import React from 'react';
 import { getStatusLabel } from '../../../services/especiais/reclameAquiData';
-import { formatComplaintDate } from './raTicketFormatters';
 import RaDadosEditableFields from './RaDadosEditableFields';
 import RaClassificacaoFields from './RaClassificacaoFields';
 import RaNotaContatoCard from './RaNotaContatoCard';
+import RaResponsavelCard from './RaResponsavelCard';
 import EspeciaisTicketSideFooter from '../shared/EspeciaisTicketSideFooter';
 
 export default function RaTicketSide({
@@ -36,12 +36,6 @@ export default function RaTicketSide({
           </span>
           <dl>
             <RaDadosEditableFields raItem={raItem} onSaved={onRaItemUpdated} />
-            {raItem.origemEntrada !== 'reclamacoes-manual' ? (
-              <div>
-                <dt>Data da reclamação</dt>
-                <dd>{formatComplaintDate(raItem.dataReclamacao)}</dd>
-              </div>
-            ) : null}
             {raItem.workflowAtivo ? (
               <div>
                 <dt>Workflow</dt>
@@ -57,6 +51,11 @@ export default function RaTicketSide({
         />
 
         <RaNotaContatoCard
+          raItem={raItem}
+          onSaved={onRaItemUpdated}
+        />
+
+        <RaResponsavelCard
           raItem={raItem}
           onSaved={onRaItemUpdated}
         />
