@@ -1,9 +1,9 @@
 /**
- * Sidebar rail unificada — 3 estados: 10px | hover 52px | chevron fixa 220px
- * VERSION: v1.12.1 | DATE: 2026-08-21
+ * Sidebar rail unificada — 2 estados: 52px ícones (padrão) | chevron fixa 220px labels
+ * VERSION: v1.13.0 | DATE: 2026-09-09
  * Perfil: VeloHub (sem botÃ£o local na barra)
  */
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { isEspeciaisNavId, NAV_ITEMS } from '../config/profiles';
 import { useAuth } from '../context/AuthContext';
@@ -19,14 +19,6 @@ function navKeyActivate(e, action) {
   }
 }
 
-function isInsideNode(parent, target) {
-  return parent instanceof Node && target instanceof Node && parent.contains(target);
-}
-
-function isInsideVeloNewsPopover(target) {
-  return target instanceof Element && Boolean(target.closest?.('.velonews-popover'));
-}
-
 export default function Sidebar() {
   const { logout } = useAuth();
   const { isNavAllowed } = useProfile();
@@ -35,46 +27,19 @@ export default function Sidebar() {
   const footerBadgeCount = pulseBadgeCount > 0 ? pulseBadgeCount : unreadCount;
   const navigate = useNavigate();
   const location = useLocation();
-  const [hoverExpanded, setHoverExpanded] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const leaveTimerRef = useRef(null);
-
-  const isOpen = hoverExpanded || pinned;
-
-  const handleSidebarEnter = useCallback(() => {
-    if (leaveTimerRef.current) {
-      clearTimeout(leaveTimerRef.current);
-      leaveTimerRef.current = null;
-    }
-    setHoverExpanded(true);
-  }, []);
-
-  const handleSidebarLeave = useCallback(() => {
-    if (pinned) return;
-    if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
-    leaveTimerRef.current = setTimeout(() => {
-      setHoverExpanded(false);
-      leaveTimerRef.current = null;
-    }, 60);
-  }, [pinned]);
-
-  const handleWrapLeave = useCallback((e) => {
-    if (pinned) return;
-    const wrap = e.currentTarget;
-    const related = e.relatedTarget;
-    if (isInsideNode(wrap, related) || isInsideVeloNewsPopover(related)) return;
-    handleSidebarLeave();
-  }, [pinned, handleSidebarLeave]);
 
   const togglePinned = useCallback((e) => {
     e.stopPropagation();
-    setPinned((prev) => {
-      const next = !prev;
-      if (next) setHoverExpanded(true);
-      else setHoverExpanded(false);
-      return next;
-    });
+    setPinned((prev) => !prev);
   }, []);
+
+  // Reflete o estado fixado no body para que o conteúdo ao lado (filas, listas)
+  // desloque junto e nunca fique sobreposto pela barra lateral.
+  useEffect(() => {
+    document.body.classList.toggle('velo-sidebar-pinned', pinned);
+    return () => document.body.classList.remove('velo-sidebar-pinned');
+  }, [pinned]);
 
   // Ordem natural de NAV_ITEMS (não a ordem de um único perfil "ativo"), pra quem acumula
   // funções ver todos os módulos liberados numa posição estável e previsível.
@@ -144,7 +109,6 @@ export default function Sidebar() {
 
   const wrapClass = [
     'velo-nav-rail-wrap',
-    isOpen ? 'is-open' : '',
     pinned ? 'is-pinned' : '',
   ].filter(Boolean).join(' ');
 
@@ -184,25 +148,11 @@ export default function Sidebar() {
   });
 
   return (
-    <div
-      className={wrapClass}
-      onMouseEnter={handleSidebarEnter}
-      onMouseLeave={handleWrapLeave}
-    >
+    <div className={wrapClass}>
       <nav
         className="sidebar collapsed velo-nav-rail"
         id="mainSidebar"
         aria-label="NavegaÃ§Ã£o"
-        onMouseEnter={handleSidebarEnter}
-        onMouseLeave={handleSidebarLeave}
-        onFocus={handleSidebarEnter}
-        onBlur={(e) => {
-          if (pinned) return;
-          const wrap = e.currentTarget.closest('.velo-nav-rail-wrap');
-          const related = e.relatedTarget;
-          if (isInsideNode(wrap, related) || isInsideVeloNewsPopover(related)) return;
-          handleSidebarLeave();
-        }}
       >
         <div className="velo-nav-rail__head">
           <button

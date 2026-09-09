@@ -1,12 +1,11 @@
 /**
- * Sidebar rail — 3 estados: recolhida (10px) | hover (52px ícones) | fixada chevron (220px + labels)
- * VERSION: v1.11.0 | DATE: 2026-08-20 | AUTHOR: VeloHub Development Team
+ * Sidebar rail — 2 estados: ícones (52px, padrão) | fixada chevron (220px + labels)
+ * Sem retrátil automático por hover — só o botão chevron alterna o estado.
+ * VERSION: v1.13.0 | DATE: 2026-09-09 | AUTHOR: VeloHub Development Team
  */
 
 :root {
-    --velo-sidebar-compact: 0px;
-    --velo-sidebar-trigger-w: 10px;
-    --velo-sidebar-trigger-color: #1634FF;
+    --velo-sidebar-compact: 52px;
     --velo-sidebar-expanded: 52px;
     --velo-sidebar-pinned: 220px;
     --velo-sidebar-bg: #1634FF;
@@ -21,20 +20,11 @@
     top: 0;
     left: 0;
     bottom: 0;
-    width: var(--velo-sidebar-trigger-w);
+    width: var(--velo-sidebar-expanded);
+    background: var(--velo-sidebar-bg);
     z-index: 8300;
     overflow: hidden;
     transition: width 0.2s ease;
-}
-
-.velo-nav-rail-wrap:not(.is-open):not(.is-pinned),
-.velo-nav-rail-wrap.is-open:not(.is-pinned),
-.velo-nav-rail-wrap.is-pinned {
-    background: var(--velo-sidebar-bg);
-}
-
-.velo-nav-rail-wrap.is-open:not(.is-pinned) {
-    width: var(--velo-sidebar-expanded);
 }
 
 .velo-nav-rail-wrap.is-pinned {
@@ -42,24 +32,10 @@
     overflow: hidden;
 }
 
-.velo-nav-rail-wrap::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: var(--velo-sidebar-bg);
-    border-radius: 0 4px 4px 0;
-    opacity: 1;
-    pointer-events: none;
-    z-index: 9000;
-    transition: opacity 0.2s ease;
-}
-
-.velo-nav-rail-wrap.is-open::after,
-.velo-nav-rail-wrap.is-pinned::after {
-    opacity: 0;
+/* Todo consumidor de --velo-sidebar-compact (margens/offsets de conteúdo,
+   filas, listas ao lado) desloca junto quando a barra é fixada com labels. */
+body.velo-sidebar-pinned {
+    --velo-sidebar-compact: var(--velo-sidebar-pinned);
 }
 
 #mainSidebar.sidebar.velo-nav-rail,
@@ -90,22 +66,16 @@
     gap: 4px;
     z-index: 8300;
     overflow: hidden;
-    transform: translateX(calc(-100% + var(--velo-sidebar-trigger-w)));
-    transition: transform 0.2s ease, box-shadow 0.2s ease, width 0.2s ease;
+    transform: translateX(0);
+    transition: box-shadow 0.2s ease, width 0.2s ease;
     pointer-events: auto;
     display: flex;
     flex-direction: column;
 }
 
-.velo-nav-rail-wrap.is-open #mainSidebar.sidebar.velo-nav-rail,
-.velo-nav-rail-wrap.is-pinned #mainSidebar.sidebar.velo-nav-rail {
-    transform: translateX(0);
-    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.18);
-    z-index: 8500;
-}
-
 .velo-nav-rail-wrap.is-pinned #mainSidebar.sidebar.velo-nav-rail {
     box-shadow: 4px 0 28px rgba(0, 0, 0, 0.22);
+    z-index: 8500;
 }
 
 .velo-nav-rail__head {
@@ -119,7 +89,7 @@
 }
 
 .velo-nav-rail-chevron {
-    display: none;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 28px;
@@ -132,11 +102,6 @@
     cursor: pointer;
     flex-shrink: 0;
     transition: background 0.15s ease, color 0.15s ease;
-}
-
-.velo-nav-rail-wrap.is-open .velo-nav-rail-chevron,
-.velo-nav-rail-wrap.is-pinned .velo-nav-rail-chevron {
-    display: inline-flex;
 }
 
 .velo-nav-rail-chevron:hover {
@@ -364,7 +329,7 @@
 }
 
 /* Hover (52px): tooltips — sem labels */
-.velo-nav-rail-wrap.is-open:not(.is-pinned) .nav-item:hover::after {
+.velo-nav-rail-wrap:not(.is-pinned) .nav-item:hover::after {
     content: attr(data-tooltip);
     position: absolute;
     left: calc(100% + 8px);
@@ -381,7 +346,7 @@
     z-index: 9000;
 }
 
-.velo-nav-rail-wrap.is-open:not(.is-pinned) .profile-btn:hover::after {
+.velo-nav-rail-wrap:not(.is-pinned) .profile-btn:hover::after {
     content: none !important;
 }
 
@@ -494,12 +459,11 @@
     content: none !important;
 }
 
-.main-content.sidebar-collapsed,
-#velodeskDeskV2Root {
-    margin-left: 0;
+.main-content.sidebar-collapsed {
+    margin-left: var(--velo-sidebar-compact, 52px);
 }
 
-.main-content.sidebar-collapsed {
+#velodeskDeskV2Root {
     margin-left: 0;
 }
 
@@ -510,7 +474,7 @@ body.desk-v2-mode #mainSidebar.velo-nav-rail {
 }
 
 body.desk-v2-mode #velodeskDeskV2Root {
-    left: 0;
+    left: var(--velo-sidebar-compact, 52px);
 }
 
 body.velo-nav-rail-mode .sidebar-toggle-btn {
@@ -559,7 +523,7 @@ body.velo-nav-rail-mode .sidebar-toggle-btn {
     display: none;
 }
 
-.velo-nav-rail-wrap.is-open:not(.is-pinned) .velo-nav-rail__logout-btn:hover::after {
+.velo-nav-rail-wrap:not(.is-pinned) .velo-nav-rail__logout-btn:hover::after {
     content: attr(data-tooltip);
     position: absolute;
     left: calc(100% + 8px);
@@ -644,7 +608,7 @@ body.velodesk-dark #mainSidebar.velo-nav-rail .velo-nav-rail__logout-btn:hover {
     50% { transform: scale(1.12); }
 }
 
-.velo-nav-rail-wrap.is-open:not(.is-pinned) .velo-nav-rail__foot:hover::after {
+.velo-nav-rail-wrap:not(.is-pinned) .velo-nav-rail__foot:hover::after {
     content: attr(data-tooltip);
     position: absolute;
     left: calc(100% + 8px);
