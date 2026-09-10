@@ -57,6 +57,16 @@ function normalizeGatilho(gatilho?: Partial<IWorkflowGatilho> | null): IWorkflow
   };
 }
 
+function normalizeFuncoesAdicionais(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const slug = String(item ?? '').trim().toLowerCase();
+    if (slug) seen.add(slug);
+  }
+  return Array.from(seen);
+}
+
 /**
  * Rota "Reprovar" sem destino explícito é válida: o motor de execução
  * (workflowTicket.service) trata isso como fim da passagem do ticket pelo
@@ -164,6 +174,9 @@ export async function createWorkflow(
     requisicao: normalizeRequisicaoForSave(payload.requisicao, gatilho),
     passos,
     passoInicialId,
+    // Todo workflow novo já nasce visível/decidível pra gestão, além de quem for atribuído
+    // por etapa — não depende de configuração manual (funcoesAdicionais nunca fica vazio).
+    funcoesAdicionais: normalizeFuncoesAdicionais([...(payload.funcoesAdicionais || []), 'gestao']),
     updatedBy,
   });
   invalidateWorkflowCache();
@@ -181,6 +194,13 @@ export async function replaceWorkflow(
   const passoInicialId = normalizePassoInicialId(passos, payload.passoInicialId);
   const gatilho = normalizeGatilho(payload.gatilho);
 
+  // A tela de edição de workflows ainda não manda funcoesAdicionais — sem essa checagem,
+  // qualquer salvamento normal (editar etapas, etc.) apagaria a configuração de gestão.
+  // Só sobrescreve quando o payload explicitamente informar o campo.
+  const funcoesAdicionaisUpdate = payload.funcoesAdicionais !== undefined
+    ? { funcoesAdicionais: normalizeFuncoesAdicionais(payload.funcoesAdicionais) }
+    : {};
+
   const doc = await Model.findByIdAndUpdate(
     id,
     {
@@ -193,6 +213,7 @@ export async function replaceWorkflow(
       requisicao: normalizeRequisicaoForSave(payload.requisicao, gatilho),
       passos,
       passoInicialId,
+      ...funcoesAdicionaisUpdate,
       updatedBy,
     },
     { new: true, runValidators: true },
@@ -212,6 +233,9 @@ export async function patchWorkflow(
   if (payload.ordem !== undefined) patch.ordem = payload.ordem;
   if (payload.titulo !== undefined) patch.titulo = payload.titulo;
   if (payload.descricao !== undefined) patch.descricao = payload.descricao;
+  if (payload.funcoesAdicionais !== undefined) {
+    patch.funcoesAdicionais = normalizeFuncoesAdicionais(payload.funcoesAdicionais);
+  }
 
   const doc = await Model.findByIdAndUpdate(id, patch, { new: true }).lean();
   invalidateWorkflowCache();
@@ -256,6 +280,9 @@ export function workflowDefinitionMatchesFuncao(
   for (const funcao of funcoes) {
     if (slug === funcao || slug === `escalonar-${funcao}`) return true;
   }
+
+  const extras = (definicao.funcoesAdicionais || []).map(normalizeFuncaoSlug);
+  if (extras.some((f) => funcoes.has(f))) return true;
 
   return (definicao.passos || []).some((envelope) => {
     const atribuicao = envelope.passo?.atribuicao;

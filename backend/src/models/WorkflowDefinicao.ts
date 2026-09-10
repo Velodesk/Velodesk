@@ -86,6 +86,12 @@ export interface IWorkflowDefinicao extends Document {
   requisicao?: IWorkflowRequisicaoConfig;
   passos: IWorkflowPassoEnvelope[];
   passoInicialId: Types.ObjectId | null;
+  /**
+   * Funções com capacidade de decisão (aprovar/reprovar/avançar) em QUALQUER etapa deste
+   * workflow, além de quem já está atribuído em cada etapa (atribuicao.funcaoSlug) — não
+   * substitui o responsável da etapa, só soma. Usado por workflowDefinitionMatchesFuncao.
+   */
+  funcoesAdicionais: string[];
   updatedBy: string;
   createdAt: Date;
   updatedAt: Date;
@@ -206,6 +212,7 @@ const WorkflowDefinicaoSchema = new Schema<IWorkflowDefinicao>(
     },
     passos: { type: [PassoEnvelopeSchema], default: [] },
     passoInicialId: { type: Schema.Types.ObjectId, default: null },
+    funcoesAdicionais: { type: [String], default: [] },
     updatedBy: { type: String, default: '' },
   },
   {
