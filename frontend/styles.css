@@ -4361,6 +4361,12 @@ body.has-ticket-tabs-visible #tickets .ticket-tabs-content {
     background: #fff;
 }
 
+.octa-nav-tabs .response-tab.octa-tab-cliente.active {
+    color: #2e7d32;
+    border-bottom-color: #4caf50;
+    background: #fff;
+}
+
 .octa-nav-tabs .response-tab.octa-tab-internal.active {
     color: #e65100;
     border-bottom-color: #ffb300;
@@ -16917,6 +16923,19 @@ body.velodesk-dark #config .config-action-btn--delete:hover {
     margin: -0.35rem 0 0.75rem;
     font-size: 0.82rem;
     color: var(--config-muted);
+}
+
+#config .config-macro-placeholders {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+}
+
+#config .config-macro-placeholder-btn {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.78rem;
 }
 
 #config .config-macro-editor-zone {

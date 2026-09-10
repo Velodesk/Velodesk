@@ -10,6 +10,7 @@ import { invalidateMacrosCache } from '../../../services/desk/macrosCache';
 import ComposeRichEditor from '../../desk/components/ComposeRichEditor';
 import ComposeFormatToolbar, { useComposeFormat } from '../../desk/components/ComposeFormatToolbar';
 import ConfigAtivoToggle from '../components/ConfigAtivoToggle';
+import { MACRO_PLACEHOLDER_CATALOG } from '../../../services/desk/macroPlaceholders';
 
 export default function MacroEditor({ macroId, onClose, onSaved }) {
   const { showNotification } = useNotifications();
@@ -36,6 +37,12 @@ export default function MacroEditor({ macroId, onClose, onSaved }) {
   }, [macroId, showNotification]);
 
   const handleEditorChange = ({ html }) => setTexto(html);
+
+  const insertPlaceholder = (token) => {
+    editorRef.current?.focus();
+    editorRef.current?.insertPlainText(token);
+    setTexto(editorRef.current?.getHtml() ?? texto);
+  };
 
   const save = async () => {
     const nomeTrim = nome.trim();
@@ -110,6 +117,21 @@ export default function MacroEditor({ macroId, onClose, onSaved }) {
           Use a barra de formatação para negrito, listas e links clicáveis — o texto é inserido
           no compose do ticket exatamente como aparece aqui, incluindo os links.
         </p>
+        <div className="config-macro-placeholders">
+          <span className="config-field__label">Inserir placeholder:</span>
+          {MACRO_PLACEHOLDER_CATALOG.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className="config-action-btn config-action-btn--edit config-macro-placeholder-btn"
+              title={`Inserir ${item.token} — substituído por "${item.label}" ao usar a macro`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => insertPlaceholder(item.token)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         <div className="desk-crm-ticket-scope crm-compose-editor-zone config-macro-editor-zone">
           <ComposeRichEditor
             ref={editorRef}

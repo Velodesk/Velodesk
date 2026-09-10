@@ -15,6 +15,7 @@ import ComposeRichEditor from './ComposeRichEditor';
 import ComposeFormatToolbar, { useComposeFormat } from './ComposeFormatToolbar';
 import ComposeRefinarModal from './ComposeRefinarModal';
 import { stripComposerOpening, wrapComposerOpeningForTicket, wrapComposerOpeningForTicketHtml } from '../../../services/desk/clientMessageEnvelope';
+import { applyMacroPlaceholders } from '../../../services/desk/macroPlaceholders';
 import { fetchActiveMacrosCached } from '../../../services/desk/macrosCache';
 import {
   attachmentKindIcon,
@@ -647,8 +648,9 @@ export default function DeskComposePanel({
     // macroHtml já é HTML rico (pode ter <a href> com links reais cadastrados na macro) — não
     // pode passar por normalizePlainToHtml, que trataria as quebras de linha da saudação como
     // texto puro; wrapComposerOpeningForTicketHtml já devolve a saudação em HTML (<br />).
+    const resolvedMacroHtml = applyMacroPlaceholders(macroHtml, ticket, nomeOperador);
     const wrapped = wrapComposerOpeningForTicketHtml({
-      nucleoHtml: macroHtml,
+      nucleoHtml: resolvedMacroHtml,
       ticket,
       agentName: nomeOperador,
     });
