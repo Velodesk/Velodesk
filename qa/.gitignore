@@ -1,0 +1,5 @@
+# Agente de QA — o que nunca vai para o repositório
+.env
+node_modules/
+relatorios/prints/
+*.log

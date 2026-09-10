@@ -14,6 +14,7 @@ import { businessMsBetween } from './dates/businessHours.util';
 import { assembleClientEmail, plainTextToEmailHtml } from './emailSkeleton.service';
 import { escapeHtmlAttribute } from './emailHtml.util';
 import { sendOutboundEmail } from './email-outbound.service';
+import { blockQaOutboundEmail } from './qaEmailGuard.service';
 import {
   buildOutboundMessageId,
   persistOutboundEmailMeta,
@@ -163,6 +164,13 @@ async function composeAndSendCsatEmail(
   // CSAT chega como thread NOVA — sem In-Reply-To/References e sem "Re:" no assunto,
   // senão o cliente do e-mail agrupa a pesquisa dentro da conversa do atendimento.
   const subject = `Pesquisa de satisfação — Atendimento Velotax Nº ${protocolo}`;
+
+  // Trava de QA: ticket de teste nunca envia e-mail para fora da lista segura.
+  const bloqueioQa = blockQaOutboundEmail(chamado, to);
+  if (bloqueioQa) {
+    console.warn('[csatEmail] envio bloqueado pela trava de QA:', bloqueioQa);
+    return;
+  }
 
   const result = await sendOutboundEmail({
     to,

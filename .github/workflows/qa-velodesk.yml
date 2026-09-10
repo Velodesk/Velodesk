@@ -1,0 +1,108 @@
+# qa-velodesk v1.0.0 — agente de QA do Velodesk (monitoramento diário)
+# Roda duas vezes por dia útil: 07h e 17h (horário de Brasília).
+# O cron do GitHub é sempre em UTC — 10:00 UTC = 07h BRT, 20:00 UTC = 17h BRT.
+name: QA Velodesk
+
+on:
+  schedule:
+    - cron: '0 10 * * 1-5' # 07h BRT, seg–sex
+    - cron: '0 20 * * 1-5' # 17h BRT, seg–sex
+  workflow_dispatch:
+    inputs:
+      somente_leitura:
+        description: 'Rodar em modo somente leitura (não cria tickets de teste)'
+        type: boolean
+        default: false
+      pular_navegador:
+        description: 'Pular a camada de navegador (Playwright)'
+        type: boolean
+        default: false
+
+# Nunca deixa duas rodadas ao mesmo tempo mexendo na mesma planilha.
+concurrency:
+  group: qa-velodesk
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  rodada:
+    name: Rodada de QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: qa
+
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+
+      - name: Instalar navegador
+        if: ${{ inputs.pular_navegador != true }}
+        run: npx playwright install --with-deps chromium
+
+      - name: Rodar as checagens
+        id: qa
+        continue-on-error: true
+        env:
+          QA_BASE_URL: ${{ secrets.QA_BASE_URL }}
+          QA_API_URL: ${{ secrets.QA_API_URL }}
+          QA_EMAIL_ALLOWLIST: ${{ secrets.QA_EMAIL_ALLOWLIST }}
+          QA_LOGIN_EMAIL: ${{ secrets.QA_LOGIN_EMAIL }}
+          QA_LOGIN_PASSWORD: ${{ secrets.QA_LOGIN_PASSWORD }}
+          QA_RESPONSAVEL: ${{ secrets.QA_RESPONSAVEL }}
+          QA_INBOUND_QA_TESTE_SECRET: ${{ secrets.QA_INBOUND_QA_TESTE_SECRET }}
+          QA_CLIENT_CPF: ${{ secrets.QA_CLIENT_CPF }}
+          MONGODB_URI: ${{ secrets.QA_MONGODB_URI }}
+          OPENAI_API_KEY: ${{ secrets.QA_OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.QA_GEMINI_API_KEY }}
+          QA_SOMENTE_LEITURA: ${{ inputs.somente_leitura == true && 'true' || 'false' }}
+          QA_PULAR_UI: ${{ inputs.pular_navegador == true && 'true' || 'false' }}
+        run: npm run qa
+
+      - name: Anexar planilha e prints à execução
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-velodesk-${{ github.run_number }}
+          path: |
+            qa/relatorios/Consolidado_QA_Velodesk.xlsx
+            qa/relatorios/prints/**
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Guardar a planilha e o estado da rodada no repositório
+        if: always()
+        working-directory: .
+        run: |
+          if [ -z "$(git status --porcelain qa/relatorios qa/data)" ]; then
+            echo "Nada mudou na planilha nem no estado da rodada."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add qa/relatorios qa/data
+          git commit -m "chore(qa): rodada de QA ${{ github.run_number }} [skip ci]"
+          for tentativa in 1 2 3; do
+            git pull --rebase --autostash origin "${{ github.ref_name }}" && git push origin HEAD:"${{ github.ref_name }}" && exit 0
+            echo "Tentativa $tentativa falhou, repetindo..."
+            sleep 5
+          done
+          echo "Não foi possível guardar a planilha no repositório — ela continua anexada à execução."
+          exit 0
+
+      - name: Falhar a execução quando houver falha nova
+        if: steps.qa.outcome == 'failure'
+        run: |
+          echo "A rodada terminou com falha nova ou bloqueio. Veja a planilha anexada nesta execução."
+          exit 1

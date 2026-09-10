@@ -2,6 +2,7 @@
 import type { IChamadoN1 } from '../models/ChamadoN1';
 import { loadDadosForRef, normalizeEmail } from './cliente.service';
 import { sendOutboundEmail } from './email-outbound.service';
+import { blockQaOutboundEmail } from './qaEmailGuard.service';
 import { composeHtmlToEmailHtml, htmlToPlainTextForEmail } from './emailHtml.util';
 import { extractComposeInlineImages } from './composeInlineImages.util';
 import { assembleClientEmail } from './emailSkeleton.service';
@@ -88,6 +89,13 @@ export async function sendAgentReplyEmail(
   const emailAttachments = await loadSentAttachmentsForEmail(safeAttachmentUrls);
 
   const sentAt = new Date();
+  // Trava de QA: ticket de teste nunca envia e-mail para fora da lista segura.
+  const bloqueioQa = blockQaOutboundEmail(chamado, to);
+  if (bloqueioQa) {
+    console.warn('[emailNotification] envio bloqueado pela trava de QA:', bloqueioQa);
+    return;
+  }
+
   const result = await sendOutboundEmail({
     to,
     subject,

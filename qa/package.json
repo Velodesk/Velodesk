@@ -1,0 +1,32 @@
+{
+  "name": "velodesk-qa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Claudio Q.A. — agente de QA do Velodesk, monitoramento diário das principais funções do CRM",
+  "_versionInfo": {
+    "version": "v1.0.0",
+    "date": "2026-09-08",
+    "author": "VeloHub Development Team"
+  },
+  "scripts": {
+    "qa": "tsx src/run.ts",
+    "qa:leitura": "tsx src/run.ts --somente-leitura",
+    "qa:sem-navegador": "tsx src/run.ts --pular-ui",
+    "typecheck": "tsc --noEmit",
+    "navegador": "playwright install --with-deps chromium"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "mongodb": "^7.5.0",
+    "playwright": "^1.48.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

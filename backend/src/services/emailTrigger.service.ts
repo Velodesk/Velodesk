@@ -14,6 +14,7 @@ import { EMAIL_SLA_LIMIT_HOURS } from './emailOutbound.constants';
 import { businessMsBetween } from './dates/businessHours.util';
 import { assembleClientEmail } from './emailSkeleton.service';
 import { sendOutboundEmail } from './email-outbound.service';
+import { blockQaOutboundEmail } from './qaEmailGuard.service';
 import {
   buildOutboundMessageId,
   buildOutboundThreadHeaders,
@@ -164,6 +165,13 @@ async function sendTemplateEmail(chamado: IChamadoN1, doc: {
   const protocolo = chamado.chamadoProtocolo;
   const messageId = buildOutboundMessageId(protocolo);
   const headers = buildOutboundThreadHeaders(chamado, messageId);
+  // Trava de QA: ticket de teste nunca envia e-mail para fora da lista segura.
+  const bloqueioQa = blockQaOutboundEmail(chamado, to);
+  if (bloqueioQa) {
+    console.warn('[emailTrigger] envio bloqueado pela trava de QA:', bloqueioQa);
+    return false;
+  }
+
   const result = await sendOutboundEmail({
     to,
     subject: buildThreadSubject(protocolo),
