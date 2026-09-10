@@ -53,7 +53,10 @@ export default function CgDadosFields({ cgItem, onSaved }) {
     if (!cgItem?.id || saving) return;
     setSaving(true);
     try {
-      const updated = await reclamacoesApi.patch('consumidor-gov', cgItem.id, patch);
+      const updated = await reclamacoesApi.patch('consumidor-gov', cgItem.id, {
+        ...patch,
+        updatedAt: cgItem.updatedAt,
+      });
       const merged = { ...cgItem, ...updated, ...localOverlay };
       // Grava no store local antes do reload disparado por onSaved — sem isso, o reload
       // relê o item obsoleto do cache e reverte o campo recém-salvo.

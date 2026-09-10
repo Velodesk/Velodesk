@@ -32,7 +32,10 @@ export default function RaResponsavelCard({ raItem, onSaved }) {
     }
     setAssuming(true);
     try {
-      const updated = await reclamacoesApi.patch('reclame-aqui', raItem.id, { responsavel: loggedAgent });
+      const updated = await reclamacoesApi.patch('reclame-aqui', raItem.id, {
+        responsavel: loggedAgent,
+        updatedAt: raItem.updatedAt,
+      });
       const merged = { ...raItem, ...updated };
       patchReclamacao(merged);
       onSaved?.(merged);

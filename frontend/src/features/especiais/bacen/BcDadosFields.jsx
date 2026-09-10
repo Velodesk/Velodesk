@@ -50,7 +50,10 @@ export default function BcDadosFields({ bcItem, onSaved }) {
     if (!bcItem?.id || saving) return;
     setSaving(true);
     try {
-      const updated = await reclamacoesApi.patch('bacen', bcItem.id, patch);
+      const updated = await reclamacoesApi.patch('bacen', bcItem.id, {
+        ...patch,
+        updatedAt: bcItem.updatedAt,
+      });
       const merged = { ...bcItem, ...updated, ...localOverlay };
       // Grava no store local antes do reload disparado por onSaved — sem isso, o reload
       // relê o item obsoleto do cache e reverte o campo recém-salvo.

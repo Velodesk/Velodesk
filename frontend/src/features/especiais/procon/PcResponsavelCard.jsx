@@ -32,7 +32,10 @@ export default function PcResponsavelCard({ pcItem, onSaved }) {
     }
     setAssuming(true);
     try {
-      const updated = await reclamacoesApi.patch('procon', pcItem.id, { responsavel: loggedAgent });
+      const updated = await reclamacoesApi.patch('procon', pcItem.id, {
+        responsavel: loggedAgent,
+        updatedAt: pcItem.updatedAt,
+      });
       const merged = { ...pcItem, ...updated };
       patchDemanda(merged);
       onSaved?.(merged);

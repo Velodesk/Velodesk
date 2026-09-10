@@ -47,7 +47,10 @@ export default function RaDadosEditableFields({ raItem, onSaved }) {
     if (!raItem?.id || saving) return;
     setSaving(true);
     try {
-      const updated = await reclamacoesApi.patch('reclame-aqui', raItem.id, patch);
+      const updated = await reclamacoesApi.patch('reclame-aqui', raItem.id, {
+        ...patch,
+        updatedAt: raItem.updatedAt,
+      });
       const merged = { ...raItem, ...updated };
       // Grava no store local antes do reload disparado por onSaved — sem isso, o reload
       // relê o item obsoleto do cache e reverte o campo recém-salvo.

@@ -21,7 +21,10 @@ export default function RaNotaContatoCard({ raItem, onSaved }) {
     if (!raItem?.id || saving) return;
     setSaving(true);
     try {
-      const updated = await reclamacoesApi.patch('reclame-aqui', raItem.id, { meta: metaPatch });
+      const updated = await reclamacoesApi.patch('reclame-aqui', raItem.id, {
+        meta: metaPatch,
+        updatedAt: raItem.updatedAt,
+      });
       const merged = { ...raItem, ...updated };
       // Grava no store local antes do reload disparado por onSaved — sem isso, o reload
       // relê o item obsoleto do cache e reverte o campo recém-salvo.

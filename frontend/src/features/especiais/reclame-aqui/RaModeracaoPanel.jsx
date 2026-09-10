@@ -26,6 +26,7 @@ export default function RaModeracaoPanel({ raItem, onSaved }) {
     setSaving(true);
     try {
       const updated = await reclamacoesApi.patch('reclame-aqui', raItem.id, {
+        updatedAt: raItem.updatedAt,
         meta: {
           moderacaoSolicitada: solicitada,
           moderacaoAceita: aceita,

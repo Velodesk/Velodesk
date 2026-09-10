@@ -32,7 +32,10 @@ export default function CgResponsavelCard({ cgItem, onSaved }) {
     }
     setAssuming(true);
     try {
-      const updated = await reclamacoesApi.patch('consumidor-gov', cgItem.id, { responsavel: loggedAgent });
+      const updated = await reclamacoesApi.patch('consumidor-gov', cgItem.id, {
+        responsavel: loggedAgent,
+        updatedAt: cgItem.updatedAt,
+      });
       const merged = { ...cgItem, ...updated };
       patchDemanda(merged);
       onSaved?.(merged);

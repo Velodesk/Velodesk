@@ -847,7 +847,33 @@ export async function patchReclamacao(
     };
   }
 
-  return Model.findByIdAndUpdate(doc._id, { $set: allowed }, { new: true }).exec();
+  // Concorrência otimista: o cliente reenvia o updatedAt que carregou; se o registro já foi
+  // alterado por outra requisição nesse meio-tempo, o filtro abaixo não casa mais nenhum
+  // documento (mesmo que ambas as requisições tenham lido o mesmo estado inicial) e devolvemos
+  // conflito em vez de sobrescrever silenciosamente o que a outra gravou.
+  let expectedUpdatedAt: Date | null = null;
+  if (patch.updatedAt !== undefined && patch.updatedAt !== null) {
+    expectedUpdatedAt = new Date(patch.updatedAt as string);
+    if (Number.isNaN(expectedUpdatedAt.getTime())) {
+      throw Object.assign(new Error('updatedAt inválido'), { status: 400 });
+    }
+  }
+
+  const filter: Record<string, unknown> = { _id: doc._id };
+  if (expectedUpdatedAt) {
+    filter.updatedAt = expectedUpdatedAt;
+  }
+
+  const updated = await Model.findOneAndUpdate(filter, { $set: allowed }, { new: true }).exec();
+  if (updated) return updated;
+  if (!expectedUpdatedAt) return null;
+
+  const stillExists = await Model.exists({ _id: doc._id });
+  if (!stillExists) return null;
+  throw Object.assign(
+    new Error('Registro foi alterado por outra pessoa desde o carregamento — recarregue e tente novamente.'),
+    { status: 409 },
+  );
 }
 
 const ORGAO_CANAL_LABEL: Record<Exclude<CasoEspecialOrgao, 'indefinido'>, string> = {

@@ -32,7 +32,10 @@ export default function BcResponsavelCard({ bcItem, onSaved }) {
     }
     setAssuming(true);
     try {
-      const updated = await reclamacoesApi.patch('bacen', bcItem.id, { responsavel: loggedAgent });
+      const updated = await reclamacoesApi.patch('bacen', bcItem.id, {
+        responsavel: loggedAgent,
+        updatedAt: bcItem.updatedAt,
+      });
       const merged = { ...bcItem, ...updated };
       patchDemanda(merged);
       onSaved?.(merged);
