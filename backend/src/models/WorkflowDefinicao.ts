@@ -1,4 +1,4 @@
-/** WorkflowDefinicao v1.6.0 — automatica.conteudoModo/emailConteudoId (resposta_cliente) */
+/** WorkflowDefinicao v2.0.0 — bifurcação real: rotas ganham passos[] aninhados (sub-árvore), proximoPassoId removido */
 import { Schema, Document, Model, Types } from 'mongoose';
 import { getDeskConfigConnection } from '../config/database';
 import type {
@@ -46,8 +46,16 @@ export interface IWorkflowRota {
   _id?: Types.ObjectId;
   variavel: string;
   rotulo: string;
-  proximoPassoId: Types.ObjectId | null;
   statusTicket: string | null;
+  /**
+   * Sub-sequência de etapas própria deste ramo (bifurcação real): quando o
+   * ticket segue por esta rota, avança para a primeira etapa daqui, e as
+   * etapas seguintes (inclusive automáticas) só andam dentro deste array —
+   * nunca vazam para o array de outro ramo. Vazio = "sem etapas" (rota
+   * 'reject' sem etapas volta ao responsável; 'approve' sem etapas encerra
+   * o workflow).
+   */
+  passos: IWorkflowPassoEnvelope[];
 }
 
 export interface IWorkflowPassoConfig {
@@ -137,12 +145,25 @@ const AtribuicaoSchema = new Schema<IWorkflowAtribuicao>(
   { _id: false },
 );
 
+/**
+ * Estrutura recursiva (Passo → Rota → Passo → ...): PassoEnvelopeSchema é
+ * declarado primeiro sem o campo `passo` (que fecharia o ciclo), RotaSchema e
+ * PassoConfigSchema o referenciam normalmente, e só no final `.add()` fecha o
+ * ciclo — é o padrão do Mongoose para schemas auto-referentes/recursivos.
+ */
+const PassoEnvelopeSchema = new Schema<IWorkflowPassoEnvelope>(
+  {
+    ordem: { type: Number, default: 0 },
+  },
+  { _id: true },
+);
+
 const RotaSchema = new Schema<IWorkflowRota>(
   {
     variavel: { type: String, required: true },
     rotulo: { type: String, required: true },
-    proximoPassoId: { type: Schema.Types.ObjectId, default: null },
     statusTicket: { type: String, default: null },
+    passos: { type: [PassoEnvelopeSchema], default: [] },
   },
   { _id: true },
 );
@@ -162,13 +183,7 @@ const PassoConfigSchema = new Schema<IWorkflowPassoConfig>(
   { _id: false },
 );
 
-const PassoEnvelopeSchema = new Schema<IWorkflowPassoEnvelope>(
-  {
-    ordem: { type: Number, default: 0 },
-    passo: { type: PassoConfigSchema, required: true },
-  },
-  { _id: true },
-);
+PassoEnvelopeSchema.add({ passo: { type: PassoConfigSchema, required: true } });
 
 const RequisicaoCampoOpcaoSchema = new Schema(
   {

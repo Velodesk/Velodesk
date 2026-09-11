@@ -19,27 +19,15 @@ export default function EspeciaisTicketSideFooter({
   return (
     <div className="ra-ticket__side-footer">
       {initialMessagePrompt ? (
-        <div className="especiais-initial-message-prompt" role="group" aria-label="Enviar mensagem inicial ao cliente">
-          <span className="especiais-initial-message-prompt__label">Enviar Mensagem:</span>
-          <div className="especiais-initial-message-prompt__options">
-            <button
-              type="button"
-              className="especiais-initial-message-prompt__btn especiais-initial-message-prompt__btn--yes"
-              disabled={initialMessagePrompt.busy}
-              onClick={() => initialMessagePrompt.onChoose?.('yes')}
-            >
-              Sim
-            </button>
-            <button
-              type="button"
-              className="especiais-initial-message-prompt__btn especiais-initial-message-prompt__btn--no"
-              disabled={initialMessagePrompt.busy}
-              onClick={() => initialMessagePrompt.onChoose?.('no')}
-            >
-              Não
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          className="especiais-initial-message-prompt__btn especiais-initial-message-prompt__btn--send"
+          disabled={initialMessagePrompt.busy}
+          onClick={() => initialMessagePrompt.onSend?.()}
+        >
+          <i className="ti ti-brand-whatsapp" aria-hidden="true" />
+          {initialMessagePrompt.busy ? 'Enviando…' : 'Enviar Mensagem'}
+        </button>
       ) : null}
       <button
         type="button"

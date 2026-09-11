@@ -138,6 +138,13 @@ function matchesBucket(email: string, domain: string, bucket: RuleSnapshot): boo
   return false;
 }
 
+export function isPriorityEmail(email: string): boolean {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+  const domain = normalized.includes('@') ? normalized.split('@')[1] : '';
+  return matchesBucket(normalized, domain, snapshot.priority);
+}
+
 export function matchMailRule(payload: InboundEmailPayload): MailRuleMatch | null {
   const email = normalizeEmail(payload.from.email);
   if (!email) return null;

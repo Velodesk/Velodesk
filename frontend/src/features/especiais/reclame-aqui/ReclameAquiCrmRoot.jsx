@@ -126,7 +126,7 @@ export default function ReclameAquiCrmRoot() {
     setListPage(1);
   }, [activeGroup, listSearchDraft, isRemoteSearch]);
 
-  const reloadTicket = useCallback(async () => {
+  const reloadTicket = useCallback(async (silent = false) => {
     if (!id) {
       setRaItem(null);
       setTicket(null);
@@ -135,7 +135,7 @@ export default function ReclameAquiCrmRoot() {
       return;
     }
 
-    setTicketLoading(true);
+    if (!silent) setTicketLoading(true);
     setRedirectTo(null);
     try {
       const view = await fetchRaTicketView(id);
@@ -160,8 +160,9 @@ export default function ReclameAquiCrmRoot() {
       if (view.raItem.groupKey) {
         setActiveGroup(view.raItem.groupKey);
       }
-      setTicketLoading(false);
+      if (!silent) setTicketLoading(false);
     } catch {
+      if (silent) return;
       showNotification('Não foi possível carregar o ticket.', 'error');
       setRaItem(null);
       setTicket(null);
@@ -169,9 +170,15 @@ export default function ReclameAquiCrmRoot() {
     }
   }, [id, showNotification]);
 
+  // listVersion sobe tanto por navegação real (troca de ticket) quanto por sincronizações de
+  // fundo (poll do Agente 5, sininhos, salvar/finalizar) — só a primeira precisa do spinner de
+  // tela cheia; as demais devem atualizar os dados sem re-exibir "Carregando ticket...".
+  const lastLoadedIdRef = useRef(null);
   useEffect(() => {
-    reloadTicket();
-  }, [reloadTicket, listVersion]);
+    const isSameTicket = lastLoadedIdRef.current === id;
+    lastLoadedIdRef.current = id;
+    reloadTicket(isSameTicket);
+  }, [reloadTicket, listVersion, id]);
 
   useEffect(() => {
     setWaChatOpen(false);
@@ -250,17 +257,11 @@ export default function ReclameAquiCrmRoot() {
   const showInitialMessagePrompt = Boolean(raItem?.ticketId)
     && !initialMessageAnsweredLocally
     && !isRaInitialMessageAnswered(raItem?.ticketId)
-    && !raTicketHasAgentReply(ticket, raItem);
+    && !raTicketHasAgentReply(ticket);
 
-  const handleInitialMessageChoice = useCallback(async (choice) => {
+  const handleSendInitialMessage = useCallback(async () => {
     const ticketId = raItem?.ticketId;
     if (!ticketId) return;
-
-    if (choice !== 'yes') {
-      markRaInitialMessageAnswered(ticketId);
-      setInitialMessageAnsweredLocally(true);
-      return;
-    }
 
     setInitialMessageBusy(true);
     try {
@@ -269,7 +270,7 @@ export default function ReclameAquiCrmRoot() {
         agentName: getAgentName(),
         complaintId: raItem?.idReclamacaoRa,
       });
-      const updated = await sendRaWaMessage(ticketId, text);
+      const updated = await sendRaWaMessage(ticketId, text, ticket);
       if (updated) setTicket(updated);
       markRaInitialMessageAnswered(ticketId);
       setInitialMessageAnsweredLocally(true);
@@ -279,7 +280,7 @@ export default function ReclameAquiCrmRoot() {
     } finally {
       setInitialMessageBusy(false);
     }
-  }, [raItem?.ticketId, raItem?.consumidor, raItem?.idReclamacaoRa, showNotification]);
+  }, [raItem?.ticketId, raItem?.consumidor, raItem?.idReclamacaoRa, ticket, showNotification]);
 
   const handleClassificacaoDraftChange = useCallback((draft) => {
     setClassificacaoDraft(draft);
@@ -354,6 +355,7 @@ export default function ReclameAquiCrmRoot() {
         waChatOpen={waChatOpen}
         waComposeText={waComposeText}
         onWaComposeTextChange={setWaComposeText}
+        onOpenWaChat={handleOpenChat}
         onTicketUpdated={handleTicketUpdated}
         onModeracaoSaved={handleModeracaoSaved}
         composeMode={composeMode}
@@ -383,7 +385,7 @@ export default function ReclameAquiCrmRoot() {
         finalized={finalized}
         onClassificacaoDraftChange={handleClassificacaoDraftChange}
         initialMessagePrompt={showInitialMessagePrompt
-          ? { onChoose: handleInitialMessageChoice, busy: initialMessageBusy }
+          ? { onSend: handleSendInitialMessage, busy: initialMessageBusy }
           : null}
       />
 

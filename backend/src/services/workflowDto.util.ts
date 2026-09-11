@@ -1,11 +1,82 @@
-/** workflowDto.util v1.4.0 — stepHistory com estado denied após reprovação */
+/**
+ * workflowDto.util v2.0.0 — stepper reconstruído a partir de `path` (bifurcação
+ * em árvore): não existe mais "etapa N de M" com M fixo (ramos diferentes têm
+ * tamanhos diferentes) — o histórico mostra o caminho realmente percorrido,
+ * mais uma prévia dos próximos passos JÁ conhecidos (dentro do mesmo ramo,
+ * até a próxima aprovação ainda não decidida).
+ */
 import { Types } from 'mongoose';
-import type { IChamadoN1, IChamadoWorkflow, IRegistro } from '../models/ChamadoN1';
-import type { IWorkflowDefinicao, IWorkflowPassoEnvelope } from '../models/WorkflowDefinicao';
+import type { IChamadoN1, IChamadoWorkflow, IRegistro, IWorkflowPathSegment } from '../models/ChamadoN1';
+import type { IWorkflowDefinicao, IWorkflowPassoEnvelope, IWorkflowRota } from '../models/WorkflowDefinicao';
 import { getWorkflowById, resolveWorkflowForTicket } from './workflowDefinicao.service';
 
-function sortPassos(definicao: IWorkflowDefinicao): IWorkflowPassoEnvelope[] {
-  return [...(definicao.passos || [])].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+function sortPassos(passos: IWorkflowPassoEnvelope[] = []): IWorkflowPassoEnvelope[] {
+  return [...(passos || [])].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+}
+
+function findRota(
+  passo: IWorkflowPassoEnvelope | null,
+  variavel: 'approve' | 'reject',
+): IWorkflowRota | null {
+  return (passo?.passo?.acao?.rotas || []).find((r) => r.variavel === variavel) || null;
+}
+
+interface WalkedSegment {
+  envelope: IWorkflowPassoEnvelope;
+  container: IWorkflowPassoEnvelope[];
+  index: number;
+}
+
+/** Caminho atual — upgrade preguiçoso de dado legado (passoId único, sem path). */
+function resolveEffectivePath(chamado: IChamadoN1, definicao: IWorkflowDefinicao): IWorkflowPathSegment[] {
+  const wf = chamado.workflow;
+  if (wf?.path?.length) return wf.path;
+  if (wf?.passoId) return [{ passoEnvelopeId: wf.passoId }];
+  const raiz = sortPassos(definicao.passos);
+  return raiz.length ? [{ passoEnvelopeId: raiz[0]._id as Types.ObjectId }] : [];
+}
+
+/** Percorre `path` desde a raiz, devolvendo cada segmento com seu container/índice. */
+function walkPath(
+  definicao: IWorkflowDefinicao,
+  path: IWorkflowPathSegment[],
+): WalkedSegment[] {
+  const walked: WalkedSegment[] = [];
+  let container = sortPassos(definicao.passos);
+  let parent: IWorkflowPassoEnvelope | undefined;
+
+  for (const segment of path) {
+    if (parent) {
+      if (parent.passo?.acao?.tipo !== 'aprovacao' || !segment.viaVariavel) break;
+      const rota = findRota(parent, segment.viaVariavel as 'approve' | 'reject');
+      if (!rota) break;
+      container = sortPassos(rota.passos);
+    }
+    const index = container.findIndex((p) => String(p._id) === String(segment.passoEnvelopeId));
+    if (index < 0) break;
+    const envelope = container[index];
+    walked.push({ envelope, container, index });
+    parent = envelope;
+  }
+
+  return walked;
+}
+
+/**
+ * Prévia dos próximos passos JÁ conhecidos a partir do último segmento
+ * percorrido: irmãos seguintes do mesmo container, até (e incluindo) o
+ * próximo nó de aprovação — sem tentar adivinhar o que vem depois de uma
+ * bifurcação ainda não decidida.
+ */
+function buildUpcomingPreview(last: WalkedSegment | undefined): IWorkflowPassoEnvelope[] {
+  if (!last) return [];
+  const preview: IWorkflowPassoEnvelope[] = [];
+  for (let i = last.index + 1; i < last.container.length; i += 1) {
+    const envelope = last.container[i];
+    preview.push(envelope);
+    if (envelope.passo?.acao?.tipo === 'aprovacao') break;
+  }
+  return preview;
 }
 
 function registroHasWorkflowReject(registro: IRegistro[] = []): boolean {
@@ -17,33 +88,32 @@ function registroHasWorkflowReject(registro: IRegistro[] = []): boolean {
   });
 }
 
-/** Índice do passo de aprovação reprovado (para stepper denied). */
-function resolveRejectedApprovalStepIndex(
+/** Id do passo de aprovação reprovado dentro do caminho percorrido (para stepper denied). */
+function resolveRejectedApprovalStepId(
   chamado: IChamadoN1,
-  passos: IWorkflowPassoEnvelope[],
-): number | null {
+  walked: WalkedSegment[],
+): string | null {
   if (!registroHasWorkflowReject(chamado.registro || [])) return null;
-  const step = Math.min(Math.max(chamado.workflow?.step ?? 0, 0), Math.max(passos.length - 1, 0));
-  for (let index = step; index >= 0; index -= 1) {
-    if (passos[index]?.passo?.acao?.tipo === 'aprovacao') return index;
+  for (let i = walked.length - 1; i >= 0; i -= 1) {
+    if (walked[i].envelope.passo?.acao?.tipo === 'aprovacao') {
+      return String(walked[i].envelope._id);
+    }
   }
   return null;
 }
 
-function buildPassosResumo(definicao: IWorkflowDefinicao) {
-  return sortPassos(definicao).map((envelope) => {
-    const cfg = envelope.passo || {};
-    return {
-      id: String(envelope._id),
-      nome: String(cfg.nome || 'Etapa').trim() || 'Etapa',
-      ordem: envelope.ordem ?? 0,
-      acaoTipo: cfg.acao?.tipo || 'manual',
-      team: cfg.atribuicao?.funcaoSlug
-        || cfg.atribuicao?.grupoSlug
-        || (cfg.atribuicao?.tipo === 'colaborador' ? 'n1' : 'n1'),
-      slaHoras: cfg.slaHoras ?? null,
-    };
-  });
+function summarizePasso(envelope: IWorkflowPassoEnvelope) {
+  const cfg = envelope.passo || {};
+  return {
+    id: String(envelope._id),
+    nome: String(cfg.nome || 'Etapa').trim() || 'Etapa',
+    ordem: envelope.ordem ?? 0,
+    acaoTipo: cfg.acao?.tipo || 'manual',
+    team: cfg.atribuicao?.funcaoSlug
+      || cfg.atribuicao?.grupoSlug
+      || (cfg.atribuicao?.tipo === 'colaborador' ? 'n1' : 'n1'),
+    slaHoras: cfg.slaHoras ?? null,
+  };
 }
 
 export function buildLateralWorkflowDto(
@@ -55,24 +125,34 @@ export function buildLateralWorkflowDto(
   const cancelled = wf?.workflowStatus === 'cancel';
   if ((!wf?.active && !finished && !cancelled) || !wf.workflowId) return null;
 
-  const passos = sortPassos(definicao);
-  const step = Math.min(Math.max(wf.step ?? 0, 0), Math.max(passos.length - 1, 0));
-  const rejectedStepIdx = resolveRejectedApprovalStepIndex(chamado, passos);
-  const currentPasso = passos[step];
-  const currentStepId = currentPasso?._id ? String(currentPasso._id) : '';
+  const path = resolveEffectivePath(chamado, definicao);
+  const walked = walkPath(definicao, path);
+  const last = walked[walked.length - 1];
+  const rejectedStepId = resolveRejectedApprovalStepId(chamado, walked);
+  const currentStepId = last ? String(last.envelope._id) : '';
   const startedAt = wf.startedAt ? new Date(wf.startedAt).toISOString() : new Date().toISOString();
   const completedAt = wf.completedAt ? new Date(wf.completedAt).toISOString() : null;
 
-  const stepHistory = passos.map((p, index) => {
-    const stepId = String(p._id);
-    let status: 'completed' | 'active' | 'pending' | 'skipped' | 'denied' = 'pending';
-    if (rejectedStepIdx != null && index === rejectedStepIdx) {
+  type StepHistoryEntry = {
+    stepId: string;
+    status: 'completed' | 'active' | 'pending' | 'skipped' | 'denied';
+    at: string;
+    by: string;
+    trigger: string;
+    label?: string;
+  };
+
+  const stepHistory: StepHistoryEntry[] = walked.map((seg, index) => {
+    const stepId = String(seg.envelope._id);
+    const isLast = index === walked.length - 1;
+    let status: StepHistoryEntry['status'] = 'completed';
+    if (rejectedStepId && stepId === rejectedStepId) {
       status = 'denied';
     } else if (cancelled) {
-      status = index < step ? 'completed' : 'skipped';
-    } else if (finished || wf.completedAt || index < step) {
+      status = isLast ? 'skipped' : 'completed';
+    } else if (finished || wf.completedAt || !isLast) {
       status = 'completed';
-    } else if (index === step && !wf.completedAt) {
+    } else {
       status = 'active';
     }
     return {
@@ -80,10 +160,29 @@ export function buildLateralWorkflowDto(
       status,
       at: startedAt,
       by: 'sistema',
-      trigger: index === step ? 'active' : 'history',
-      label: String(p.passo?.nome || '').trim() || undefined,
+      trigger: isLast ? 'active' : 'history',
+      label: String(seg.envelope.passo?.nome || '').trim() || undefined,
     };
   });
+
+  // Prévia dos próximos passos já conhecidos (mesmo ramo, sem adivinhar bifurcação futura).
+  if (!finished && !cancelled) {
+    buildUpcomingPreview(last).forEach((envelope) => {
+      stepHistory.push({
+        stepId: String(envelope._id),
+        status: 'pending',
+        at: startedAt,
+        by: 'sistema',
+        trigger: 'history',
+        label: String(envelope.passo?.nome || '').trim() || undefined,
+      });
+    });
+  }
+
+  const passosResumo = [
+    ...walked.map((seg) => summarizePasso(seg.envelope)),
+    ...(!finished && !cancelled ? buildUpcomingPreview(last).map(summarizePasso) : []),
+  ];
 
   return {
     templateId: definicao.slug,
@@ -91,13 +190,13 @@ export function buildLateralWorkflowDto(
     definicaoId: String(definicao._id),
     title: definicao.titulo,
     currentStepId,
-    step,
+    step: walked.length - 1,
     startedAt,
     completedAt,
     status: finished ? 'completed' : cancelled ? 'cancelled' : 'active',
     workflowStatus: wf.workflowStatus ?? (wf.active ? 'active' : null),
     stepHistory,
-    passosResumo: buildPassosResumo(definicao),
+    passosResumo,
     pendingDecision: wf.pendingDecision ?? null,
   };
 }
@@ -118,8 +217,7 @@ function ensureWorkflowState(chamado: IChamadoN1): IChamadoWorkflow {
       active: false,
       workflowStatus: null,
       workflowId: null,
-      step: 0,
-      passoId: null,
+      path: [],
       startedAt: null,
       completedAt: null,
       pendingDecision: null,

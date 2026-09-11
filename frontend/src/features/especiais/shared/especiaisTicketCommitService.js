@@ -31,10 +31,11 @@ import {
 } from '../../../services/especiais/bacenStore';
 import { syncEspeciaisGroupFromTicket } from '../../../services/especiais/especiaisTicketGroupSync';
 import { commitTicketViaApi, loadTicketDetailFromApi } from '../../../services/ticketsCache';
-import { ticketsApi } from '../../../api/client';
+import { reclamacoesApi, ticketsApi } from '../../../api/client';
 
 const CHANNEL_CONFIG = {
   ra: {
+    orgao: 'reclame-aqui',
     metaKey: 'reclameAqui',
     statusField: 'statusRa',
     respondidaStatus: RA_STATUS.RESPONDIDA,
@@ -43,6 +44,7 @@ const CHANNEL_CONFIG = {
     updateGroupFromTicket: updateReclamacaoGroupFromTicket,
   },
   pc: {
+    orgao: 'procon',
     metaKey: 'procon',
     statusField: 'statusPc',
     respondidaStatus: PC_STATUS.RESPONDIDA,
@@ -51,6 +53,7 @@ const CHANNEL_CONFIG = {
     updateGroupFromTicket: updateProconGroupFromTicket,
   },
   gov: {
+    orgao: 'consumidor-gov',
     metaKey: 'consumidorGov',
     statusField: 'statusGov',
     respondidaStatus: CG_STATUS.RESPONDIDA,
@@ -59,6 +62,7 @@ const CHANNEL_CONFIG = {
     updateGroupFromTicket: updateGovGroupFromTicket,
   },
   bc: {
+    orgao: 'bacen',
     metaKey: 'bacen',
     statusField: 'statusBc',
     respondidaStatus: BC_STATUS.RESPONDIDA,
@@ -199,8 +203,19 @@ export async function commitEspeciaisTicket({
 
   let updatedChannelItem = channelItem;
   if (finalize && channelItem) {
+    // patchItem sozinho só grava no cache local (localStorage) — sem persistir no backend,
+    // a próxima sincronização (reclamacoesApi.list ao reabrir o módulo) trazia o status antigo
+    // de volta, fazendo o ticket "voltar" da lista de finalizados.
+    const persisted = await reclamacoesApi.patch(config.orgao, channelItem.id, {
+      statusCanal: config.respondidaStatus,
+      aberta: false,
+      // Denormalizado — a listagem desta coleção não faz join com chamados_n1, então sem isto
+      // o front não sabe se o ticket ficou terminal depois de recarregar (item "reabre" sozinho).
+      ticketStatus: updatedTicket?.status || 'resolvido',
+    });
     updatedChannelItem = config.patchItem({
       ...channelItem,
+      ...(persisted || {}),
       [config.statusField]: config.respondidaStatus,
       aberta: false,
     });

@@ -197,6 +197,12 @@ export function isPortalAllowed(portalId, perm = readCachedPermissions()) {
 }
 
 export function hasWorkflowPortalAccess(perm = readCachedPermissions()) {
+  // Módulos de Acesso (permissoes.acesso.*) é a fonte de verdade de quem entra em cada
+  // módulo — é o mesmo override que decide se o ícone aparece na barra lateral. Se o
+  // módulo está liberado ali, o usuário tem que conseguir abrir a tela, não só ver o ícone.
+  if (can('acesso', 'workflow-inbox', perm?.permissoes) || can('acesso', 'workflow-finalizados', perm?.permissoes)) {
+    return true;
+  }
   return isPortalAllowed('workflow', perm) || can('portal', 'workflow', perm?.permissoes);
 }
 

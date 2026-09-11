@@ -1,6 +1,6 @@
 /**
- * WorkflowCriteriaEditor v2.4.0 — gatilho com canal
- * VERSION: v2.4.0 | DATE: 2026-08-03
+ * WorkflowCriteriaEditor v2.5.0 — legenda E/OU (campos diferentes = E, mesmo campo = OU)
+ * VERSION: v2.5.0 | DATE: 2026-09-10
  */
 import React, { useMemo } from 'react';
 import { useTabulation } from '../../../context/TabulationContext';
@@ -342,6 +342,12 @@ export default function WorkflowCriteriaEditor({
           Adicionar critério
         </button>
       )}
+
+      {isGatilho && list.length > 0 ? (
+        <p className="config-placeholder-msg wf-criteria-editor__hint">
+          Critérios de campos diferentes entram com E. Vários critérios do mesmo campo entram com OU.
+        </p>
+      ) : null}
     </div>
   );
 }

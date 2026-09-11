@@ -1,6 +1,6 @@
 /**
- * permission.service v1.15.0 — VER vs ATUAR via overrides; atuar_sempre; sem seed/slug bypass
- * VERSION: v1.15.0 | DATE: 2026-08-21
+ * permission.service v1.16.0 — matchesActiveWorkflowStepAssignee via path (bifurcação em árvore)
+ * VERSION: v1.16.0 | DATE: 2026-09-10
  */
 import type { AuthPayload } from '../middleware/auth';
 import type { IChamadoN1 } from '../models/ChamadoN1';
@@ -33,6 +33,7 @@ import {
   resolvePrimaryFuncao,
 } from '../utils/normalizeFuncao';
 import { getWorkflowById, workflowDefinitionMatchesFuncao } from './workflowDefinicao.service';
+import { findNodeAndContainer, resolveCurrentPath } from './workflowPathWalk.util';
 import { buildTabulationFieldsFromChamado, resolveAtribuidoForPasso } from './workflowMatcher.service';
 import { provisionalResponsavelFromAuth } from './assignmentRouter.service';
 import { User } from '../models/User';
@@ -421,8 +422,9 @@ async function matchesActiveWorkflowStepAssignee(
     const definicao = await getWorkflowById(String(wf.workflowId));
     if (!definicao) return false;
 
-    const passos = [...(definicao.passos || [])].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
-    const passo = passos[wf.step ?? 0];
+    const path = resolveCurrentPath(chamado, definicao);
+    const resolvedNode = findNodeAndContainer(definicao, path);
+    const passo = resolvedNode?.node;
     if (!passo) return false;
 
     const fields = buildTabulationFieldsFromChamado(chamado);

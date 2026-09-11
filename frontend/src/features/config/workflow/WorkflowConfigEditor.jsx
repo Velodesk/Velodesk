@@ -1,6 +1,7 @@
 /**
- * WorkflowConfigEditor v2.7.2 — validação de gatilho para grupo de responsabilidade
- * VERSION: v2.7.2 | DATE: 2026-08-03
+ * WorkflowConfigEditor v2.9.0 — remove validação de proximoPassoId (bifurcação em
+ * árvore: etapas aninhadas nunca ficam órfãs, não há mais referência solta a validar)
+ * VERSION: v2.9.0 | DATE: 2026-09-10
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNotifications } from '../../../context/NotificationContext';
@@ -92,25 +93,6 @@ export default function WorkflowConfigEditor({
     })) {
       showNotification('Complete os critérios do gatilho antes de salvar.', 'error');
       return;
-    }
-    const passosDraft = draft?.passos || [];
-    const passosById = new Map(passosDraft.map((envelope) => [String(envelope._id), envelope]));
-    for (const envelope of passosDraft) {
-      const acao = envelope?.passo?.acao;
-      if (acao?.tipo !== 'aprovacao') continue;
-      const rejeitar = (acao.rotas || []).find((r) => r.variavel === 'reject');
-      if (!rejeitar) continue;
-      const nome = envelope.passo?.nome || 'Etapa de aprovação';
-      // Sem destino explícito: reprovação encerra a passagem pelo workflow e devolve o
-      // ticket ao responsável (comportamento incondicional já garantido em runtime por
-      // markTicketEmAndamentoAfterReject/notifyWorkflowRejectToResponsavel) — não é mais
-      // obrigatório escolher uma etapa de destino só pra reprovar.
-      if (!rejeitar.proximoPassoId) continue;
-      const destino = passosById.get(String(rejeitar.proximoPassoId));
-      if (destino?.passo?.acao?.tipo === 'automatica') {
-        showNotification(`Etapa "${nome}": a etapa de destino para "Reprovar" não pode ser uma etapa automática (resposta ao cliente/ação de sistema).`, 'error');
-        return;
-      }
     }
     try {
       await onSave?.({

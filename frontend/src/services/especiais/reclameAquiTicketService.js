@@ -7,6 +7,7 @@ import { ticketsApi, reclamacoesApi, clientsApi } from '../../api/client';
 import { apiTicketToCockpit } from '../../api/adapters/ticketAdapter';
 import { mapClienteDocToContact } from '../../api/adapters/clienteAdapter';
 import { getAgentName } from '../clientDb';
+import { buildWhatsAppConvMsgs, toWhatsAppChatIdDigits } from '../desk/utils';
 import { RA_STATUS } from './reclameAquiData';
 import {
   buildRegistroDefaults,
@@ -214,13 +215,22 @@ export async function fetchRaTicketView(raId) {
   };
 }
 
-export async function sendRaWaMessage(ticketId, text) {
+function resolveRaWhatsAppChatId(ticket) {
+  return toWhatsAppChatIdDigits(
+    ticket?.lateralForm?.clienteTelefoneWhatsapp
+    || (Array.isArray(ticket?.lateralForm?.clienteTelefone) ? ticket.lateralForm.clienteTelefone[0] : '')
+    || ticket?.clientPhone
+    || '',
+  );
+}
+
+export async function sendRaWaMessage(ticketId, text, ticket) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return null;
-  await ticketsApi.addMessage(ticketId, {
+  const waChatId = resolveRaWhatsAppChatId(ticket);
+  await ticketsApi.sendWhatsAppMessage(ticketId, {
     text: trimmed,
-    author: getAgentName(),
-    sender: 'me',
+    waChatId: waChatId || undefined,
   });
   const raw = await ticketsApi.get(ticketId);
   return apiTicketToCockpit(raw);
@@ -247,22 +257,12 @@ export async function saveRaInternalNote(ticketId, text) {
   return apiTicketToCockpit(raw);
 }
 
-export function getRaThreadMessages(ticket, raItem) {
-  const messages = ticket?.messages || [];
-  if (!messages.length) return [];
-
-  const complaintText = String(raItem?.descricao || messages[0]?.text || '').trim();
-  return messages.filter((msg, index) => {
-    if (index === 0 && msg.fromClient && String(msg.text || '').trim() === complaintText) {
-      return false;
-    }
-    return Boolean(String(msg.text || '').trim());
-  });
-}
-
-/** true assim que o agente enviar a 1ª mensagem ao cliente (reclamação original do RA não conta). */
-export function raTicketHasAgentReply(ticket, raItem) {
-  return getRaThreadMessages(ticket, raItem).some((msg) => !msg.fromClient);
+/**
+ * true assim que o agente enviar a 1ª mensagem via WhatsApp — critério é específico do canal
+ * WhatsApp (não considera mensagens registradas públicas/internas de outros canais).
+ */
+export function raTicketHasAgentReply(ticket) {
+  return buildWhatsAppConvMsgs(ticket).some((msg) => msg.type === 'agent' && String(msg.text || '').trim());
 }
 
 /** Saudação inicial padrão do time de Reclame Aqui, com os dados do ticket já preenchidos. */

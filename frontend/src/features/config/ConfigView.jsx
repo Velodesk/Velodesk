@@ -21,7 +21,9 @@ export default function ConfigView() {
   const [section, setSection] = useState(null);
   const active = section ? getConfigSection(section) : null;
 
-  const canViewConfig = isNavAllowed('config') && can('config', 'visualizar');
+  // Módulos de Acesso (isNavAllowed) é quem manda: se o módulo está liberado ali, o usuário
+  // entra — 'config.visualizar' fica só como fallback para permissões legadas.
+  const canViewConfig = isNavAllowed('config') || can('config', 'visualizar');
 
   if (!canViewConfig) {
     return <Navigate to="/workspace" replace />;

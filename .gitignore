@@ -42,6 +42,10 @@ _vercel-deploy/
 # backend/source file/ — versionada integralmente (POPs + POP Completo) e copiada no Docker
 /POPs/
 
+# Documentação de API (referências de integração — sempre acabam guardando secrets
+# reais gerados pra configuração de servidor; nunca deve ser commitada)
+docs/api-*.md
+
 # Temp
 tmp/
 temp/

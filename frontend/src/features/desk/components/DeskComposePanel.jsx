@@ -781,6 +781,16 @@ export default function DeskComposePanel({
           <div className="octa-panel-box">
             {variant === 'full' ? (
             <div className="response-tabs octa-nav-tabs">
+              {showCliente ? (
+              <button
+                type="button"
+                className={'response-tab octa-nav-tab octa-tab-cliente' + (composeMode === 'cliente' ? ' active' : '')}
+                data-compose="cliente"
+                onClick={() => onComposeModeChange('cliente')}
+              >
+                <i className="fas fa-comment-dots" /> {clienteTabLabel}
+              </button>
+              ) : null}
               <button
                 type="button"
                 className={'response-tab octa-nav-tab octa-tab-public' + (composeMode === 'public' ? ' active' : '')}
@@ -801,16 +811,6 @@ export default function DeskComposePanel({
               >
                 <i className="fas fa-envelope" /> {publicTabLabel}
               </button>
-              {showCliente ? (
-              <button
-                type="button"
-                className={'response-tab octa-nav-tab octa-tab-cliente' + (composeMode === 'cliente' ? ' active' : '')}
-                data-compose="cliente"
-                onClick={() => onComposeModeChange('cliente')}
-              >
-                <i className="fas fa-comment-dots" /> {clienteTabLabel}
-              </button>
-              ) : null}
               <button
                 type="button"
                 className={'response-tab octa-nav-tab octa-tab-internal' + (composeMode === 'internal' ? ' active' : '')}

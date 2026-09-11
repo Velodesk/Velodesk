@@ -12,7 +12,12 @@ import DeskWhatsAppChat from '../../desk/components/DeskWhatsAppChat';
 import ClientTicketHistoryModal from '../../desk/components/ClientTicketHistoryModal';
 import TicketFusaoStatusControls from '../../desk/components/TicketFusaoStatusControls';
 import { useNotifications } from '../../../context/NotificationContext';
-import { buildRegistroThread, isTicketReadOnly } from '../../../services/desk/utils';
+import {
+  buildRegistroThread,
+  buildWhatsAppConvMsgs,
+  collapseWhatsAppThreadToBalloon,
+  isTicketReadOnly,
+} from '../../../services/desk/utils';
 import { saveEspeciaisTicketContact } from './especiaisSaveContact';
 
 export default function EspeciaisDeskTicketView({
@@ -25,6 +30,7 @@ export default function EspeciaisDeskTicketView({
   waComposeText = '',
   onWaComposeTextChange,
   onWaSend,
+  onOpenWaChat,
   onTicketUpdated,
   onSelectHistoryTicket,
   onFundirTickets,
@@ -53,6 +59,16 @@ export default function EspeciaisDeskTicketView({
   const convMsgs = useMemo(
     () => (ticket ? buildRegistroThread(ticket) : []),
     [ticket],
+  );
+
+  const waConvMsgs = useMemo(
+    () => (ticket ? buildWhatsAppConvMsgs(ticket) : []),
+    [ticket],
+  );
+
+  const displayMsgs = useMemo(
+    () => collapseWhatsAppThreadToBalloon(convMsgs),
+    [convMsgs],
   );
 
   const ticketReadOnly = isTicketReadOnly(ticket);
@@ -162,7 +178,7 @@ export default function EspeciaisDeskTicketView({
                 key={ticket?.id || ticketId}
                 ticket={ticket}
                 client={client}
-                messages={convMsgs}
+                messages={waConvMsgs}
                 composeText={waComposeText}
                 onComposeTextChange={onWaComposeTextChange}
                 onUseIaReply={onWaComposeTextChange}
@@ -193,8 +209,9 @@ export default function EspeciaisDeskTicketView({
                   ) : null}
                   <DeskConversation
                     ticket={ticket}
-                    messages={convMsgs}
+                    messages={displayMsgs}
                     iaShowBar={false}
+                    onOpenWhatsAppChat={onOpenWaChat}
                   />
                   <DeskComposePanel
                     ticketId={ticket?.id || ticketId}

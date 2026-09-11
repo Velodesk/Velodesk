@@ -1,4 +1,4 @@
-/** workflowDefinicao.service v1.8.1 — getWorkflowsByIds com ObjectId explícito */
+/** workflowDefinicao.service v2.0.0 — ensurePassoIds recursivo (bifurcação em árvore); validateWorkflowPassos removida (etapas aninhadas nunca ficam órfãs) */
 import { migratePassoAutomaticaConfig } from './workflowAutomatica.util';
 import { Types } from 'mongoose';
 import { normalizeRequisicaoConfig } from '../config/workflowRequisicaoDefaults';
@@ -29,13 +29,31 @@ function sanitizePassoConfig(passo: IWorkflowPassoEnvelope['passo']): IWorkflowP
   return raw as unknown as IWorkflowPassoEnvelope['passo'];
 }
 
+/**
+ * Garante `_id`/`ordem` e sanitiza cada etapa, descendo recursivamente pelas
+ * sub-listas de cada rota (`rota.passos`) — bifurcação real: uma etapa dentro
+ * de um ramo pode ela mesma ser uma etapa de aprovação com seus próprios
+ * sub-ramos, então isso precisa se aplicar em qualquer profundidade.
+ */
 function ensurePassoIds(passos: IWorkflowPassoEnvelope[] = []): IWorkflowPassoEnvelope[] {
-  return sortPassos(passos).map((envelope, index) => ({
-    ...envelope,
-    ordem: index,
-    _id: envelope._id ? new Types.ObjectId(String(envelope._id)) : new Types.ObjectId(),
-    passo: sanitizePassoConfig(envelope.passo),
-  }));
+  return sortPassos(passos).map((envelope, index) => {
+    const passo = sanitizePassoConfig(envelope.passo);
+    if (passo?.acao?.tipo === 'aprovacao' && Array.isArray(passo.acao.rotas)) {
+      passo.acao = {
+        ...passo.acao,
+        rotas: passo.acao.rotas.map((rota) => ({
+          ...rota,
+          passos: ensurePassoIds(rota.passos || []),
+        })),
+      };
+    }
+    return {
+      ...envelope,
+      ordem: index,
+      _id: envelope._id ? new Types.ObjectId(String(envelope._id)) : new Types.ObjectId(),
+      passo,
+    };
+  });
 }
 
 function normalizePassoInicialId(
@@ -65,40 +83,6 @@ function normalizeFuncoesAdicionais(value: unknown): string[] {
     if (slug) seen.add(slug);
   }
   return Array.from(seen);
-}
-
-/**
- * Rota "Reprovar" sem destino explícito é válida: o motor de execução
- * (workflowTicket.service) trata isso como fim da passagem do ticket pelo
- * workflow, e o retorno ao responsável já acontece incondicionalmente via
- * markTicketEmAndamentoAfterReject/notifyWorkflowRejectToResponsavel — não
- * depende de nenhuma etapa de destino configurada. Só validamos o destino
- * quando ELE FOI escolhido: precisa existir e nunca pode ser uma etapa
- * automática (resposta ao cliente/ação de sistema não pode ser disparada
- * por reprovação).
- */
-function validateWorkflowPassos(passos: IWorkflowPassoEnvelope[]): void {
-  const passosById = new Map(passos.map((p) => [String(p._id), p]));
-
-  passos.forEach((envelope, index) => {
-    const acao = envelope.passo?.acao;
-    if (!acao || acao.tipo !== 'aprovacao') return;
-    const nome = envelope.passo?.nome || `Etapa ${index + 1}`;
-
-    const rejectRota = (acao.rotas || []).find((r) => r.variavel === 'reject');
-    if (!rejectRota) return;
-
-    const destinoId = rejectRota.proximoPassoId ? String(rejectRota.proximoPassoId) : '';
-    if (!destinoId) return;
-
-    const destino = passosById.get(destinoId);
-    if (!destino) {
-      throw new Error(`Etapa "${nome}": a etapa de destino configurada para "Reprovar" não existe mais neste workflow.`);
-    }
-    if (destino.passo?.acao?.tipo === 'automatica') {
-      throw new Error(`Etapa "${nome}": a etapa de destino para "Reprovar" não pode ser uma etapa automática (resposta ao cliente/ação de sistema).`);
-    }
-  });
 }
 
 export async function listWorkflows(includeInactive = false): Promise<IWorkflowDefinicao[]> {
@@ -160,7 +144,6 @@ export async function createWorkflow(
   if (exists) throw new Error('Workflow já cadastrado.');
 
   const passos = ensurePassoIds(payload.passos || []);
-  validateWorkflowPassos(passos);
   const passoInicialId = normalizePassoInicialId(passos, payload.passoInicialId);
   const gatilho = normalizeGatilho(payload.gatilho);
 
@@ -190,7 +173,6 @@ export async function replaceWorkflow(
 ): Promise<IWorkflowDefinicao | null> {
   const Model = getWorkflowDefinicaoModel();
   const passos = ensurePassoIds(payload.passos || []);
-  validateWorkflowPassos(passos);
   const passoInicialId = normalizePassoInicialId(passos, payload.passoInicialId);
   const gatilho = normalizeGatilho(payload.gatilho);
 

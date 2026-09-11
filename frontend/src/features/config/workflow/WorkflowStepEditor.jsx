@@ -1,6 +1,7 @@
 /**
- * WorkflowStepEditor v1.4.0 — modo de conteúdo (IA / e-mail padrão) na etapa "Resposta ao cliente"
- * VERSION: v1.4.0 | DATE: 2026-08-31
+ * WorkflowStepEditor v2.0.0 — bifurcação real: remove seletor "Próximo passo"
+ * (não faz mais sentido — cada ramo tem sua própria sub-timeline aninhada)
+ * VERSION: v2.0.0 | DATE: 2026-09-10
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import WorkflowRoutesEditor from './WorkflowRoutesEditor';
@@ -27,7 +28,6 @@ const DEFAULT_INTERNAL_HOOKS = [
 
 export default function WorkflowStepEditor({
   envelope,
-  passos = [],
   grupos = [],
   onChange,
   onRemove,
@@ -137,9 +137,9 @@ export default function WorkflowStepEditor({
       tipo,
       rotas: tipo === 'aprovacao'
         ? (cfg.acao?.rotas?.length ? cfg.acao.rotas : [
-          { variavel: 'approve', rotulo: 'Aprovar', proximoPassoId: null, statusTicket: 'em-andamento' },
-          { variavel: 'reject', rotulo: 'Reprovar', proximoPassoId: null, statusTicket: 'pendente' },
-          { variavel: 'request_info', rotulo: 'Pedir informação', proximoPassoId: null, statusTicket: 'pendente' },
+          { variavel: 'approve', rotulo: 'Aprovar', statusTicket: 'em-andamento', passos: [] },
+          { variavel: 'reject', rotulo: 'Reprovar', statusTicket: 'pendente', passos: [] },
+          { variavel: 'request_info', rotulo: 'Pedir informação', statusTicket: 'pendente', passos: [] },
         ])
         : [],
     };
@@ -204,6 +204,85 @@ export default function WorkflowStepEditor({
           onChange={(e) => patchPasso({ descricao: e.target.value })}
         />
       </label>
+
+      <section className="wf-step-editor__section">
+        <h4>Atribuição (→ tabulacao.atribuido)</h4>
+        <div className="wf-step-editor__grid">
+          <label className="wf-step-editor__field">
+            <span>Tipo</span>
+            {isAutomatica ? (
+              <input type="text" value={ATRIBUICAO_SISTEMA.label} readOnly disabled />
+            ) : (
+              <select
+                value={atribuicaoTipo}
+                onChange={(e) => patchAtribuicao({ tipo: e.target.value })}
+              >
+                {ATRIBUICAO_TIPOS.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            )}
+          </label>
+          {!isAutomatica && atribuicaoTipo === 'funcao' ? (
+            <label className="wf-step-editor__field">
+              <span>Atuação</span>
+              <select
+                value={cfg.atribuicao?.funcaoSlug || ''}
+                onChange={(e) => patchAtribuicao({ funcaoSlug: e.target.value, tipo: 'funcao' })}
+              >
+                <option value="">Selecione…</option>
+                {atuacaoSelectOptions.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {!isAutomatica && atribuicaoTipo === 'grupo' ? (
+            <label className="wf-step-editor__field">
+              <span>Grupo</span>
+              <select
+                value={cfg.atribuicao?.grupoSlug || ''}
+                onChange={(e) => patchAtribuicao({ grupoSlug: e.target.value })}
+              >
+                <option value="">Selecione…</option>
+                {grupos.map((g) => (
+                  <option key={g._id || g.slug} value={g.slug}>{g.nome || g.slug}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {!isAutomatica && atribuicaoTipo === 'colaborador' ? (
+            <label className="wf-step-editor__field">
+              <span>Colaborador</span>
+              <select
+                value={colaboradorSelectValue}
+                onChange={(e) => patchAtribuicao({ colaborador: e.target.value })}
+                disabled={colaboradoresLoading}
+              >
+                <option value="">
+                  {colaboradoresLoading ? 'Carregando colaboradores…' : 'Selecione…'}
+                </option>
+                {colaboradorSelecionado && !colaboradorNaLista ? (
+                  <option value={colaboradorSelecionado}>
+                    {colaboradorSelecionado} (fora da lista atual)
+                  </option>
+                ) : null}
+                {colaboradoresValidos.map((c) => (
+                  <option key={c.id || c.email || c.value} value={c.value}>
+                    {formatColaboradorLabel(c)}
+                    {c.afastado ? ' — afastado' : ''}
+                  </option>
+                ))}
+              </select>
+              {colaboradoresError ? (
+                <span className="grupos-atrib__hint">
+                  Não foi possível carregar a lista de colaboradores.
+                </span>
+              ) : null}
+            </label>
+          ) : null}
+        </div>
+      </section>
 
       <section className="wf-step-editor__section">
         <h4>Ação</h4>
@@ -385,90 +464,10 @@ export default function WorkflowStepEditor({
         {acaoTipo === 'aprovacao' ? (
           <WorkflowRoutesEditor
             rotas={cfg.acao?.rotas || []}
-            passos={passos}
-            currentPassoId={envelope?._id ? String(envelope._id) : ''}
+            grupos={grupos}
             onChange={(next) => patchAcao({ rotas: next })}
           />
         ) : null}
-      </section>
-
-      <section className="wf-step-editor__section">
-        <h4>Atribuição (→ tabulacao.atribuido)</h4>
-        <div className="wf-step-editor__grid">
-          <label className="wf-step-editor__field">
-            <span>Tipo</span>
-            {isAutomatica ? (
-              <input type="text" value={ATRIBUICAO_SISTEMA.label} readOnly disabled />
-            ) : (
-              <select
-                value={atribuicaoTipo}
-                onChange={(e) => patchAtribuicao({ tipo: e.target.value })}
-              >
-                {ATRIBUICAO_TIPOS.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            )}
-          </label>
-          {!isAutomatica && atribuicaoTipo === 'funcao' ? (
-            <label className="wf-step-editor__field">
-              <span>Atuação</span>
-              <select
-                value={cfg.atribuicao?.funcaoSlug || ''}
-                onChange={(e) => patchAtribuicao({ funcaoSlug: e.target.value, tipo: 'funcao' })}
-              >
-                <option value="">Selecione…</option>
-                {atuacaoSelectOptions.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {!isAutomatica && atribuicaoTipo === 'grupo' ? (
-            <label className="wf-step-editor__field">
-              <span>Grupo</span>
-              <select
-                value={cfg.atribuicao?.grupoSlug || ''}
-                onChange={(e) => patchAtribuicao({ grupoSlug: e.target.value })}
-              >
-                <option value="">Selecione…</option>
-                {grupos.map((g) => (
-                  <option key={g._id || g.slug} value={g.slug}>{g.nome || g.slug}</option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {!isAutomatica && atribuicaoTipo === 'colaborador' ? (
-            <label className="wf-step-editor__field">
-              <span>Colaborador</span>
-              <select
-                value={colaboradorSelectValue}
-                onChange={(e) => patchAtribuicao({ colaborador: e.target.value })}
-                disabled={colaboradoresLoading}
-              >
-                <option value="">
-                  {colaboradoresLoading ? 'Carregando colaboradores…' : 'Selecione…'}
-                </option>
-                {colaboradorSelecionado && !colaboradorNaLista ? (
-                  <option value={colaboradorSelecionado}>
-                    {colaboradorSelecionado} (fora da lista atual)
-                  </option>
-                ) : null}
-                {colaboradoresValidos.map((c) => (
-                  <option key={c.id || c.email || c.value} value={c.value}>
-                    {formatColaboradorLabel(c)}
-                    {c.afastado ? ' — afastado' : ''}
-                  </option>
-                ))}
-              </select>
-              {colaboradoresError ? (
-                <span className="grupos-atrib__hint">
-                  Não foi possível carregar a lista de colaboradores.
-                </span>
-              ) : null}
-            </label>
-          ) : null}
-        </div>
       </section>
 
       {canRemove ? (

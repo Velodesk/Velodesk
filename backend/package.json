@@ -12,6 +12,7 @@
     "start:prod": "node dist/index.js",
     "migrate:cliente-refs": "tsx scripts/migrate-cliente-refs.ts",
     "migrate:sequence-counters": "tsx scripts/migrate-sequence-counters.ts",
+    "migrate:workflow-rotas": "tsx scripts/migrate-workflow-rotas-to-nested.ts",
     "clear:demo-chamados": "tsx scripts/clear-demo-chamados.ts",
     "purge:bot-evaluation": "tsx scripts/purge-bot-evaluation-tickets.ts",
     "seed:email-transport": "tsx scripts/seed-email-transport.ts",

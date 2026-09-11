@@ -1,9 +1,17 @@
-/** workflowTicket.service v1.11.0 — reprovação grava metadados.workflowDecision + notifica responsável */
+/**
+ * workflowTicket.service v2.0.0 — bifurcação real em árvore: rotas (approve/reject)
+ * têm sub-listas de etapas próprias (rota.passos[]); a posição do ticket no
+ * workflow passa a ser um `path` (sequência de nós da raiz até a folha atual,
+ * incluindo qual rota foi tomada em cada aprovação) em vez de um índice `step`
+ * num array plano único. Isso elimina por construção o vazamento entre
+ * caminhos (uma etapa automática de um ramo nunca pode "cair" no array de
+ * outro ramo, porque cada ramo tem seu próprio array).
+ */
 import { isAutomaticaStep, resolveAutomaticaConfig } from './workflowAutomatica.util';
 import { Types } from 'mongoose';
 import type { AuthPayload } from '../middleware/auth';
-import type { IChamadoN1, IChamadoWorkflow, IRegistro } from '../models/ChamadoN1';
-import type { IWorkflowDefinicao, IWorkflowPassoEnvelope } from '../models/WorkflowDefinicao';
+import type { IChamadoN1, IChamadoWorkflow, IRegistro, IWorkflowPathSegment } from '../models/ChamadoN1';
+import type { IWorkflowDefinicao, IWorkflowPassoEnvelope, IWorkflowRota } from '../models/WorkflowDefinicao';
 import {
   appendStatusTransition,
   currentStatus,
@@ -12,6 +20,13 @@ import {
   normalizeStatusValue,
   readTabulacaoSnapshot,
 } from './chamado.mapper';
+import {
+  buildRootPath,
+  findNodeAndContainer,
+  findRota,
+  resolveCurrentPath,
+  sortPassos,
+} from './workflowPathWalk.util';
 import { getActiveWorkflows, getWorkflowById, getWorkflowBySlug, resolveWorkflowForTicket } from './workflowDefinicao.service';
 import { getActiveGrupos } from './grupoResponsabilidade.service';
 import {
@@ -49,48 +64,85 @@ export class WorkflowAdvanceError extends Error {
   }
 }
 
-function sortPassos(definicao: IWorkflowDefinicao): IWorkflowPassoEnvelope[] {
-  return [...(definicao.passos || [])].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
-}
+// ---------------------------------------------------------------------
+// Navegação na árvore de etapas (sortPassos/findRota/findNodeAndContainer/
+// buildRootPath/resolveCurrentPath vêm de workflowPathWalk.util, compartilhado
+// com workflowDto.util e permission.service)
+// ---------------------------------------------------------------------
 
-function passoAtIndex(definicao: IWorkflowDefinicao, step: number): IWorkflowPassoEnvelope | null {
-  const passos = sortPassos(definicao);
-  return passos[step] ?? null;
+/**
+ * Próximo item do MESMO container (mesmo ramo/nível) do nó atual — nunca
+ * atravessa para o array de outro ramo, porque cada ramo tem seu próprio
+ * array. `null` = fim do ramo/tronco (encerra o workflow).
+ */
+function resolveNextSiblingPath(
+  path: IWorkflowPathSegment[],
+  container: IWorkflowPassoEnvelope[],
+  index: number,
+): IWorkflowPathSegment[] | null {
+  if (index + 1 >= container.length) return null;
+  const next = container[index + 1];
+  const nextPath = path.slice(0, -1);
+  nextPath.push({ ...path[path.length - 1], passoEnvelopeId: next._id as Types.ObjectId });
+  return nextPath;
 }
 
 /**
- * Resolve a etapa de destino configurada para uma decisão (approve/reject) na
- * etapa de aprovação atual (acao.rotas[].proximoPassoId). Etapa de reprovação
- * é obrigatória na configuração do workflow (ver workflowDefinicao.service) —
- * se ainda assim vier ausente/inválida (dado legado), retorna null e quem
- * chamou decide o que fazer.
+ * Caminho pra dentro do ramo escolhido numa decisão (approve/reject): entra
+ * no primeiro item de `rota.passos`. `null` = rota sem etapas ("sem
+ * destino") — reject volta ao responsável, approve simplesmente encerra o
+ * workflow (ver `advanceWorkflowManual`).
  */
-function resolveRotaProximoPassoIndex(
-  definicao: IWorkflowDefinicao,
-  passo: IWorkflowPassoEnvelope | null,
+function resolveDecisionPath(
+  path: IWorkflowPathSegment[],
+  node: IWorkflowPassoEnvelope,
   variavel: 'approve' | 'reject',
-): number | null {
-  const rota = (passo?.passo?.acao?.rotas || []).find((r) => r.variavel === variavel);
-  if (!rota?.proximoPassoId) return null;
-  const passos = sortPassos(definicao);
-  const idx = passos.findIndex((p) => String(p._id) === String(rota.proximoPassoId));
-  return idx >= 0 ? idx : null;
+): IWorkflowPathSegment[] | null {
+  const rota = findRota(node, variavel);
+  const passos = sortPassos(rota?.passos || []);
+  if (!passos.length) return null;
+  return [...path, { passoEnvelopeId: passos[0]._id as Types.ObjectId, viaVariavel: variavel }];
 }
 
-function resolveTeamApprovalStepIndex(definicao: IWorkflowDefinicao, teamSlug: string): number | null {
+function resolveTeamApprovalPath(definicao: IWorkflowDefinicao, teamSlug: string): IWorkflowPathSegment[] | null {
   const team = normalizeFuncao(teamSlug);
-  const passos = sortPassos(definicao);
-  const idx = passos.findIndex((p) => {
+  const passos = sortPassos(definicao.passos);
+  const found = passos.find((p) => {
     if (p.passo?.acao?.tipo !== 'aprovacao') return false;
     const grupo = normalizeFuncao(p.passo?.atribuicao?.grupoSlug || '');
     const funcao = normalizeFuncao(p.passo?.atribuicao?.funcaoSlug || '');
     return grupo === team || funcao === team;
   });
-  return idx >= 0 ? idx : null;
+  return found ? [{ passoEnvelopeId: found._id as Types.ObjectId }] : null;
 }
 
-export function resolveProdutosApprovalStepIndex(definicao: IWorkflowDefinicao): number | null {
-  return resolveTeamApprovalStepIndex(definicao, 'produtos');
+/**
+ * Busca a etapa de aprovação de "Produtos" só no array raiz (nunca desce em
+ * ramos): o atalho de "pular direto pra lá" só faz sentido antes de qualquer
+ * decisão ter sido tomada em outro lugar do workflow — a etapa de Produtos
+ * deve estar no tronco, antes de qualquer bifurcação.
+ */
+export function resolveProdutosApprovalPath(definicao: IWorkflowDefinicao): IWorkflowPathSegment[] | null {
+  return resolveTeamApprovalPath(definicao, 'produtos');
+}
+
+/**
+ * Compara a posição de dois paths de 1 segmento dentro do array raiz. Retorna
+ * null quando qualquer um dos dois já saiu do tronco (path com mais de 1
+ * segmento) — nesse caso a comparação linear não faz mais sentido, porque a
+ * posição está dentro de um ramo, não no array raiz.
+ */
+function compareRootPositions(
+  definicao: IWorkflowDefinicao,
+  pathA: IWorkflowPathSegment[],
+  pathB: IWorkflowPathSegment[],
+): number | null {
+  if (pathA.length !== 1 || pathB.length !== 1) return null;
+  const passos = sortPassos(definicao.passos);
+  const idxA = passos.findIndex((p) => String(p._id) === String(pathA[0].passoEnvelopeId));
+  const idxB = passos.findIndex((p) => String(p._id) === String(pathB[0].passoEnvelopeId));
+  if (idxA < 0 || idxB < 0) return null;
+  return idxA - idxB;
 }
 
 function ensureWorkflowState(chamado: IChamadoN1): IChamadoWorkflow {
@@ -99,14 +151,20 @@ function ensureWorkflowState(chamado: IChamadoN1): IChamadoWorkflow {
       active: false,
       workflowStatus: null,
       workflowId: null,
-      step: 0,
-      passoId: null,
+      path: [],
       startedAt: null,
       completedAt: null,
       pendingDecision: null,
     };
   }
   return chamado.workflow;
+}
+
+/** Grava o novo path e espelha step/passoId (deprecados, só observabilidade). */
+function setWorkflowPath(wf: IChamadoWorkflow, path: IWorkflowPathSegment[]): void {
+  wf.path = path;
+  wf.step = path.length - 1;
+  wf.passoId = path.length ? path[path.length - 1].passoEnvelopeId : null;
 }
 
 function applyAtribuidoForPasso(chamado: IChamadoN1, passo: IWorkflowPassoEnvelope): void {
@@ -121,10 +179,10 @@ function applyAtribuidoForPasso(chamado: IChamadoN1, passo: IWorkflowPassoEnvelo
 }
 
 /**
- * Reprovação sempre devolve o ticket ao responsável, independentemente de como a
- * etapa de destino da rota "reject" está configurada (atribuicao pode apontar para
- * função/grupo/colaborador arbitrário). Isso garante que atribuido=responsavel e,
- * por consequência, que o ticket some da fila do aprovador (que não é mais o atribuído).
+ * Reprovação sem destino sempre devolve o ticket ao responsável, independente
+ * de como a atribuição da etapa-pai está configurada. Isso garante que
+ * atribuido=responsavel e, por consequência, que o ticket some da fila do
+ * aprovador (que não é mais o atribuído).
  */
 function forceAtribuidoToResponsavel(chamado: IChamadoN1): void {
   const tab = readTabulacaoSnapshot(chamado.tabulacao?.[0]);
@@ -133,14 +191,35 @@ function forceAtribuidoToResponsavel(chamado: IChamadoN1): void {
   chamado.tabulacao = [{ ...tab, atribuido: responsavel }];
 }
 
-function markTicketEmAndamentoAfterReject(chamado: IChamadoN1, autor: string): void {
+const VALID_ROTA_STATUS = ['pendente', 'em-andamento', 'resolvido'] as const;
+
+/**
+ * Aplica rota.statusTicket (campo configurável no editor de Workflow) ao chamado,
+ * com um fallback opcional para quando a rota não define status (usado hoje só
+ * no caminho "reprovação sem destino", pra preservar o comportamento padrão).
+ */
+function applyRotaStatusTicket(
+  chamado: IChamadoN1,
+  rota: IWorkflowRota | null,
+  autor: string,
+  options: {
+    fallback?: string;
+    anotacaoInterna?: string;
+    metadados?: Record<string, unknown>;
+  } = {},
+): void {
+  const rotaStatus = rota?.statusTicket && (VALID_ROTA_STATUS as readonly string[]).includes(rota.statusTicket)
+    ? rota.statusTicket
+    : null;
+  const desired = rotaStatus || options.fallback;
+  if (!desired) return;
   const status = normalizeStatusValue(currentStatus(chamado));
   if ((MERGE_TERMINAL_STATUSES as readonly string[]).includes(status)) return;
-  if (status === 'em-andamento') return;
-  appendStatusTransition(chamado, 'em-andamento', {
+  if (status === desired) return;
+  appendStatusTransition(chamado, desired, {
     autor,
-    anotacaoInterna: 'Workflow reprovado — aguardando retorno manual ao cliente pelo responsável.',
-    metadados: { workflowReject: true },
+    anotacaoInterna: options.anotacaoInterna || `Workflow: status do ticket atualizado para "${desired}".`,
+    metadados: options.metadados || {},
   });
 }
 
@@ -171,7 +250,7 @@ function appendWorkflowRegistro(
 
 /**
  * Transição única para resolvido no instante em que o workflow conclui.
- * Não reexecuta em leituras/sync — só no bloco de conclusão de advanceToStep.
+ * Não reexecuta em leituras/sync — só no bloco de conclusão de advanceToPath.
  * Respostas posteriores do cliente reabrem via resolveInboundClientReplyStatus.
  */
 function resolveTicketOnWorkflowFinished(chamado: IChamadoN1, autor: string): void {
@@ -192,45 +271,43 @@ function resolveTicketOnWorkflowFinished(chamado: IChamadoN1, autor: string): vo
 async function runSistemaIfNeeded(
   chamado: IChamadoN1,
   definicao: IWorkflowDefinicao,
-  step: number,
+  path: IWorkflowPathSegment[],
 ): Promise<{ autoAdvanced: boolean }> {
-  const passo = passoAtIndex(definicao, step);
-  if (!passo || !isAutomaticaStep(passo.passo)) {
+  const resolved = findNodeAndContainer(definicao, path);
+  if (!resolved || !isAutomaticaStep(resolved.node.passo)) {
     return { autoAdvanced: false };
   }
 
-  const result = await executeSistemaStep(chamado, definicao, step, passo);
+  const result = await executeSistemaStep(chamado, definicao, path.length - 1, resolved.node);
   if (result.autoAdvance && result.ok) {
-    return advanceToStep(chamado, definicao, step + 1, 'Sistema', { trigger: 'sistema-auto' });
+    const nextPath = resolveNextSiblingPath(path, resolved.container, resolved.index);
+    return advanceToPath(chamado, definicao, nextPath, 'Sistema', { trigger: 'sistema-auto' });
   }
   return { autoAdvanced: false };
 }
 
-async function advanceToStep(
+async function advanceToPath(
   chamado: IChamadoN1,
   definicao: IWorkflowDefinicao,
-  nextStep: number,
+  newPath: IWorkflowPathSegment[] | null,
   autor: string,
   options: {
     trigger?: string;
     skipped?: boolean;
     decision?: string;
-    /** Reprovação: não dispara resposta automática ao cliente na devolutiva. */
+    /** Reprovação sem destino: não dispara resposta automática ao cliente na devolutiva. */
     skipSistema?: boolean;
     /**
-     * Reprovação sem etapa de destino configurada: encerra a passagem pelo workflow,
-     * mas não marca o ticket como "resolvido" — quem chamou aplica o status correto
-     * (markTicketEmAndamentoAfterReject devolve ao responsável em "em-andamento").
+     * Encerramento sem destino configurado: não marca o ticket como
+     * "resolvido" — quem chamou aplica o status correto (applyRotaStatusTicket
+     * devolve ao responsável em "em-andamento" por padrão).
      */
     skipResolve?: boolean;
   } = {},
 ): Promise<{ autoAdvanced: boolean }> {
   const wf = ensureWorkflowState(chamado);
-  const passos = sortPassos(definicao);
 
-  if (nextStep >= passos.length) {
-    wf.step = passos.length > 0 ? passos.length - 1 : 0;
-    wf.passoId = passos[wf.step]?._id as Types.ObjectId || null;
+  if (!newPath) {
     wf.completedAt = new Date();
     wf.active = false;
     wf.workflowStatus = 'finished';
@@ -249,30 +326,34 @@ async function advanceToStep(
     return { autoAdvanced: true };
   }
 
-  const passo = passos[nextStep];
-  wf.step = nextStep;
-  wf.passoId = (passo._id as Types.ObjectId) || null;
+  const resolved = findNodeAndContainer(definicao, newPath);
+  if (!resolved) {
+    // path inválido (dado legado/corrompido) — trata como fim de workflow por segurança.
+    return advanceToPath(chamado, definicao, null, autor, options);
+  }
+  const { node } = resolved;
+
+  setWorkflowPath(wf, newPath);
   wf.pendingDecision = null;
-  applyAtribuidoForPasso(chamado, passo);
+  applyAtribuidoForPasso(chamado, node);
 
   appendWorkflowRegistro(chamado, {
     autor,
-    anotacaoInterna: `Workflow avançou para etapa "${passo.passo?.nome || nextStep}".`,
+    anotacaoInterna: `Workflow avançou para etapa "${node.passo?.nome || ''}".`,
     metadados: {
       workflow: buildLateralWorkflowDto(chamado, definicao),
       workflowAdvance: {
-        step: nextStep,
-        passoId: passo._id ? String(passo._id) : null,
+        path: newPath.map((s) => ({ passoEnvelopeId: String(s.passoEnvelopeId), viaVariavel: s.viaVariavel || null })),
         trigger: options.trigger,
         skipped: options.skipped ?? false,
         decision: options.decision,
       },
     },
-    alteracoes: [{ workflowStep: nextStep, passoNome: passo.passo?.nome }],
+    alteracoes: [{ workflowStep: newPath.length - 1, passoNome: node.passo?.nome }],
   });
 
-  if (!options.skipSistema && isAutomaticaStep(passo.passo)) {
-    const nested = await runSistemaIfNeeded(chamado, definicao, nextStep);
+  if (!options.skipSistema && isAutomaticaStep(node.passo)) {
+    const nested = await runSistemaIfNeeded(chamado, definicao, newPath);
     return { autoAdvanced: nested.autoAdvanced };
   }
 
@@ -288,16 +369,15 @@ export async function activateWorkflowForChamado(
   const wf = ensureWorkflowState(chamado);
   if (wf.active && wf.workflowId) return false;
 
-  const passos = sortPassos(definicao);
-  const initialStep = 0;
-  const passo = passos[initialStep];
-  if (!passo) return false;
+  const initialPath = buildRootPath(definicao);
+  if (!initialPath) return false;
+  const resolved = findNodeAndContainer(definicao, initialPath);
+  if (!resolved) return false;
 
   wf.active = true;
   wf.workflowStatus = 'active';
   wf.workflowId = definicao._id as Types.ObjectId;
-  wf.step = initialStep;
-  wf.passoId = (passo._id as Types.ObjectId) || null;
+  setWorkflowPath(wf, initialPath);
   wf.startedAt = new Date();
   wf.completedAt = null;
   wf.pendingDecision = null;
@@ -306,7 +386,7 @@ export async function activateWorkflowForChamado(
     wf.requisicao = options.requisicao;
   }
 
-  applyAtribuidoForPasso(chamado, passo);
+  applyAtribuidoForPasso(chamado, resolved.node);
 
   appendWorkflowRegistro(chamado, {
     autor,
@@ -326,7 +406,7 @@ export async function activateWorkflowForChamado(
     alteracoes: [{ workflowActivated: definicao.slug }],
   });
 
-  await runSistemaIfNeeded(chamado, definicao, initialStep);
+  await runSistemaIfNeeded(chamado, definicao, initialPath);
   return true;
 }
 
@@ -348,14 +428,16 @@ export async function tryActivateWorkflowOnTabulation(
 
 function shouldAutoForwardAfterRequisicaoStart(
   definicao: IWorkflowDefinicao,
-  stepIndex: number,
+  path: IWorkflowPathSegment[],
 ): boolean {
-  const passos = sortPassos(definicao);
-  if (stepIndex + 1 >= passos.length) return false;
-  const passo = passoAtIndex(definicao, stepIndex);
-  const p = passo?.passo;
+  const resolved = findNodeAndContainer(definicao, path);
+  if (!resolved) return false;
+  const { node, container, index } = resolved;
+  if (index + 1 >= container.length) return false;
+  const p = node.passo;
   return (
-    stepIndex === 0
+    path.length === 1
+    && index === 0
     && p?.acao?.tipo === 'manual'
     && String(p?.atribuicao?.grupoSlug || '').toLowerCase() === 'n1'
   );
@@ -423,14 +505,19 @@ export async function startWorkflowForChamado(
     (requisicaoValores && Object.keys(requisicaoValores).length)
     || (solicitacaoProdutos && Object.keys(solicitacaoProdutos).length),
   );
-  const currentStep = chamado.workflow?.step ?? 0;
+  const currentPath = chamado.workflow?.path?.length ? chamado.workflow.path : buildRootPath(definicao);
   if (
     hasRequisicaoPayload
-    && shouldAutoForwardAfterRequisicaoStart(definicao, currentStep)
+    && currentPath
+    && shouldAutoForwardAfterRequisicaoStart(definicao, currentPath)
   ) {
-    await advanceToStep(chamado, definicao, currentStep + 1, autor, {
-      trigger: 'requisicao-start-forward',
-    });
+    const resolved = findNodeAndContainer(definicao, currentPath);
+    if (resolved) {
+      const nextPath = resolveNextSiblingPath(currentPath, resolved.container, resolved.index);
+      await advanceToPath(chamado, definicao, nextPath, autor, {
+        trigger: 'requisicao-start-forward',
+      });
+    }
   }
 
   return chamado;
@@ -445,8 +532,10 @@ export async function canUserActOnStep(
   const wf = chamado.workflow;
   if (!wf?.active) return false;
 
-  const passo = passoAtIndex(definicao, wf.step ?? 0);
-  if (!passo) return false;
+  const path = resolveCurrentPath(chamado, definicao);
+  const resolved = findNodeAndContainer(definicao, path);
+  if (!resolved) return false;
+  const passo = resolved.node;
 
   const automatica = resolveAutomaticaConfig(passo.passo);
 
@@ -478,37 +567,55 @@ export async function advanceWorkflowManual(
   const allowed = await canUserActOnStep(chamado, definicao, authUser);
   if (!allowed) throw new WorkflowAdvanceError('Sem permissão para avançar esta etapa', 403);
 
-  const passo = passoAtIndex(definicao, wf.step ?? 0);
-  const acaoTipo = passo?.passo?.acao?.tipo;
+  const currentPath = resolveCurrentPath(chamado, definicao);
+  const resolved = findNodeAndContainer(definicao, currentPath);
+  if (!resolved || !currentPath) throw new WorkflowAdvanceError('Etapa atual do workflow não encontrada', 404);
+  const { node: passo, container, index } = resolved;
+  const acaoTipo = passo.passo?.acao?.tipo;
 
   if (acaoTipo === 'aprovacao' && !wf.pendingDecision) {
     throw new WorkflowAdvanceError('Selecione Aprovado ou Reprovado antes de avançar', 400);
   }
 
   const autor = authUser?.name || authUser?.email || 'Agente';
-  const currentStep = wf.step ?? 0;
+
+  let approveRota: IWorkflowRota | null = null;
 
   if (acaoTipo === 'aprovacao' && wf.pendingDecision === 'reject') {
-    // Sem destino configurado: reprovação encerra a passagem pelo workflow aqui mesmo
-    // (equivalente a "Sequencial/fim" apontando pro fim) — o retorno ao responsável
-    // é garantido logo abaixo por markTicketEmAndamentoAfterReject, não depende de etapa.
-    const targetIdx = resolveRotaProximoPassoIndex(definicao, passo, 'reject')
-      ?? sortPassos(definicao).length;
+    const rejectRota = findRota(passo, 'reject');
+    const branchPath = resolveDecisionPath(currentPath, passo, 'reject');
     appendWorkflowRegistro(chamado, {
       autor,
       alteracoes: [{ workflowDecision: 'reject' }],
       metadados: { workflowDecision: 'reject' },
     });
-    await advanceToStep(chamado, definicao, targetIdx, autor, {
-      trigger: 'decision-reject',
-      decision: 'reject',
-      skipSistema: true,
-      skipResolve: true,
-    });
+    if (branchPath) {
+      // Ramo com etapas configuradas: reprovação se comporta como um avanço
+      // normal — respeita a atribuição própria do primeiro passo do ramo, roda
+      // etapas automáticas do ramo, não força volta ao responsável.
+      await advanceToPath(chamado, definicao, branchPath, autor, {
+        trigger: 'decision-reject',
+        decision: 'reject',
+      });
+      applyRotaStatusTicket(chamado, rejectRota, autor, {});
+    } else {
+      // Ramo sem etapas ("sem destino"): encerra a passagem pelo workflow aqui
+      // mesmo e devolve o ticket ao responsável para devolutiva manual.
+      await advanceToPath(chamado, definicao, null, autor, {
+        trigger: 'decision-reject',
+        decision: 'reject',
+        skipSistema: true,
+        skipResolve: true,
+      });
+      forceAtribuidoToResponsavel(chamado);
+      applyRotaStatusTicket(chamado, rejectRota, autor, {
+        fallback: 'em-andamento',
+        anotacaoInterna: 'Workflow reprovado — aguardando retorno manual ao cliente pelo responsável.',
+        metadados: { workflowReject: true },
+      });
+      await notifyWorkflowRejectToResponsavel(chamado, definicao);
+    }
     wf.pendingDecision = null;
-    forceAtribuidoToResponsavel(chamado);
-    markTicketEmAndamentoAfterReject(chamado, autor);
-    await notifyWorkflowRejectToResponsavel(chamado, definicao);
     return chamado;
   }
 
@@ -518,6 +625,7 @@ export async function advanceWorkflowManual(
       alteracoes: [{ workflowDecision: 'approve' }],
       metadados: { workflowDecision: 'approve' },
     });
+    approveRota = findRota(passo, 'approve');
     wf.pendingDecision = null;
   }
 
@@ -531,7 +639,19 @@ export async function advanceWorkflowManual(
     );
   }
 
-  await advanceToStep(chamado, definicao, currentStep + 1, autor, { trigger: 'manual-advance' });
+  // approve com rota sem etapas ("sem destino") passa a significar explicitamente
+  // "aprovar encerra o workflow, sem mais nada" — não existe mais fallback implícito
+  // pra "próxima posição do array", porque essa posição agora é privada de cada ramo.
+  const targetPath = approveRota
+    ? resolveDecisionPath(currentPath, passo, 'approve')
+    : resolveNextSiblingPath(currentPath, container, index);
+  await advanceToPath(chamado, definicao, targetPath, autor, {
+    trigger: approveRota ? 'decision-approve' : 'manual-advance',
+    decision: approveRota ? 'approve' : undefined,
+  });
+  if (approveRota) {
+    applyRotaStatusTicket(chamado, approveRota, autor, {});
+  }
   return chamado;
 }
 
@@ -569,28 +689,34 @@ async function advanceWorkflowProdutosQueueDecision(
   const definicao = await getWorkflowById(String(wf.workflowId));
   if (!definicao) throw new WorkflowAdvanceError('Definição de workflow não encontrada', 404);
 
-  const produtosStepIdx = resolveProdutosApprovalStepIndex(definicao);
-  if (produtosStepIdx == null) {
+  const produtosPath = resolveProdutosApprovalPath(definicao);
+  if (!produtosPath) {
     setWorkflowPendingDecision(chamado, decision);
     return advanceWorkflowManual(chamado, authUser);
   }
 
   const autor = authUser.name || authUser.email || 'Agente';
-  const currentStep = wf.step ?? 0;
+  const currentPath = resolveCurrentPath(chamado, definicao);
+  const cmp = currentPath ? compareRootPositions(definicao, currentPath, produtosPath) : null;
 
-  if (currentStep > produtosStepIdx) {
+  if (cmp === null || cmp > 0) {
+    // cmp === null: já saiu do tronco (bifurcou em outro lugar do workflow) — o atalho de
+    // "pular direto pra Produtos" não se aplica mais; segue o fluxo manual normal.
     setWorkflowPendingDecision(chamado, decision);
     return advanceWorkflowManual(chamado, authUser);
   }
 
-  if (currentStep < produtosStepIdx) {
-    await advanceToStep(chamado, definicao, produtosStepIdx, autor, {
+  if (cmp < 0) {
+    await advanceToPath(chamado, definicao, produtosPath, autor, {
       trigger: 'produtos-queue-skip',
       skipped: true,
     });
   }
 
   wf.pendingDecision = decision;
+
+  const produtosResolved = findNodeAndContainer(definicao, produtosPath);
+  const produtosPasso = produtosResolved?.node ?? null;
 
   if (decision === 'reject') {
     const ticketJaEncerrado = (MERGE_TERMINAL_STATUSES as readonly string[]).includes(currentStatus(chamado));
@@ -615,7 +741,7 @@ async function advanceWorkflowProdutosQueueDecision(
     if (ticketJaEncerrado) {
       // Ticket já encerrado pelo agente responsável — reprovar aqui apenas conclui o
       // workflow (não precisa de "Retorno ao cliente" nem de nova comunicação).
-      await advanceToStep(chamado, definicao, sortPassos(definicao).length, autor, {
+      await advanceToPath(chamado, definicao, null, autor, {
         trigger: 'produtos-queue-reject-encerrado',
         decision: 'reject',
       });
@@ -624,18 +750,29 @@ async function advanceWorkflowProdutosQueueDecision(
       return chamado;
     }
 
-    const produtosPasso = passoAtIndex(definicao, produtosStepIdx);
-    const targetIdx = resolveRotaProximoPassoIndex(definicao, produtosPasso, 'reject')
-      ?? sortPassos(definicao).length;
-    await advanceToStep(chamado, definicao, targetIdx, autor, {
-      trigger: 'decision-reject',
-      decision: 'reject',
-      skipSistema: true,
-      skipResolve: true,
-    });
-    forceAtribuidoToResponsavel(chamado);
-    markTicketEmAndamentoAfterReject(chamado, autor);
-    await notifyWorkflowRejectToResponsavel(chamado, definicao);
+    const produtosRejectRota = findRota(produtosPasso, 'reject');
+    const branchPath = produtosPasso ? resolveDecisionPath(produtosPath, produtosPasso, 'reject') : null;
+    if (branchPath) {
+      await advanceToPath(chamado, definicao, branchPath, autor, {
+        trigger: 'decision-reject',
+        decision: 'reject',
+      });
+      applyRotaStatusTicket(chamado, produtosRejectRota, autor, {});
+    } else {
+      await advanceToPath(chamado, definicao, null, autor, {
+        trigger: 'decision-reject',
+        decision: 'reject',
+        skipSistema: true,
+        skipResolve: true,
+      });
+      forceAtribuidoToResponsavel(chamado);
+      applyRotaStatusTicket(chamado, produtosRejectRota, autor, {
+        fallback: 'em-andamento',
+        anotacaoInterna: 'Workflow reprovado — aguardando retorno manual ao cliente pelo responsável.',
+        metadados: { workflowReject: true },
+      });
+      await notifyWorkflowRejectToResponsavel(chamado, definicao);
+    }
     return chamado;
   }
 
@@ -645,15 +782,17 @@ async function advanceWorkflowProdutosQueueDecision(
     metadados: { workflowDecision: 'approve' },
   });
   wf.pendingDecision = null;
-  // "Feito" em produtos avança pra próxima etapa da sequência (igual ao aprovar do fluxo
-  // normal em advanceWorkflowManual) — se houver uma etapa "Resposta ao cliente" configurada
-  // logo depois da aprovação, ela roda normalmente (IA ou e-mail padrão, conforme o editor de
-  // Workflows). Sem etapa configurada, advanceToStep já finaliza sozinho sem mensagem nenhuma.
-  // Nunca mais gerar o retorno ao cliente por texto fixo aqui.
-  await advanceToStep(chamado, definicao, produtosStepIdx + 1, autor, {
+  // "Feito" em produtos avança pra dentro do ramo "Aprovar" da etapa de Produtos (igual ao
+  // aprovar do fluxo normal em advanceWorkflowManual) — se houver etapas configuradas ali
+  // (ex.: "Resposta ao cliente"), rodam normalmente (IA ou e-mail padrão). Sem etapas
+  // configuradas, encerra o workflow sem mensagem nenhuma.
+  const produtosApproveRota = findRota(produtosPasso, 'approve');
+  const approveBranchPath = produtosPasso ? resolveDecisionPath(produtosPath, produtosPasso, 'approve') : null;
+  await advanceToPath(chamado, definicao, approveBranchPath, autor, {
     trigger: 'produtos-queue-feito',
     decision: 'approve',
   });
+  applyRotaStatusTicket(chamado, produtosApproveRota, autor, {});
   return chamado;
 }
 
@@ -693,14 +832,15 @@ export async function finishWorkflowAfterPublicReply(
   const definicao = await getWorkflowById(String(wf.workflowId));
   if (!definicao) return false;
 
-  const passos = sortPassos(definicao);
-  const lastStepIndex = passos.length - 1;
-  if (lastStepIndex < 0 || (wf.step ?? 0) !== lastStepIndex) return false;
+  const path = resolveCurrentPath(chamado, definicao);
+  const resolved = findNodeAndContainer(definicao, path);
+  if (!resolved) return false;
+  const { node, container, index } = resolved;
+  if (index !== container.length - 1) return false;
 
-  const lastPasso = passos[lastStepIndex];
-  if (!isDevolutivaPasso(lastPasso.passo?.nome || '')) return false;
+  if (!isDevolutivaPasso(node.passo?.nome || '')) return false;
 
-  await advanceToStep(chamado, definicao, passos.length, autor, {
+  await advanceToPath(chamado, definicao, null, autor, {
     trigger: 'devolutiva-publica-enviada',
   });
   return true;
@@ -728,6 +868,7 @@ export async function cancelWorkflowForChamado(
   wf.active = false;
   wf.workflowStatus = null;
   wf.workflowId = null;
+  wf.path = [];
   wf.step = 0;
   wf.passoId = null;
   wf.startedAt = null;

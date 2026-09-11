@@ -1,6 +1,7 @@
 /**
- * WorkflowConfigStepsTimeline v2.1.2 — tags na mesma linha do nome da etapa
- * VERSION: v2.1.2 | DATE: 2026-07-14
+ * WorkflowConfigStepsTimeline v2.2.0 — reutilizável recursivamente (uma instância
+ * por ramo, dentro de cada card Aprovar/Reprovar, via WorkflowRoutesEditor)
+ * VERSION: v2.2.0 | DATE: 2026-09-10
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import WorkflowStepEditor from './WorkflowStepEditor';
@@ -110,7 +111,6 @@ export default function WorkflowConfigStepsTimeline({
           >
             <WorkflowStepEditor
               envelope={step.envelope}
-              passos={passos || []}
               grupos={grupos}
               onChange={(env) => handleUpdateEnvelope(step.envelope, env)}
               onRemove={() => handleRemove(step.envelope)}

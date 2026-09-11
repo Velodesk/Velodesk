@@ -9266,6 +9266,16 @@ body.desk-v2-mode #aiChatbotModal {
     color: #a16207;
 }
 
+.wf-config-step__badge--success {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.wf-config-step__badge--danger {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
 .wf-config-steps__add {
     display: inline-flex;
     align-items: center;
@@ -9366,6 +9376,83 @@ body.desk-v2-mode #aiChatbotModal {
     color: #7c3aed;
     font-weight: 600;
     cursor: pointer;
+}
+
+.wf-routes-editor__branch-cards {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+@media (max-width: 640px) {
+    .wf-routes-editor__branch-cards {
+        grid-template-columns: 1fr;
+    }
+}
+
+.wf-routes-editor__branch-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px;
+    background: #f9fafb;
+}
+
+.wf-routes-editor__branch-card--approve {
+    border-left: 3px solid #16a34a;
+}
+
+.wf-routes-editor__branch-card--reject {
+    border-left: 3px solid #dc2626;
+}
+
+.wf-routes-editor__branch-title {
+    margin: 0 0 10px;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+}
+
+.wf-routes-editor__branch-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.wf-routes-editor__branch-field:last-child {
+    margin-bottom: 0;
+}
+
+.wf-routes-editor__branch-field select,
+.wf-routes-editor__branch-field input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font: inherit;
+}
+
+.wf-routes-editor__extra {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px dashed #e5e7eb;
+}
+
+.wf-routes-editor__extra-title {
+    margin: 0 0 8px;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #9ca3af;
+}
+
+.wf-step-editor__hint {
+    margin-top: 4px;
+    font-size: 0.78rem;
+    color: #9ca3af;
+    line-height: 1.4;
 }
 
 .wf-step-editor {
@@ -13059,54 +13146,30 @@ label[for$="-classificacao-motivo"] {
     margin-top: 0;
 }
 
-#especiais-reclame-aqui .especiais-initial-message-prompt, #especiais-procon .especiais-initial-message-prompt, #especiais-consumidor-gov .especiais-initial-message-prompt, #especiais-bacen .especiais-initial-message-prompt {
+#especiais-reclame-aqui .especiais-initial-message-prompt__btn--send, #especiais-procon .especiais-initial-message-prompt__btn--send, #especiais-consumidor-gov .especiais-initial-message-prompt__btn--send, #especiais-bacen .especiais-initial-message-prompt__btn--send {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.5rem 0.6rem;
-    background: #F3F4F8;
-    border: 1px solid #E4E6EA;
-    border-radius: 8px;
-}
-
-#especiais-reclame-aqui .especiais-initial-message-prompt__label, #especiais-procon .especiais-initial-message-prompt__label, #especiais-consumidor-gov .especiais-initial-message-prompt__label, #especiais-bacen .especiais-initial-message-prompt__label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #000058;
-}
-
-#especiais-reclame-aqui .especiais-initial-message-prompt__options, #especiais-procon .especiais-initial-message-prompt__options, #especiais-consumidor-gov .especiais-initial-message-prompt__options, #especiais-bacen .especiais-initial-message-prompt__options {
-    display: flex;
+    justify-content: center;
     gap: 0.4rem;
-}
-
-#especiais-reclame-aqui .especiais-initial-message-prompt__btn, #especiais-procon .especiais-initial-message-prompt__btn, #especiais-consumidor-gov .especiais-initial-message-prompt__btn, #especiais-bacen .especiais-initial-message-prompt__btn {
-    padding: 0.3rem 0.85rem;
-    border-radius: 999px;
-    font-size: 0.78rem;
+    width: 100%;
+    padding: 0.5rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
     font-weight: 700;
     cursor: pointer;
-    border: 1.5px solid #cbd5e1;
-    background: #fff;
-    color: #475569;
+    border: 1.5px solid #15A237;
+    background: #E8F5E9;
+    color: #15A237;
 }
 
-#especiais-reclame-aqui .especiais-initial-message-prompt__btn:disabled, #especiais-procon .especiais-initial-message-prompt__btn:disabled, #especiais-consumidor-gov .especiais-initial-message-prompt__btn:disabled, #especiais-bacen .especiais-initial-message-prompt__btn:disabled {
+#especiais-reclame-aqui .especiais-initial-message-prompt__btn--send:hover:not(:disabled), #especiais-procon .especiais-initial-message-prompt__btn--send:hover:not(:disabled), #especiais-consumidor-gov .especiais-initial-message-prompt__btn--send:hover:not(:disabled), #especiais-bacen .especiais-initial-message-prompt__btn--send:hover:not(:disabled) {
+    background: #15A237;
+    color: #fff;
+}
+
+#especiais-reclame-aqui .especiais-initial-message-prompt__btn--send:disabled, #especiais-procon .especiais-initial-message-prompt__btn--send:disabled, #especiais-consumidor-gov .especiais-initial-message-prompt__btn--send:disabled, #especiais-bacen .especiais-initial-message-prompt__btn--send:disabled {
     opacity: 0.55;
     cursor: not-allowed;
-}
-
-#especiais-reclame-aqui .especiais-initial-message-prompt__btn--yes:hover:not(:disabled), #especiais-procon .especiais-initial-message-prompt__btn--yes:hover:not(:disabled), #especiais-consumidor-gov .especiais-initial-message-prompt__btn--yes:hover:not(:disabled), #especiais-bacen .especiais-initial-message-prompt__btn--yes:hover:not(:disabled) {
-    border-color: #15A237;
-    color: #15A237;
-    background: #E8F5E9;
-}
-
-#especiais-reclame-aqui .especiais-initial-message-prompt__btn--no:hover:not(:disabled), #especiais-procon .especiais-initial-message-prompt__btn--no:hover:not(:disabled), #especiais-consumidor-gov .especiais-initial-message-prompt__btn--no:hover:not(:disabled), #especiais-bacen .especiais-initial-message-prompt__btn--no:hover:not(:disabled) {
-    border-color: #D92D20;
-    color: #D92D20;
-    background: #FEF2F2;
 }
 
 #especiais-reclame-aqui .rp-footer-btn , #especiais-procon .rp-footer-btn, #especiais-consumidor-gov .rp-footer-btn, #especiais-bacen .rp-footer-btn {

@@ -5,6 +5,7 @@
 import type { IChamadoN1 } from '../../models/ChamadoN1';
 import { resolveFormalCaseSource } from '../ticketIaAdapter.service';
 import { detectCriticalKeywords } from './criticalKeywords.service';
+import { isPriorityEmail } from '../mailRules.service';
 import type { CasoEspecialOrgao, CasoEspecialSignalResult } from './casosEspeciais.types';
 
 const REGULATORY_KEYWORD_LABELS = new Set([
@@ -110,6 +111,14 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
     origemProvavel = origemProvavel || institutional.orgao;
   }
 
+  // Remetente cadastrado na lista de prioritários (Config > E-mail > Prioritários):
+  // tratado como sinal institucional confirmado, mesmo sem bater com os domínios fixos
+  // acima — a curadoria manual da lista já atesta a origem oficial do remetente.
+  const prioritySender = isPriorityEmail(emailFrom);
+  if (prioritySender) {
+    signals.push(`remetente_prioritario:${emailFrom}`);
+  }
+
   const tab = chamado.tabulacao?.[chamado.tabulacao.length - 1] ?? chamado.tabulacao?.[0];
   const canalOrgao = orgaoFromCanalLabel(String(tab?.tipoChamado ?? ''));
   const canalFromMeta = orgaoFromCanalLabel(String((tab as { canal?: string } | undefined)?.canal ?? ''));
@@ -132,8 +141,9 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
 
   const triggered = signals.length > 0;
   const fastPathReal = Boolean(
-    formalSource
-    && (institutional.matched || signals.some((s) => s.startsWith('canal_formal:'))),
+    prioritySender
+    || (formalSource
+      && (institutional.matched || signals.some((s) => s.startsWith('canal_formal:')))),
   );
 
   return {
@@ -141,6 +151,6 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
     signals: [...new Set(signals)],
     origemProvavel,
     fastPathReal,
-    institutionalSender: institutional.matched,
+    institutionalSender: institutional.matched || prioritySender,
   };
 }

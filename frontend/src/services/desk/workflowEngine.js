@@ -1,6 +1,7 @@
 /**
- * workflowEngine v1.11.1 — readFields lê tabulacao[] (paridade com backend)
- * VERSION: v1.11.1 | DATE: 2026-08-11
+ * workflowEngine v1.12.0 — evaluateCriterios agrupa por fonte+campo: E entre
+ * campos, OU dentro do mesmo campo (paridade com backend)
+ * VERSION: v1.12.0 | DATE: 2026-09-10
  */
 import { getRuntimeGrupos, getRuntimeWorkflows } from './workflowRuntimeStore';
 
@@ -107,27 +108,48 @@ function readIntegracaoValue(fields, campo) {
   return map[key] ?? fields[campo] ?? '';
 }
 
+function evaluateOneCriterio(criterio, fields, grupos) {
+  if (criterio.fonte === 'grupo_responsabilidade') {
+    const slug = criterio.campo || criterio.valor;
+    const grupo = grupos.find((g) => g.slug === slug);
+    if (!grupo) return false;
+    const atribuido = normalizeText(fields.atribuido);
+    const responsavel = normalizeText(fields.responsavel);
+    return (grupo.membros || []).some((m) => {
+      const val = normalizeText(m.valor);
+      return val && (atribuido.includes(val) || responsavel.includes(val) || atribuido === val);
+    });
+  }
+  if (criterio.fonte === 'integracao') {
+    const actual = readIntegracaoValue(fields, criterio.campo);
+    return evaluateOperator(actual, criterio.operador, criterio.valor);
+  }
+  const actual = readTabulationValue(fields, criterio.campo);
+  return evaluateOperator(actual, criterio.operador, criterio.valor);
+}
+
+function criterioGroupKey(criterio) {
+  return `${criterio.fonte || 'tabulacao'}:${criterio.campo || ''}`;
+}
+
+/**
+ * Critérios de campos diferentes entram com E; múltiplos critérios do mesmo
+ * campo (mesma fonte+campo) entram com OU — espelha workflowMatcher.service.ts
+ * do backend (evaluateCriterios), pra este motor local não divergir.
+ */
 export function evaluateCriterios(criterios = [], fields, grupos = getRuntimeGrupos()) {
   if (!criterios.length) return true;
-  return criterios.every((criterio) => {
-    if (criterio.fonte === 'grupo_responsabilidade') {
-      const slug = criterio.campo || criterio.valor;
-      const grupo = grupos.find((g) => g.slug === slug);
-      if (!grupo) return false;
-      const atribuido = normalizeText(fields.atribuido);
-      const responsavel = normalizeText(fields.responsavel);
-      return (grupo.membros || []).some((m) => {
-        const val = normalizeText(m.valor);
-        return val && (atribuido.includes(val) || responsavel.includes(val) || atribuido === val);
-      });
-    }
-    if (criterio.fonte === 'integracao') {
-      const actual = readIntegracaoValue(fields, criterio.campo);
-      return evaluateOperator(actual, criterio.operador, criterio.valor);
-    }
-    const actual = readTabulationValue(fields, criterio.campo);
-    return evaluateOperator(actual, criterio.operador, criterio.valor);
+
+  const groups = new Map();
+  criterios.forEach((criterio) => {
+    const key = criterioGroupKey(criterio);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(criterio);
   });
+
+  return [...groups.values()].every(
+    (group) => group.some((criterio) => evaluateOneCriterio(criterio, fields, grupos)),
+  );
 }
 
 /** Gatilho sem critérios nunca ativa o workflow */

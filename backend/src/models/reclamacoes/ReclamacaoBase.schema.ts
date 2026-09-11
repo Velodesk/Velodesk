@@ -107,6 +107,10 @@ export interface IReclamacao extends Document {
   tipo?: string;
   motivo?: string;
   statusCanal: string;
+  // Denormalizado do ChamadoN1 vinculado — a listagem/patch desta coleção não faz join com
+  // chamados_n1, então sem isto o front não sabe se o ticket está terminal (resolvido/fechado)
+  // depois de recarregar a lista, e "Finalizar" parece reverter ao reabrir o módulo.
+  ticketStatus?: string;
   dataReclamacao?: Date;
   prazoLegal?: Date;
   slaPct?: number;
@@ -224,6 +228,7 @@ export const ReclamacaoBaseSchema = new Schema<IReclamacao>(
     tipo: { type: String, default: '' },
     motivo: { type: String, default: '' },
     statusCanal: { type: String, default: 'nao-respondida' },
+    ticketStatus: { type: String, default: '' },
     dataReclamacao: { type: Date, default: undefined },
     prazoLegal: { type: Date, default: undefined },
     slaPct: { type: Number, default: undefined },

@@ -1,4 +1,4 @@
-/** workflowMatcher v1.6.1 — contexto de tabulação a partir de IChamadoN1 (canal via registro) */
+/** workflowMatcher v1.7.0 — evaluateCriterios agrupa por fonte+campo: E entre campos, OU dentro do mesmo campo */
 import { GRUPO_TO_FUNCAO_MAP } from '../config/funcaoPermissaoDefaults';
 import type { IGrupoResponsabilidade } from '../models/GrupoResponsabilidade';
 import type { IWorkflowCriterio } from '../models/WorkflowDefinicao';
@@ -87,6 +87,33 @@ function matchesGrupo(
   });
 }
 
+function evaluateOneCriterio(
+  criterio: IWorkflowCriterio,
+  fields: Record<string, string>,
+  grupos: IGrupoResponsabilidade[],
+): boolean {
+  if (criterio.fonte === 'grupo_responsabilidade') {
+    return matchesGrupo(fields, criterio.campo || criterio.valor, grupos);
+  }
+  if (criterio.fonte === 'integracao') {
+    const actual = readIntegracaoField(fields, criterio.campo);
+    return evaluateOperator(actual, criterio.operador, criterio.valor);
+  }
+  const actual = readTabulationField(fields, criterio.campo);
+  return evaluateOperator(actual, criterio.operador, criterio.valor);
+}
+
+function criterioGroupKey(criterio: IWorkflowCriterio): string {
+  return `${criterio.fonte || 'tabulacao'}:${criterio.campo || ''}`;
+}
+
+/**
+ * Critérios de campos diferentes entram com E; múltiplos critérios do MESMO
+ * campo (mesma fonte+campo, ex.: dois critérios "produto") entram com OU —
+ * mesmo padrão do módulo de e-mails de saída (lá expresso como um único
+ * critério com `valores: []`; aqui, como vários critérios agrupados por
+ * fonte+campo na hora de avaliar, sem mudar o formato salvo).
+ */
 export function evaluateCriterios(
   criterios: IWorkflowCriterio[],
   fields: Record<string, string>,
@@ -94,17 +121,16 @@ export function evaluateCriterios(
 ): boolean {
   if (!criterios?.length) return true;
 
-  return criterios.every((criterio) => {
-    if (criterio.fonte === 'grupo_responsabilidade') {
-      return matchesGrupo(fields, criterio.campo || criterio.valor, grupos);
-    }
-    if (criterio.fonte === 'integracao') {
-      const actual = readIntegracaoField(fields, criterio.campo);
-      return evaluateOperator(actual, criterio.operador, criterio.valor);
-    }
-    const actual = readTabulationField(fields, criterio.campo);
-    return evaluateOperator(actual, criterio.operador, criterio.valor);
+  const groups = new Map<string, IWorkflowCriterio[]>();
+  criterios.forEach((criterio) => {
+    const key = criterioGroupKey(criterio);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(criterio);
   });
+
+  return [...groups.values()].every(
+    (group) => group.some((criterio) => evaluateOneCriterio(criterio, fields, grupos)),
+  );
 }
 
 /** Gatilho sem critérios nunca ativa o workflow */

@@ -17,11 +17,15 @@ function main(): void {
   const app = generateInboundTicketSecret();
   const telefone = generateInboundTicketSecret();
   const agenteIa = generateInboundTicketSecret();
+  const chat = generateInboundTicketSecret();
+  const qaTeste = generateInboundTicketSecret();
 
   console.log('# Cole no Cloud Run / FONTE DA VERDADE/.env-velodesk (não commitar valores reais)\n');
   console.log(`INBOUND_TICKET_APP_SECRET=${app}`);
   console.log(`INBOUND_TICKET_TELEFONE_SECRET=${telefone}`);
   console.log(`INBOUND_TICKET_AGENTE_IA_SECRET=${agenteIa}`);
+  console.log(`INBOUND_TICKET_CHAT_SECRET=${chat}`);
+  console.log(`INBOUND_TICKET_QA_TESTE_SECRET=${qaTeste}`);
 }
 
 if (require.main === module) {

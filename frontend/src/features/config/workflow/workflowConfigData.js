@@ -1,6 +1,8 @@
 /**
- * workflowConfigData v2.9.0 — gatilho inclui canal; workflow novo nasce ativo
- * VERSION: v2.9.0 | DATE: 2026-08-03
+ * workflowConfigData v3.0.0 — bifurcação real: rota.passos[] aninhado substitui
+ * proximoPassoId; buildPassoOptions/buildIncomingRotaBadges removidos (não fazem
+ * mais sentido — a árvore é a própria representação visual da bifurcação)
+ * VERSION: v3.0.0 | DATE: 2026-09-10
  */
 import {
   normalizeRequisicaoConfig,
@@ -226,6 +228,42 @@ export const ROTA_VARIAVEIS = [
   { value: 'concluir', label: 'Concluir' },
 ];
 
+/**
+ * Variáveis que sempre existem numa etapa de aprovação, mas não aparecem na
+ * UI de configuração (sem card, sem linha na tabela). "Pedir informação" tem
+ * função fixa e não avança etapa — não precisa ser configurável.
+ */
+export const HIDDEN_ROTA_VARIAVEIS = ['request_info'];
+
+const HIDDEN_ROTA_DEFAULTS = {
+  request_info: 'Pedir informação',
+};
+
+/**
+ * Garante que a lista de rotas de uma etapa de aprovação sempre tenha uma rota
+ * "approve" e uma "reject" (os dois cards obrigatórios do editor) e as
+ * variáveis ocultas (request_info), preservando valores já existentes.
+ * Bifurcação real: cada rota tem sua própria sub-lista `passos[]` (em vez de
+ * um ponteiro `proximoPassoId` pra outro lugar de uma lista compartilhada).
+ */
+export function normalizeRotas(rotas = []) {
+  const list = Array.isArray(rotas) ? rotas : [];
+  const result = [...list];
+  if (!result.some((r) => r.variavel === 'approve')) {
+    result.unshift({ variavel: 'approve', rotulo: 'Aprovar', statusTicket: null, passos: [] });
+  }
+  if (!result.some((r) => r.variavel === 'reject')) {
+    const approveIdx = result.findIndex((r) => r.variavel === 'approve');
+    result.splice(approveIdx + 1, 0, { variavel: 'reject', rotulo: 'Reprovar', statusTicket: null, passos: [] });
+  }
+  HIDDEN_ROTA_VARIAVEIS.forEach((variavel) => {
+    if (!result.some((r) => r.variavel === variavel)) {
+      result.push({ variavel, rotulo: HIDDEN_ROTA_DEFAULTS[variavel] || variavel, statusTicket: null, passos: [] });
+    }
+  });
+  return result.map((rota) => ({ ...rota, passos: rota.passos || [] }));
+}
+
 export function formatTriggerPath(gatilho) {
   const criterios = gatilho?.criterios || [];
   if (!criterios.length) return '—';
@@ -390,7 +428,8 @@ export function triggerPathToCriterios(trigger) {
 }
 
 export function passosToDisplaySteps(passos = []) {
-  return normalizePassosOrdem(passos).map((envelope, index) => {
+  const ordered = normalizePassosOrdem(passos);
+  return ordered.map((envelope, index) => {
       const cfg = envelope.passo || {};
       const badges = [];
       if (cfg.atribuicao?.grupoSlug) badges.push({ label: `Grupo: ${cfg.atribuicao.grupoSlug}`, tone: 'neutral' });

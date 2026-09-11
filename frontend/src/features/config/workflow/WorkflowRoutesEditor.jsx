@@ -1,9 +1,22 @@
 /**
- * WorkflowRoutesEditor v1.0.0 — rotas de decisão por variável
- * VERSION: v1.0.0 | DATE: 2026-07-14
+ * WorkflowRoutesEditor v4.0.0 — bifurcação real: cada card (Aprovar/Reprovar)
+ * embute sua própria mini-timeline (WorkflowConfigStepsTimeline) apontando pra
+ * rota.passos — sem select de "Próximo passo" apontando pra outro lugar de uma
+ * lista compartilhada. Ciclo de import com WorkflowConfigStepsTimeline (que
+ * importa WorkflowStepEditor, que importa este arquivo) é seguro em ESM/Vite
+ * porque o componente só é referenciado dentro de JSX, nunca no nível de módulo
+ * — padrão comum de componente de árvore recursivo em React.
+ * VERSION: v4.0.0 | DATE: 2026-09-10
  */
-import React from 'react';
-import { ROTA_VARIAVEIS } from './workflowConfigData';
+import React, { useEffect, useMemo } from 'react';
+import {
+  ROTA_VARIAVEIS,
+  HIDDEN_ROTA_VARIAVEIS,
+  normalizeRotas,
+  createEmptyPassoEnvelope,
+  normalizePassosOrdem,
+} from './workflowConfigData';
+import WorkflowConfigStepsTimeline from './WorkflowConfigStepsTimeline';
 
 const STATUS_OPTIONS = [
   { value: '', label: '— manter —' },
@@ -12,116 +25,170 @@ const STATUS_OPTIONS = [
   { value: 'resolvido', label: 'Resolvido' },
 ];
 
-function emptyRota() {
-  return { variavel: 'approve', rotulo: 'Aprovar', proximoPassoId: null, statusTicket: '' };
+const MANDATORY_VARIAVEIS = ['approve', 'reject'];
+const NOT_CONFIGURABLE_VARIAVEIS = [...MANDATORY_VARIAVEIS, ...HIDDEN_ROTA_VARIAVEIS];
+const CONFIGURABLE_EXTRA_VARIAVEIS = ROTA_VARIAVEIS.filter((v) => !NOT_CONFIGURABLE_VARIAVEIS.includes(v.value));
+
+function nextAvailableExtraRota(list) {
+  const used = new Set(list.map((r) => r.variavel));
+  const option = CONFIGURABLE_EXTRA_VARIAVEIS.find((v) => !used.has(v.value));
+  if (!option) return null;
+  return { variavel: option.value, rotulo: option.label, statusTicket: null, passos: [] };
 }
 
-export default function WorkflowRoutesEditor({ rotas = [], passos = [], currentPassoId = '', onChange }) {
-  const list = rotas.length ? rotas : [];
+function BranchCard({ title, rota, emptyStateLabel, grupos, onChange, onPassosChange }) {
+  return (
+    <div className={`wf-routes-editor__branch-card wf-routes-editor__branch-card--${rota.variavel}`}>
+      <h5 className="wf-routes-editor__branch-title">{title}</h5>
+      <label className="wf-routes-editor__branch-field">
+        <span>Rótulo do botão</span>
+        <input
+          type="text"
+          value={rota.rotulo || ''}
+          onChange={(e) => onChange({ rotulo: e.target.value })}
+          placeholder={title}
+        />
+      </label>
+      <label className="wf-routes-editor__branch-field">
+        <span>Status do ticket</span>
+        <select
+          value={rota.statusTicket || ''}
+          onChange={(e) => onChange({ statusTicket: e.target.value || null })}
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s.value || 'keep'} value={s.value}>{s.label}</option>
+          ))}
+        </select>
+      </label>
 
-  const passoOptions = (passos || [])
-    .slice()
-    .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
-    .map((p, index) => ({
-      id: p._id ? String(p._id) : '',
-      label: p.passo?.nome || `Etapa ${index + 1}`,
-    }))
-    // Nunca oferecer a própria etapa como destino — geraria um loop que nem salva.
-    .filter((p) => p.id && p.id !== String(currentPassoId || ''));
+      <div className="wf-routes-editor__branch-timeline">
+        {rota.passos.length === 0 ? (
+          <p className="wf-routes-editor__branch-empty">{emptyStateLabel}</p>
+        ) : null}
+        <WorkflowConfigStepsTimeline
+          passos={rota.passos}
+          grupos={grupos}
+          onPassosChange={onPassosChange}
+          onAddStep={() => onPassosChange(normalizePassosOrdem([
+            ...rota.passos,
+            createEmptyPassoEnvelope(rota.passos.length),
+          ]))}
+        />
+      </div>
+    </div>
+  );
+}
 
-  const updateRow = (index, patch) => {
-    onChange?.(list.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+export default function WorkflowRoutesEditor({ rotas = [], grupos = [], onChange }) {
+  const list = useMemo(() => normalizeRotas(rotas), [rotas]);
+
+  // Dados legados sem approve/reject: persiste a normalização assim que detectada.
+  useEffect(() => {
+    if (list.length !== (rotas || []).length) {
+      onChange?.(list);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list]);
+
+  const updateByVariavel = (variavel, patch) => {
+    onChange?.(list.map((row) => (row.variavel === variavel ? { ...row, ...patch } : row)));
   };
 
-  const removeRow = (index) => {
-    onChange?.(list.filter((_, i) => i !== index));
+  const removeExtraRow = (variavel) => {
+    onChange?.(list.filter((row) => row.variavel !== variavel));
   };
 
-  const addRow = () => {
-    onChange?.([...list, emptyRota()]);
+  const addExtraRow = () => {
+    const next = nextAvailableExtraRota(list);
+    if (!next) return;
+    onChange?.([...list, next]);
   };
+
+  // list já passou por normalizeRotas, então approve/reject sempre existem aqui.
+  const approveRota = list.find((r) => r.variavel === 'approve');
+  const rejectRota = list.find((r) => r.variavel === 'reject');
+  // "Pedir informação" sempre existe em list (normalizeRotas garante), mas não aparece
+  // aqui: função fixa, sem card e sem linha configurável.
+  const extraRotas = list.filter((r) => !NOT_CONFIGURABLE_VARIAVEIS.includes(r.variavel));
+  const canAddExtra = extraRotas.length < CONFIGURABLE_EXTRA_VARIAVEIS.length;
 
   return (
     <div className="wf-routes-editor">
-      {list.length === 0 ? (
-        <p className="wf-routes-editor__empty">Defina ao menos uma rota para etapas de aprovação.</p>
-      ) : (
-        <table className="config-table wf-routes-editor__table">
-          <thead>
-            <tr>
-              <th>Variável</th>
-              <th>Rótulo</th>
-              <th>Próximo passo</th>
-              <th>Status ticket</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((row, index) => (
-              <tr key={`rota-${index}`}>
-                <td>
-                  <select
-                    value={row.variavel || 'approve'}
-                    onChange={(e) => updateRow(index, { variavel: e.target.value })}
-                  >
-                    {ROTA_VARIAVEIS.map((v) => (
-                      <option key={v.value} value={v.value}>{v.label}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <input
-                    type="text"
-                    value={row.rotulo || ''}
-                    onChange={(e) => updateRow(index, { rotulo: e.target.value })}
-                    placeholder="Rótulo do botão"
-                  />
-                </td>
-                <td>
-                  <select
-                    value={row.proximoPassoId ? String(row.proximoPassoId) : ''}
-                    onChange={(e) => updateRow(index, { proximoPassoId: e.target.value || null })}
-                  >
-                    <option value="">
-                      {row.variavel === 'reject'
-                        ? 'Sem destino — encerra aqui e volta ao responsável'
-                        : 'Próxima etapa da lista (ou fim, se for a última)'}
-                    </option>
-                    {passoOptions.map((p) => (
-                      <option key={p.id} value={p.id}>{p.label}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <select
-                    value={row.statusTicket || ''}
-                    onChange={(e) => updateRow(index, { statusTicket: e.target.value || null })}
-                  >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s.value || 'keep'} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="config-action-btn config-action-btn--delete"
-                    onClick={() => removeRow(index)}
-                    aria-label="Remover rota"
-                  >
-                    <i className="ti ti-trash" aria-hidden="true" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <div className="wf-routes-editor__branch-cards">
+        <BranchCard
+          title="Aprovar"
+          rota={approveRota}
+          grupos={grupos}
+          emptyStateLabel="Sem etapas — aprovar encerra o workflow."
+          onChange={(patch) => updateByVariavel('approve', patch)}
+          onPassosChange={(next) => updateByVariavel('approve', { passos: next })}
+        />
+        <BranchCard
+          title="Reprovar"
+          rota={rejectRota}
+          grupos={grupos}
+          emptyStateLabel="Sem etapas — encerra aqui e volta ao responsável."
+          onChange={(patch) => updateByVariavel('reject', patch)}
+          onPassosChange={(next) => updateByVariavel('reject', { passos: next })}
+        />
+      </div>
 
-      <button type="button" className="wf-routes-editor__add" onClick={addRow}>
-        <i className="ti ti-plus" aria-hidden="true" />
-        Adicionar rota
-      </button>
+      {(extraRotas.length > 0 || canAddExtra) && (
+        <div className="wf-routes-editor__extra">
+          <h5 className="wf-routes-editor__extra-title">Outras respostas (opcional)</h5>
+          {extraRotas.length > 0 && (
+            <table className="config-table wf-routes-editor__table">
+              <thead>
+                <tr>
+                  <th>Variável</th>
+                  <th>Rótulo</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {extraRotas.map((row) => (
+                  <tr key={row.variavel}>
+                    <td>
+                      <select
+                        value={row.variavel || ''}
+                        onChange={(e) => updateByVariavel(row.variavel, { variavel: e.target.value })}
+                      >
+                        {CONFIGURABLE_EXTRA_VARIAVEIS.map((v) => (
+                          <option key={v.value} value={v.value}>{v.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        value={row.rotulo || ''}
+                        onChange={(e) => updateByVariavel(row.variavel, { rotulo: e.target.value })}
+                        placeholder="Rótulo do botão"
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="config-action-btn config-action-btn--delete"
+                        onClick={() => removeExtraRow(row.variavel)}
+                        aria-label="Remover rota"
+                      >
+                        <i className="ti ti-trash" aria-hidden="true" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {canAddExtra && (
+            <button type="button" className="wf-routes-editor__add" onClick={addExtraRow}>
+              <i className="ti ti-plus" aria-hidden="true" />
+              Adicionar resposta
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

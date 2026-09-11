@@ -1,4 +1,4 @@
-/** workflowConfigSeed v1.7.0 — reprovação de "Aprovação financeiro" com destino explícito */
+/** workflowConfigSeed v2.0.0 — seed reembolso-7dias em bifurcação real (rotas com passos aninhados); repairReprovacaoSemDestino removida (superada pela migração migrate-workflow-rotas-to-nested) */
 import { Types } from 'mongoose';
 import { getGrupoResponsabilidadeModel } from '../models/GrupoResponsabilidade';
 import { getWorkflowDefinicaoModel, IWorkflowDefinicao } from '../models/WorkflowDefinicao';
@@ -29,36 +29,6 @@ async function repairWorkflowPassos(doc: IWorkflowDefinicao): Promise<boolean> {
   doc.passoInicialId = filtered[0]?._id ?? null;
   await doc.save();
   return true;
-}
-
-/**
- * Instalações que já tinham "reembolso-7dias" seedado antes da rota "Reprovar"
- * passar a exigir destino explícito ficariam com o botão Reprovar quebrado.
- * Aponta para "Retorno ao cliente" (mesma devolutiva usada historicamente),
- * preservando o comportamento anterior — só que agora de forma explícita e
- * sem nunca disparar uma etapa automática.
- */
-async function repairReprovacaoSemDestino(doc: IWorkflowDefinicao): Promise<void> {
-  const passos = doc.passos || [];
-  const retorno = passos.find((p) => String(p.passo?.nome || '').trim().toLowerCase() === 'retorno ao cliente');
-  if (!retorno?._id) return;
-
-  let changed = false;
-  passos.forEach((envelope) => {
-    const acao = envelope.passo?.acao;
-    if (acao?.tipo !== 'aprovacao') return;
-    const rejectRota = (acao.rotas || []).find((r) => r.variavel === 'reject');
-    if (rejectRota && !rejectRota.proximoPassoId) {
-      rejectRota.proximoPassoId = retorno._id as Types.ObjectId;
-      changed = true;
-    }
-  });
-
-  if (changed) {
-    doc.markModified('passos');
-    await doc.save();
-    console.log(`Seed: rota "Reprovar" de "${doc.slug}" apontada para "Retorno ao cliente"`);
-  }
 }
 
 /**
@@ -111,8 +81,6 @@ export async function seedWorkflowConfig(): Promise<void> {
   if (!wfExists) {
     const passoElegibilidadeId = new Types.ObjectId();
     const passoAprovacaoId = new Types.ObjectId();
-    const passoEstornoId = new Types.ObjectId();
-    const passoRetornoId = new Types.ObjectId();
 
     await Workflow.create({
       slug: 'reembolso-7dias',
@@ -150,36 +118,59 @@ export async function seedWorkflowConfig(): Promise<void> {
             atribuicao: { tipo: 'funcao', funcaoSlug: 'financeiro', grupoSlug: '', colaborador: '' },
             acao: {
               tipo: 'aprovacao',
-              // Reprovação nunca cai numa etapa automática: vai direto para a
-              // devolutiva manual, sem passar pelo estorno nem disparar sistema.
+              // Bifurcação real: cada rota tem sua própria sub-sequência de etapas — não
+              // compartilham array, então reprovação nunca corre risco de cair no
+              // "Estorno processado" (etapa exclusiva do caminho de aprovação).
               rotas: [
-                { variavel: 'approve', rotulo: 'Aprovar', proximoPassoId: null, statusTicket: 'em-andamento' },
-                { variavel: 'reject', rotulo: 'Reprovar', proximoPassoId: passoRetornoId, statusTicket: 'pendente' },
-                { variavel: 'request_info', rotulo: 'Pedir informação', proximoPassoId: null, statusTicket: 'pendente' },
+                {
+                  variavel: 'approve',
+                  rotulo: 'Aprovar',
+                  statusTicket: 'em-andamento',
+                  passos: [
+                    {
+                      ordem: 0,
+                      passo: {
+                        nome: 'Estorno processado',
+                        descricao: 'Financeiro processa estorno.',
+                        slaHoras: 8,
+                        atribuicao: { tipo: 'funcao', funcaoSlug: 'financeiro', grupoSlug: '', colaborador: '' },
+                        acao: { tipo: 'manual', rotas: [] },
+                      },
+                    },
+                    {
+                      ordem: 1,
+                      passo: {
+                        nome: 'Retorno ao cliente',
+                        descricao: 'N1 comunica resultado ao cliente.',
+                        slaHoras: 2,
+                        atribuicao: { tipo: 'funcao', funcaoSlug: 'atendimento', grupoSlug: '', colaborador: '' },
+                        acao: { tipo: 'manual', rotas: [] },
+                      },
+                    },
+                  ],
+                },
+                {
+                  variavel: 'reject',
+                  rotulo: 'Reprovar',
+                  statusTicket: 'pendente',
+                  // Reprovação nunca cai numa etapa automática nem no estorno: vai direto
+                  // para a devolutiva manual, num nó próprio deste ramo.
+                  passos: [
+                    {
+                      ordem: 0,
+                      passo: {
+                        nome: 'Retorno ao cliente',
+                        descricao: 'N1 comunica resultado ao cliente.',
+                        slaHoras: 2,
+                        atribuicao: { tipo: 'funcao', funcaoSlug: 'atendimento', grupoSlug: '', colaborador: '' },
+                        acao: { tipo: 'manual', rotas: [] },
+                      },
+                    },
+                  ],
+                },
+                { variavel: 'request_info', rotulo: 'Pedir informação', statusTicket: 'pendente', passos: [] },
               ],
             },
-          },
-        },
-        {
-          _id: passoEstornoId,
-          ordem: 2,
-          passo: {
-            nome: 'Estorno processado',
-            descricao: 'Financeiro processa estorno.',
-            slaHoras: 8,
-            atribuicao: { tipo: 'funcao', funcaoSlug: 'financeiro', grupoSlug: '', colaborador: '' },
-            acao: { tipo: 'manual', rotas: [] },
-          },
-        },
-        {
-          _id: passoRetornoId,
-          ordem: 3,
-          passo: {
-            nome: 'Retorno ao cliente',
-            descricao: 'N1 comunica resultado ao cliente.',
-            slaHoras: 2,
-            atribuicao: { tipo: 'funcao', funcaoSlug: 'atendimento', grupoSlug: '', colaborador: '' },
-            acao: { tipo: 'manual', rotas: [] },
           },
         },
       ],
@@ -198,7 +189,6 @@ export async function seedWorkflowConfig(): Promise<void> {
     const doc = await Workflow.findOne({ slug });
     if (doc) {
       await repairWorkflowPassos(doc);
-      await repairReprovacaoSemDestino(doc);
     }
   }
 

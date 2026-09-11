@@ -23,6 +23,7 @@ export default function RaTicketMain({
   waChatOpen = false,
   waComposeText = '',
   onWaComposeTextChange,
+  onOpenWaChat,
   onTicketUpdated,
   onModeracaoSaved,
   composeMode,
@@ -72,14 +73,14 @@ export default function RaTicketMain({
       return;
     }
     try {
-      const updated = await sendRaWaMessage(raItem.ticketId, text);
+      const updated = await sendRaWaMessage(raItem.ticketId, text, ticket);
       onWaComposeTextChange?.('');
       onTicketUpdated?.(updated);
       showNotification('Mensagem enviada.', 'success');
     } catch {
       showNotification('Não foi possível enviar a mensagem.', 'error');
     }
-  }, [waComposeText, raItem?.ticketId, onWaComposeTextChange, onTicketUpdated, showNotification]);
+  }, [waComposeText, raItem?.ticketId, ticket, onWaComposeTextChange, onTicketUpdated, showNotification]);
 
   const handleSelectHistoryTicket = useCallback((ticketId) => {
     if (typeof window.openTicket === 'function') {
@@ -135,6 +136,7 @@ export default function RaTicketMain({
       waComposeText={waComposeText}
       onWaComposeTextChange={onWaComposeTextChange}
       onWaSend={handleWaSend}
+      onOpenWaChat={onOpenWaChat}
       onTicketUpdated={onTicketUpdated}
       onSelectHistoryTicket={handleSelectHistoryTicket}
       onFundirTickets={handleFundirTickets}

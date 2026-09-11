@@ -1,7 +1,6 @@
 /**
- * ChamadoN1 v1.15.0 — IRegistro/ITabulacao (schema+tipos) movidos pra models/shared/registro.schema.ts,
- * reaproveitados pelas coleções próprias de casos especiais (Fase 3 da separação de persistência);
- * reexportados aqui por compatibilidade — nenhum import existente muda.
+ * ChamadoN1 v1.16.0 — IChamadoWorkflow.path (bifurcação real em árvore) substitui step/passoId
+ * como fonte de verdade; ambos mantidos como espelho depreciado.
  */
 import mongoose, { Schema, Document, Types } from 'mongoose';
 import type { IChamadoWorkflowRequisicao } from '../config/workflowRequisicaoDefaults';
@@ -34,12 +33,27 @@ export interface IChamadoFusao {
 export const WORKFLOW_STATUS_VALUES = ['active', 'finished', 'cancel'] as const;
 export type WorkflowRuntimeStatus = (typeof WORKFLOW_STATUS_VALUES)[number];
 
+/**
+ * Um segmento do caminho percorrido na árvore de etapas do workflow.
+ * `viaVariavel` guarda qual rota (approve/reject) foi escolhida na etapa-pai
+ * (de aprovação) pra descer até este segmento — ausente só no primeiro
+ * segmento (raiz do workflow, `definicao.passos`).
+ */
+export interface IWorkflowPathSegment {
+  passoEnvelopeId: Types.ObjectId;
+  viaVariavel?: string | null;
+}
+
 export interface IChamadoWorkflow {
   active: boolean;
   workflowStatus?: WorkflowRuntimeStatus | null;
   workflowId: Types.ObjectId | null;
-  step: number;
-  passoId: Types.ObjectId | null;
+  /** Fonte de verdade da posição no workflow (substitui step/passoId). */
+  path: IWorkflowPathSegment[];
+  /** @deprecated espelho de path.length-1, mantido só por compatibilidade/observabilidade. */
+  step?: number;
+  /** @deprecated espelho do último segmento de path, mantido só por compatibilidade/observabilidade. */
+  passoId?: Types.ObjectId | null;
   startedAt: Date | null;
   completedAt: Date | null;
   pendingDecision?: 'approve' | 'reject' | null;
@@ -143,11 +157,20 @@ const ChamadoWorkflowRequisicaoSchema = new Schema(
   { _id: false },
 );
 
+const WorkflowPathSegmentSchema = new Schema<IWorkflowPathSegment>(
+  {
+    passoEnvelopeId: { type: Schema.Types.ObjectId, required: true },
+    viaVariavel: { type: String, default: null },
+  },
+  { _id: false },
+);
+
 const ChamadoWorkflowSchema = new Schema<IChamadoWorkflow>(
   {
     active: { type: Boolean, default: false },
     workflowStatus: { type: String, enum: WORKFLOW_STATUS_VALUES, default: null },
     workflowId: { type: Schema.Types.ObjectId, default: null },
+    path: { type: [WorkflowPathSegmentSchema], default: [] },
     step: { type: Number, default: 0 },
     passoId: { type: Schema.Types.ObjectId, default: null },
     startedAt: { type: Date, default: null },

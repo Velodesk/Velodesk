@@ -143,6 +143,10 @@ export interface IReclamacaoReclameAqui extends Document {
   statusRaLabel?: string;
   statusHugme?: string;
   statusCanal: string;
+  // Denormalizado do ChamadoN1 vinculado — a listagem/patch desta coleção não faz join com
+  // chamados_n1, então sem isto o front não sabe se o ticket está terminal (resolvido/fechado)
+  // depois de recarregar a lista, e "Finalizar" parece reverter ao reabrir o módulo.
+  ticketStatus?: string;
 
   // Captura literal de TODAS as colunas da planilha (nome da coluna = chave) — inclui as sem
   // exibição própria no ticket ainda (moderação, avaliações, réplicas etc.), pra uso futuro.
@@ -307,6 +311,7 @@ export const ReclamacaoReclameAquiSchema = new Schema<IReclamacaoReclameAqui>(
     statusRaLabel: { type: String, default: '' },
     statusHugme: { type: String, default: '' },
     statusCanal: { type: String, default: 'nao-respondida' },
+    ticketStatus: { type: String, default: '' },
 
     dadosPlanilha: { type: Schema.Types.Mixed, default: {} },
 
