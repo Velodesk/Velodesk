@@ -91,6 +91,8 @@ export default function EmailAssinaturaSection() {
   const [layout, setLayout] = useState({ headerHtml: '', farewellHtml: '', signatureHtml: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pasteMode, setPasteMode] = useState(false);
+  const [pastedHtml, setPastedHtml] = useState('');
 
   const format = useComposeFormat({
     richEditorRef: editorRef,
@@ -157,19 +159,29 @@ export default function EmailAssinaturaSection() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const currentHtml = editorRef.current?.getHtml?.() || html;
-      const payload = persistableHtml(currentHtml, imagens);
-      if (/<img\b/i.test(currentHtml) && payload.imagens.length === 0) {
-        showNotification('A imagem da assinatura não pôde ser gravada. Insira de novo e salve.', 'warning');
-        return;
+      let saved;
+      if (pasteMode) {
+        // HTML colado (ex.: assinatura pronta exportada de um editor externo, com <img>
+        // em base64) vai direto pro backend sem o filtro client-side de imagens — o
+        // backend sobe cada imagem embutida pro armazenamento e reescreve as tags.
+        saved = await emailOutboundApi.saveAssinatura({ html: pastedHtml });
+      } else {
+        const currentHtml = editorRef.current?.getHtml?.() || html;
+        const payload = persistableHtml(currentHtml, imagens);
+        if (/<img\b/i.test(currentHtml) && payload.imagens.length === 0) {
+          showNotification('A imagem da assinatura não pôde ser gravada. Insira de novo e salve.', 'warning');
+          return;
+        }
+        saved = await emailOutboundApi.saveAssinatura(payload);
       }
-      const saved = await emailOutboundApi.saveAssinatura(payload);
       showNotification(
         saved?.imagens?.length
           ? `Assinatura salva com ${saved.imagens.length} imagem(ns).`
           : 'Assinatura salva.',
         'success',
       );
+      setPasteMode(false);
+      setPastedHtml('');
       await load();
     } catch (err) {
       showNotification(err?.response?.data?.message || 'Não foi possível salvar a assinatura.', 'error');
@@ -194,21 +206,43 @@ export default function EmailAssinaturaSection() {
     <div className="config-email-assinatura">
       <div className="config-email-assinatura__editor">
         <p className="config-placeholder-msg">A assinatura entra no final de todos os e-mails ao cliente. Imagens vão para o armazenamento da operação.</p>
-        <ComposeFormatToolbar
-          applyAction={format.applyAction}
-          activeFormats={format.activeFormats}
-          embedded
-          onImageSelected={handleImageSelected}
-        />
-        <ComposeRichEditor
-          id="emailAssinaturaEditor"
-          ref={editorRef}
-          value={html}
-          placeholder="Digite a assinatura…"
-          onChange={(next) => setHtml(next.html)}
-          onKeyDown={format.handleKeyDown}
-          onFormatStateChange={format.handleFormatStateChange}
-        />
+        <button
+          type="button"
+          className="btn btn-link config-email-assinatura__paste-toggle"
+          onClick={() => setPasteMode((prev) => !prev)}
+        >
+          {pasteMode ? '‹ Voltar pro editor visual' : 'Colar HTML pronto (assinatura exportada com links/ícones) ›'}
+        </button>
+        {pasteMode ? (
+          <textarea
+            className="config-email-assinatura__paste-area"
+            rows={16}
+            placeholder="Cole aqui o HTML completo da assinatura (com <img> em base64 e links)…"
+            value={pastedHtml}
+            onChange={(e) => setPastedHtml(e.target.value)}
+          />
+        ) : (
+          <>
+            <ComposeFormatToolbar
+              applyAction={format.applyAction}
+              activeFormats={format.activeFormats}
+              embedded
+              onImageSelected={handleImageSelected}
+              beginLink={format.beginLink}
+              applyLink={format.applyLink}
+              removeLink={format.removeLink}
+            />
+            <ComposeRichEditor
+              id="emailAssinaturaEditor"
+              ref={editorRef}
+              value={html}
+              placeholder="Digite a assinatura…"
+              onChange={(next) => setHtml(next.html)}
+              onKeyDown={format.handleKeyDown}
+              onFormatStateChange={format.handleFormatStateChange}
+            />
+          </>
+        )}
         <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>
           {saving ? 'Salvando…' : 'Salvar assinatura'}
         </button>

@@ -141,7 +141,17 @@ export async function loadAssinaturaForEmail(): Promise<{
         buffer: Buffer.alloc(0),
         objectKey,
       });
-      return `<img src="cid:${cid}" alt="assinatura" style="max-width:100%;height:auto;border:0;outline:none;" />`;
+      // Preserva width/height/style originais (ícones em tamanho fixo, ex. 20x20) — só
+      // cai no genérico quando a tag não trazia nenhum dimensionamento próprio.
+      const altMatch = tag.match(/\balt\s*=\s*["']([^"']*)["']/i);
+      const widthMatch = tag.match(/\bwidth\s*=\s*["']?(\d+)["']?/i);
+      const heightMatch = tag.match(/\bheight\s*=\s*["']?(\d+)["']?/i);
+      const styleMatch = tag.match(/\bstyle\s*=\s*["']([^"']*)["']/i);
+      const alt = altMatch?.[1] || 'assinatura';
+      const width = widthMatch ? ` width="${widthMatch[1]}"` : '';
+      const height = heightMatch ? ` height="${heightMatch[1]}"` : '';
+      const style = styleMatch?.[1] || 'max-width:100%;height:auto;border:0;outline:none;';
+      return `<img src="cid:${cid}" alt="${alt}"${width}${height} style="${style}" />`;
     });
 
     const resolved: GmailInlineImage[] = [];

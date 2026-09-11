@@ -3,7 +3,7 @@ import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { google } from 'googleapis';
 import { env } from '../config/env';
-import { getEmailTransportSnapshot, isEmailTransportReady } from './emailTransport.service';
+import { getEmailTransportSnapshot } from './emailTransport.service';
 
 const GCS_SCOPE = 'https://www.googleapis.com/auth/devstorage.read_write';
 const OBJECT_KEY_RE = /^[a-zA-Z0-9._-]+$/;
@@ -20,8 +20,15 @@ export function getEmailSignaturePrefix(): string {
   return normalizePrefix(env.gcpEmailSignaturePrefix || 'mail_signature_img');
 }
 
+/**
+ * Só depende do bucket estar configurado: o acesso ao GCS vem da identidade do runtime
+ * (ADC), não da conta do transporte de e-mail — exigir isEmailTransportReady() aqui
+ * bloqueava o upload da assinatura sempre que o Gmail ainda não tivesse subido, mesmo
+ * com o armazenamento perfeitamente acessível. Se nem ADC nem o fallback JWT existirem,
+ * createStorageClient() falha e o upload/leitura já retorna false/null de forma segura.
+ */
 export function isEmailSignatureStorageConfigured(): boolean {
-  return Boolean(getEmailResourcesBucket()) && isEmailTransportReady();
+  return Boolean(getEmailResourcesBucket());
 }
 
 export function isValidSignatureObjectKey(key: string): boolean {
@@ -32,7 +39,27 @@ export function buildSignatureGcsPath(objectKey: string): string {
   return `${getEmailSignaturePrefix()}/${String(objectKey || '').trim()}`;
 }
 
+/**
+ * Autenticação no GCS pela identidade do próprio runtime (Application Default Credentials):
+ * no Cloud Run isso resolve pra service account anexada ao serviço
+ * (278491073220-compute@developer.gserviceaccount.com), que é quem tem permissão de escrita
+ * no bucket de recursos. A conta do transporte de e-mail (email-service@...) é só de
+ * leitura/envio de e-mail via Gmail API — usá-la aqui resultava em "upload falhou" por
+ * falta de permissão no bucket. Mantém fallback pro JWT antigo se ADC não estiver
+ * disponível (ex.: execução local fora do GCP), preservando o comportamento anterior.
+ */
 async function createStorageClient() {
+  try {
+    const auth = new google.auth.GoogleAuth({ scopes: [GCS_SCOPE] });
+    await auth.getClient(); // falha cedo se não houver ADC no ambiente
+    return google.storage({ version: 'v1', auth });
+  } catch (err) {
+    console.warn(
+      '[emailSignatureStorage] ADC indisponível, usando service account do transporte:',
+      (err as Error).message,
+    );
+  }
+
   const snap = getEmailTransportSnapshot();
   if (!snap) throw new Error('Service account indisponível para GCS');
 

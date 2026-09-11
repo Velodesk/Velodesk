@@ -15713,6 +15713,31 @@ input:checked + .slider:before {
     margin: 0.5rem 0 1rem;
 }
 
+#config .config-email-assinatura__paste-toggle {
+    display: inline-block;
+    margin: 0.25rem 0 0.75rem;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--blue, #1155cc);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+#config .config-email-assinatura__paste-area {
+    width: 100%;
+    min-height: 260px;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border: 1px solid var(--config-border, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+    background: #f4f6fb;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    resize: vertical;
+}
+
 @media (max-width: 1100px) {
     #config .config-content:has(.config-email-outbound-editor),
     #config .config-content:has(.config-email-assinatura) {
