@@ -21,7 +21,7 @@ import { notifyTicketOpenedAsync } from './emailNotification.service';
 import { runInboundPostCreateHooks } from './agents/inboundAgentPipeline.service';
 import { runCasosEspeciaisTriagem } from './agents/casosEspeciaisTrigger.service';
 import { matchMailRule } from './mailRules.service';
-import { isEmailBounce, logEmailBounce } from './emailBounceLog.service';
+import { isEmailBounce } from './emailBounceDetection.util';
 import {
   claimInboundMessage,
   markInboundMessageDone,
@@ -277,6 +277,55 @@ export async function findChamadoForEmailReply(payload: InboundEmailPayload) {
   return null;
 }
 
+/**
+ * Melhor palpite pro e-mail do cliente que não recebeu a mensagem: procura no histórico do
+ * ticket a última mensagem de origem 'cliente' com metadados.emailFrom (endereço usado pelo
+ * cliente pra falar com o Desk é o mesmo endereço pro qual o Desk responde).
+ */
+function resolveClienteEmailFromChamado(chamado: IChamadoN1): string {
+  const registro = chamado.registro ?? [];
+  for (let i = registro.length - 1; i >= 0; i -= 1) {
+    const item = registro[i];
+    if (item?.origin !== 'cliente') continue;
+    const emailFrom = (item.metadados as Record<string, unknown> | undefined)?.emailFrom;
+    if (typeof emailFrom === 'string' && emailFrom.trim()) return emailFrom.trim();
+  }
+  return '';
+}
+
+/**
+ * Bounce de um e-mail que o Desk mandou pro cliente: correlaciona ao ticket original (via
+ * protocolo no assunto ou cadeia In-Reply-To/References) e grava a falha permanentemente em
+ * chamado.emailDeliveryFailures. Sem ticket correspondente, descarta silenciosamente — não há
+ * mais log genérico separado (ver emailBounceDetection.util.ts para a detecção pura).
+ */
+async function recordEmailDeliveryFailure(payload: InboundEmailPayload, messageId: string): Promise<void> {
+  const chamado = await findChamadoForEmailReply(payload);
+  if (!chamado) {
+    console.info('[email-inbound] bounce descartado (sem ticket correspondente)', {
+      from: payload.from.email,
+      messageId,
+      subject: payload.subject,
+    });
+    return;
+  }
+
+  if (!chamado.emailDeliveryFailures) chamado.emailDeliveryFailures = [];
+  chamado.emailDeliveryFailures.push({
+    em: payload.receivedAt || new Date(),
+    destinatario: resolveClienteEmailFromChamado(chamado),
+    assunto: payload.subject || '',
+    messageId,
+  });
+  await chamado.save();
+
+  console.info('[email-inbound] falha de entrega registrada no ticket', {
+    protocolo: chamado.chamadoProtocolo,
+    messageId,
+    subject: payload.subject,
+  });
+}
+
 function attachmentUrls(payload: InboundEmailPayload): string[] {
   return (payload.attachments ?? [])
     .map((item) => item.url)
@@ -349,12 +398,7 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
   }
 
   if (isEmailBounce(payload)) {
-    await logEmailBounce(payload);
-    console.info('[email-inbound] bounce descartado (sem ticket)', {
-      from: payload.from.email,
-      messageId,
-      subject: payload.subject,
-    });
+    await recordEmailDeliveryFailure(payload, messageId);
     return {
       action: 'skipped',
       reason: 'bounce',

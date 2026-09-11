@@ -3,7 +3,7 @@
  * VERSION: v1.0.0 | DATE: 2026-08-20
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { mailRulesApi, emailBouncesApi } from '../../../api/client';
+import { mailRulesApi } from '../../../api/client';
 import { useNotifications } from '../../../context/NotificationContext';
 
 const LISTS = [
@@ -11,85 +11,6 @@ const LISTS = [
   { id: 'spam', label: 'Spam / Lixo', description: 'Mesmo comportamento dos ignorados; use para lixo conhecido.' },
   { id: 'priority', label: 'Prioritários', description: 'Novos tickets entram com prioridade alta.' },
 ];
-
-function formatDateTime(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString('pt-BR');
-}
-
-function EmailBouncesPanel() {
-  const { showNotification } = useNotifications();
-  const [items, setItems] = useState([]);
-  const [unviewed, setUnviewed] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await emailBouncesApi.list();
-      setItems(data?.items || []);
-      setUnviewed(data?.unviewed || 0);
-    } catch (err) {
-      showNotification(err?.response?.data?.message || 'Erro ao carregar falhas de entrega.', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [showNotification]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const handleMarkViewed = async () => {
-    try {
-      await emailBouncesApi.markViewed();
-      setUnviewed(0);
-    } catch (err) {
-      showNotification(err?.response?.data?.message || 'Erro ao marcar como visto.', 'error');
-    }
-  };
-
-  return (
-    <div className="config-email-panel">
-      <p className="config-placeholder-msg">
-        E-mails de notificação de entrega (Mail Delivery Subsystem / bounces) são descartados
-        automaticamente e não abrem ticket — ficam apenas registrados aqui para consulta.
-      </p>
-
-      {unviewed > 0 && (
-        <button type="button" className="btn btn-ghost btn-sm" onClick={handleMarkViewed}>
-          Marcar {unviewed} como visto{unviewed > 1 ? 's' : ''}
-        </button>
-      )}
-
-      {loading ? (
-        <p className="config-placeholder-msg">Carregando…</p>
-      ) : items.length === 0 ? (
-        <p className="config-placeholder-msg">Nenhuma falha de entrega registrada.</p>
-      ) : (
-        <table className="config-email-table">
-          <thead>
-            <tr>
-              <th>Remetente</th>
-              <th>Assunto</th>
-              <th>Recebido em</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item._id}>
-                <td><code>{item.fromEmail}</code></td>
-                <td>{item.subject || '—'}</td>
-                <td>{formatDateTime(item.receivedAt)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
 
 function formatType(type) {
   return type === 'domain' ? 'Domínio' : 'E-mail';
@@ -241,18 +162,7 @@ function MailRulesPanel({ listId, listLabel, listDescription }) {
 
 export default function EmailRemetentesSection() {
   const [activeList, setActiveList] = useState('ignorado');
-  const [bouncesUnviewed, setBouncesUnviewed] = useState(0);
   const active = LISTS.find((item) => item.id === activeList) || LISTS[0];
-
-  useEffect(() => {
-    let cancelled = false;
-    emailBouncesApi.list()
-      .then((data) => {
-        if (!cancelled) setBouncesUnviewed(data?.unviewed || 0);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [activeList]);
 
   return (
     <div className="config-email-section">
@@ -269,31 +179,13 @@ export default function EmailRemetentesSection() {
             {item.label}
           </button>
         ))}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeList === 'bounces'}
-          className={'config-email-tab' + (activeList === 'bounces' ? ' is-active' : '')}
-          onClick={() => setActiveList('bounces')}
-        >
-          Falhas de entrega
-          {bouncesUnviewed > 0 && (
-            <span className="notification-badge" aria-label={`${bouncesUnviewed} não vistos`} style={{ position: 'static', marginLeft: 6 }}>
-              {bouncesUnviewed}
-            </span>
-          )}
-        </button>
       </div>
-      {activeList === 'bounces' ? (
-        <EmailBouncesPanel />
-      ) : (
-        <MailRulesPanel
-          key={activeList}
-          listId={active.id}
-          listLabel={active.label}
-          listDescription={active.description}
-        />
-      )}
+      <MailRulesPanel
+        key={activeList}
+        listId={active.id}
+        listLabel={active.label}
+        listDescription={active.description}
+      />
     </div>
   );
 }

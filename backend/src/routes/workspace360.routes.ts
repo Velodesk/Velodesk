@@ -79,18 +79,19 @@ router.get('/agents', authMiddleware, async (req, res: Response) => {
     if (!hasPermission(resolved.permissoes, 'workspace', 'painel_360_equipe')) {
       return res.status(403).json({ message: 'Sem permissão para listar agentes' });
     }
-    const { User } = await import('../models/User');
-    const users = await User.find({ role: { $in: ['agent', 'supervisor'] } })
-      .select('name email role')
-      .sort({ name: 1 })
-      .lean();
+    const { listAgentesDeskLive } = await import('../services/agenteDesk.service');
+    const { resolveRoleFromAtuacao } = await import('../services/deskCadastroAccess.service');
+    const agentes = await listAgentesDeskLive();
     res.json(
-      users.map((u) => ({
-        id: u._id.toString(),
-        name: u.name,
-        email: u.email,
-        role: u.role,
-      }))
+      agentes
+        .filter((a) => !a.afastado)
+        .map((a) => ({ ...a, role: resolveRoleFromAtuacao(a.atuacao).role }))
+        .map((a) => ({
+          id: a.email,
+          name: a.colaboradorNome,
+          email: a.email,
+          role: a.role,
+        }))
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

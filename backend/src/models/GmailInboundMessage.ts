@@ -38,6 +38,8 @@ const GmailInboundMessageSchema = new Schema<IGmailInboundMessage>(
 );
 
 GmailInboundMessageSchema.index({ status: 1, claimedAt: 1 });
+/** Só serve pra dedupe de reentrega do Pub/Sub (janela de retry de horas) — 7 dias dá folga ampla. */
+GmailInboundMessageSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 });
 
 export function getGmailInboundMessageModel(): Model<IGmailInboundMessage> {
   const conn = getDeskConfigConnection();

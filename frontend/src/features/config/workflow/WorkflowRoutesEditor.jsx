@@ -36,7 +36,7 @@ function nextAvailableExtraRota(list) {
   return { variavel: option.value, rotulo: option.label, statusTicket: null, passos: [] };
 }
 
-function BranchCard({ title, rota, emptyStateLabel, grupos, onChange, onPassosChange }) {
+function BranchCard({ title, rota, emptyStateLabel, onChange, onPassosChange }) {
   return (
     <div className={`wf-routes-editor__branch-card wf-routes-editor__branch-card--${rota.variavel}`}>
       <h5 className="wf-routes-editor__branch-title">{title}</h5>
@@ -67,7 +67,6 @@ function BranchCard({ title, rota, emptyStateLabel, grupos, onChange, onPassosCh
         ) : null}
         <WorkflowConfigStepsTimeline
           passos={rota.passos}
-          grupos={grupos}
           onPassosChange={onPassosChange}
           onAddStep={() => onPassosChange(normalizePassosOrdem([
             ...rota.passos,
@@ -79,7 +78,7 @@ function BranchCard({ title, rota, emptyStateLabel, grupos, onChange, onPassosCh
   );
 }
 
-export default function WorkflowRoutesEditor({ rotas = [], grupos = [], onChange }) {
+export default function WorkflowRoutesEditor({ rotas = [], onChange }) {
   const list = useMemo(() => normalizeRotas(rotas), [rotas]);
 
   // Dados legados sem approve/reject: persiste a normalização assim que detectada.
@@ -118,7 +117,6 @@ export default function WorkflowRoutesEditor({ rotas = [], grupos = [], onChange
         <BranchCard
           title="Aprovar"
           rota={approveRota}
-          grupos={grupos}
           emptyStateLabel="Sem etapas — aprovar encerra o workflow."
           onChange={(patch) => updateByVariavel('approve', patch)}
           onPassosChange={(next) => updateByVariavel('approve', { passos: next })}
@@ -126,7 +124,6 @@ export default function WorkflowRoutesEditor({ rotas = [], grupos = [], onChange
         <BranchCard
           title="Reprovar"
           rota={rejectRota}
-          grupos={grupos}
           emptyStateLabel="Sem etapas — encerra aqui e volta ao responsável."
           onChange={(patch) => updateByVariavel('reject', patch)}
           onPassosChange={(next) => updateByVariavel('reject', { passos: next })}

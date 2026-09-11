@@ -20,7 +20,6 @@ export const TRIGGER_PATH_FIELDS = [
 export const CRITERIO_FONTES = [
   { value: 'tabulacao', label: 'Tabulação' },
   { value: 'integracao', label: 'Integração (API)' },
-  { value: 'grupo_responsabilidade', label: 'Grupo de responsabilidade' },
 ];
 
 export const CRITERIO_CAMPOS = [
@@ -151,7 +150,6 @@ export const WEBHOOK_TIPOS = [
 export const CTA_ALVOS = [
   { value: 'responsavel', label: 'Responsável do ticket' },
   { value: 'atribuido', label: 'Atribuído atual' },
-  { value: 'grupo', label: 'Grupo de responsabilidade' },
 ];
 
 export function resolveStepIcon(acaoTipo) {

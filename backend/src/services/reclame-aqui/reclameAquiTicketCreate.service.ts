@@ -10,7 +10,6 @@ import {
   findByIdDemandaExterna,
   upsertFromChamado,
 } from '../reclamacoes/reclamacao.service';
-import type { IReclameAquiHugmeRegistro } from '../../models/reclamacoes/ReclameAquiHugmeRegistro.schema';
 import type { ParsedHugmeRow } from './hugmeSpreadsheet.service';
 import { getActiveTabulation } from '../tabulation.service';
 import { getReclamacaoReclameAquiModel } from '../../models/reclamacoes/reclamacaoModels';
@@ -76,32 +75,6 @@ async function resolveTabulacaoProduto(raw?: string): Promise<string> {
   } catch {
     return '';
   }
-}
-
-export function registroToRaTicketSource(
-  registro: IReclameAquiHugmeRegistro,
-  row?: ParsedHugmeRow,
-): RaTicketSource {
-  const cols = (registro.colunasOriginais || {}) as Record<string, string>;
-  return {
-    idOrigem: String(registro.idOrigem || '').trim(),
-    consumidor: String(registro.consumidor || '').trim(),
-    cpf: String(registro.cpf || '').trim(),
-    email: String(registro.email || '').trim(),
-    telefoneWhatsapp: String(registro.telefoneWhatsapp || '').trim(),
-    assunto: String(registro.assunto || '').trim(),
-    descricao: String(registro.descricao || '').trim(),
-    produto: String(registro.produto || '').trim(),
-    tipo: String(registro.tipo || 'Reclamação').trim(),
-    hugmeMotivoRa: row?.hugmeMotivoRa || cols['Motivo da Reclamação RA'] || cols['Motivo da Reclamacao RA'] || '',
-    hugmeCategoriaRa: row?.hugmeCategoriaRa || cols['Categoria RA'] || '',
-    hugmeProblemaRa: row?.hugmeProblemaRa || cols['Problema RA'] || '',
-    statusRa: String(registro.statusRa || '').trim() || 'nao-respondida',
-    dataReclamacao: registro.dataReclamacao,
-    respostaPublica: String(registro.respostaPublica || '').trim(),
-    cidade: String(registro.cidade || '').trim(),
-    uf: String(registro.uf || '').trim(),
-  };
 }
 
 export function parsedRowToRaTicketSource(row: ParsedHugmeRow): RaTicketSource {
@@ -187,14 +160,6 @@ export function buildTicketPayloadFromRaSource(source: RaTicketSource, author = 
       reclameAqui: meta,
     },
   };
-}
-
-export function buildTicketPayloadFromHugmeRegistro(
-  registro: IReclameAquiHugmeRegistro,
-  _workflow: Record<string, unknown> | null,
-  author = 'sistema',
-) {
-  return buildTicketPayloadFromRaSource(registroToRaTicketSource(registro), author);
 }
 
 function buildPersistedTriagem(idOrigem: string, origemEntrada: string) {
@@ -369,16 +334,4 @@ export async function upsertRaTicketFromSource(
     reclamacaoId: reclamacao._id as Types.ObjectId,
     updated: false,
   };
-}
-
-export async function createRaTicketFromHugmeRegistro(
-  registro: IReclameAquiHugmeRegistro,
-  author = 'sistema',
-  row?: ParsedHugmeRow,
-): Promise<CreateRaTicketResult> {
-  return upsertRaTicketFromSource(
-    registroToRaTicketSource(registro, row),
-    author,
-    'hugme-import',
-  );
 }

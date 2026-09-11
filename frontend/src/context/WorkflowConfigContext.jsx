@@ -9,7 +9,7 @@ import deskLog from '../utils/deskDebugLog';
 import { useAuth } from './AuthContext';
 import { setWorkflowRuntimeConfig, clearWorkflowRuntimeConfig } from '../services/desk/workflowRuntimeStore';
 
-const EMPTY_CONFIG = { workflows: [], grupos: [] };
+const EMPTY_CONFIG = { workflows: [] };
 const WorkflowConfigContext = createContext(null);
 
 export function WorkflowConfigProvider({ children }) {
@@ -36,13 +36,11 @@ export function WorkflowConfigProvider({ children }) {
         const data = await workflowApi.getActive();
         const next = {
           workflows: data?.workflows || [],
-          grupos: data?.grupos || [],
         };
         setConfig(next);
         setWorkflowRuntimeConfig(next);
         deskLog.workflow('WorkflowConfig.reload → ok', {
           workflows: next.workflows.length,
-          grupos: next.grupos.length,
         });
         setLoading(false);
         return;
@@ -80,7 +78,6 @@ export function WorkflowConfigProvider({ children }) {
 
   const value = useMemo(() => ({
     workflows: config.workflows,
-    grupos: config.grupos,
     loading,
     error,
     reload,

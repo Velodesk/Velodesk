@@ -51,7 +51,7 @@ const DeskAgentQueueBoxSchema = new Schema<IDeskAgentQueueBox>(
   },
   {
     timestamps: true,
-    collection: 'desk_agent_boxex',
+    collection: 'desk_agent_boxes',
   },
 );
 

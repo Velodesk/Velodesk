@@ -5,7 +5,6 @@
 import type { AuthPayload } from '../middleware/auth';
 import type { IChamadoN1 } from '../models/ChamadoN1';
 import { findColaboradorByEmail } from './colaboradoresCadastro.service';
-import { getDeskAgenteModel } from '../models/DeskAgente';
 import {
   getEffectivePermissionsForSlug,
   getNivelMap,
@@ -83,28 +82,15 @@ export function invalidatePermissionCache(): void {
 
 async function resolveDbUser(userId?: string) {
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return null;
-  return User.findById(userId).select('name email role').lean();
+  return User.findById(userId).select('name email').lean();
 }
 
 export async function resolveUserFuncoes(authUser: AuthPayload): Promise<string[]> {
-  const normalizedEmail = String(authUser.email || '').trim().toLowerCase();
+  // funcionarios_cadastroColaboradores (VeloHub) é a única fonte da verdade — fail-closed:
+  // sem atuação cadastrada lá, o usuário não recebe função nenhuma (sem fallback local).
   const colaborador = await findColaboradorByEmail(authUser.email);
   const colabFuncoes = extractFuncoes(colaborador?.atuacao);
-
-  let funcoesCollected: string[] = [];
-
-  // Cadastro VeloHub é fonte da verdade; deskAgente só se colaborador não tiver atuação
-  if (colabFuncoes.length) {
-    funcoesCollected = colabFuncoes;
-  } else if (normalizedEmail) {
-    const deskAgente = await getDeskAgenteModel()
-      .findOne({ email: normalizedEmail })
-      .select('atuacao')
-      .lean();
-    funcoesCollected = extractFuncoes(deskAgente?.atuacao);
-  }
-
-  const funcoes = [...new Set(funcoesCollected.filter(Boolean))];
+  const funcoes = [...new Set(colabFuncoes.filter(Boolean))];
   return funcoes;
 }
 

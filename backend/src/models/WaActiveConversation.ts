@@ -65,6 +65,9 @@ WaActiveConversationSchema.index(
 );
 WaActiveConversationSchema.index({ phoneDigits: 1, active: 1 });
 WaActiveConversationSchema.index({ ticketId: 1, ticketCollection: 1 });
+/** Ponteiro inativo não tem consumidor (só find({active:true}) é lido) — expira 30 dias após
+ * fechar. closedAt fica null enquanto ativo, e o Mongo nunca expira campo TTL nulo/ausente. */
+WaActiveConversationSchema.index({ closedAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
 
 export function getWaActiveConversationModel(): Model<IWaActiveConversation> {
   const conn = getDeskConfigConnection();

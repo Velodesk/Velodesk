@@ -178,6 +178,11 @@ export default function DeskTicketList({
             const entryAt = getTicketQueueEntryAt(t);
             const slaCritical = getSlaClass(t) === 'critical';
             const clienteRespondeu = isClienteRespondeuTicket(t) && !isClienteRespondeuRead(t);
+            const emailDeliveryFailures = Array.isArray(t.emailDeliveryFailures) ? t.emailDeliveryFailures : [];
+            const lastEmailDeliveryFailure = emailDeliveryFailures[emailDeliveryFailures.length - 1];
+            const emailDeliveryFailedTitle = lastEmailDeliveryFailure
+              ? `Falha no envio de e-mail em ${new Date(lastEmailDeliveryFailure.em).toLocaleString('pt-BR')}${lastEmailDeliveryFailure.destinatario ? ` para ${lastEmailDeliveryFailure.destinatario}` : ''}`
+              : '';
             const presentAgents = presenceByTicketId[String(t.id)] || [];
             const agentActiveTitle = presentAgents.length
               ? `${presentAgents.map((agent) => agent.name).join(', ')} ${presentAgents.length > 1 ? 'estão atuando' : 'está atuando'} neste ticket`
@@ -213,6 +218,13 @@ export default function DeskTicketList({
                     className="crm-ticket-card__dot crm-ticket-card__dot--agent-active"
                     title={agentActiveTitle}
                     aria-label={agentActiveTitle}
+                  />
+                ) : null}
+                {emailDeliveryFailedTitle ? (
+                  <span
+                    className="crm-ticket-card__dot crm-ticket-card__dot--email-failed"
+                    title={emailDeliveryFailedTitle}
+                    aria-label={emailDeliveryFailedTitle}
                   />
                 ) : null}
                 <div className="crm-ticket-card__content">

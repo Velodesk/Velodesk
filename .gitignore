@@ -49,3 +49,6 @@ docs/api-*.md
 # Temp
 tmp/
 temp/
+
+# Dumps de backup de collections (gerados por scripts/backup-*.ts — nunca versionar dado de produção)
+/backup/

@@ -56,7 +56,6 @@ function WorkflowConfigStepItem({
 
 export default function WorkflowConfigStepsTimeline({
   passos,
-  grupos,
   onPassosChange,
   onAddStep,
   expandStepId = null,
@@ -111,7 +110,6 @@ export default function WorkflowConfigStepsTimeline({
           >
             <WorkflowStepEditor
               envelope={step.envelope}
-              grupos={grupos}
               onChange={(env) => handleUpdateEnvelope(step.envelope, env)}
               onRemove={() => handleRemove(step.envelope)}
               canRemove={displaySteps.length > 1}

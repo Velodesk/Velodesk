@@ -23,8 +23,7 @@ function emptyCriterio(mode) {
   return { fonte: 'tabulacao', campo: 'produto', operador: 'contains', valor: '' };
 }
 
-function defaultCampoForFonte(fonte, grupos) {
-  if (fonte === 'grupo_responsabilidade') return grupos[0]?.slug || '';
+function defaultCampoForFonte(fonte) {
   if (fonte === 'integracao') return CRITERIO_CAMPOS_INTEGRACAO[0]?.value || 'statusPagamento';
   return 'produto';
 }
@@ -49,7 +48,6 @@ function FloatingField({
 
 export default function WorkflowCriteriaEditor({
   criterios = [],
-  grupos = [],
   onChange,
   compact = false,
   mode = 'step',
@@ -209,7 +207,7 @@ export default function WorkflowCriteriaEditor({
   );
 
   const renderValorInput = (row, index) => {
-    if (row.fonte === 'grupo_responsabilidade' || row.operador === 'not_empty') {
+    if (row.operador === 'not_empty') {
       return <span className="wf-criteria-editor__spacer" aria-hidden="true" />;
     }
 
@@ -244,7 +242,7 @@ export default function WorkflowCriteriaEditor({
         value={row.fonte || 'tabulacao'}
         onChange={(e) => {
           const fonte = e.target.value;
-          updateRow(index, { fonte, campo: defaultCampoForFonte(fonte, grupos), valor: '' });
+          updateRow(index, { fonte, campo: defaultCampoForFonte(fonte), valor: '' });
         }}
         aria-label="Fonte do critério"
       >
@@ -253,18 +251,7 @@ export default function WorkflowCriteriaEditor({
         ))}
       </select>
 
-      {row.fonte === 'grupo_responsabilidade' ? (
-        <select
-          value={row.campo || ''}
-          onChange={(e) => updateRow(index, { campo: e.target.value, valor: e.target.value })}
-          aria-label="Grupo"
-        >
-          <option value="">Selecione…</option>
-          {grupos.map((g) => (
-            <option key={g._id || g.slug} value={g.slug}>{g.nome || g.slug}</option>
-          ))}
-        </select>
-      ) : row.fonte === 'integracao' ? (
+      {row.fonte === 'integracao' ? (
         <select
           value={row.campo || 'statusPagamento'}
           onChange={(e) => updateRow(index, { campo: e.target.value, valor: '' })}

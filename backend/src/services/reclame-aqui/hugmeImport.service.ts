@@ -5,7 +5,7 @@
  * segue só como log/auditoria do lote (contadores, erros, quem/quando importou).
  */
 import { randomUUID } from 'crypto';
-import type { HugmeOrigemImportacao } from '../../models/reclamacoes/ReclameAquiHugmeRegistro.schema';
+import type { HugmeOrigemImportacao } from '../../models/reclamacoes/ReclameAquiHugmeImportBatch.schema';
 import { getReclameAquiHugmeImportBatchModel } from '../../models/reclamacoes/hugmeModels';
 import { getReclamacaoReclameAquiModel, type IReclamacao } from '../../models/reclamacoes/reclamacaoModels';
 import { reclamacaoToPortalDto } from '../reclamacoes/reclamacao.service';

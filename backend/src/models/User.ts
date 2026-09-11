@@ -4,16 +4,18 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password: string;
-  role: string;
   createdAt: Date;
 }
 
+/**
+ * Role NÃO é persistida aqui — sempre derivada de funcionarios_cadastroColaboradores
+ * (VeloHub, fonte única) a cada login/requisição. Ver deskCadastroAccess.service.ts.
+ */
 const UserSchema = new Schema<IUser>(
   {
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true, lowercase: true },
     password: { type: String, required: true },
-    role: { type: String, default: 'agent' },
   },
   { timestamps: true }
 );

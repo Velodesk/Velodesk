@@ -8,7 +8,7 @@ import type {
 
 export interface IWorkflowCriterio {
   _id?: Types.ObjectId;
-  fonte: 'tabulacao' | 'grupo_responsabilidade' | 'integracao';
+  fonte: 'tabulacao' | 'integracao';
   campo: string;
   operador: 'equals' | 'contains' | 'not_empty' | 'in';
   valor: string;
@@ -107,7 +107,7 @@ export interface IWorkflowDefinicao extends Document {
 
 const CriterioSchema = new Schema<IWorkflowCriterio>(
   {
-    fonte: { type: String, required: true, enum: ['tabulacao', 'grupo_responsabilidade', 'integracao'] },
+    fonte: { type: String, required: true, enum: ['tabulacao', 'integracao'] },
     campo: { type: String, required: true },
     operador: { type: String, required: true, enum: ['equals', 'contains', 'not_empty', 'in'] },
     valor: { type: String, default: '' },

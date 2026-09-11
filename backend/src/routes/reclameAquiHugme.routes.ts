@@ -18,7 +18,7 @@ import {
   listHugmeRegistros,
   runHugmeImportLoop,
 } from '../services/reclame-aqui/hugmeImport.service';
-import type { HugmeOrigemImportacao } from '../models/reclamacoes/ReclameAquiHugmeRegistro.schema';
+import type { HugmeOrigemImportacao } from '../models/reclamacoes/ReclameAquiHugmeImportBatch.schema';
 
 const router = Router();
 

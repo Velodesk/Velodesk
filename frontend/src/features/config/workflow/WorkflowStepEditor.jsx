@@ -28,7 +28,6 @@ const DEFAULT_INTERNAL_HOOKS = [
 
 export default function WorkflowStepEditor({
   envelope,
-  grupos = [],
   onChange,
   onRemove,
   canRemove = true,
@@ -237,20 +236,6 @@ export default function WorkflowStepEditor({
               </select>
             </label>
           ) : null}
-          {!isAutomatica && atribuicaoTipo === 'grupo' ? (
-            <label className="wf-step-editor__field">
-              <span>Grupo</span>
-              <select
-                value={cfg.atribuicao?.grupoSlug || ''}
-                onChange={(e) => patchAtribuicao({ grupoSlug: e.target.value })}
-              >
-                <option value="">Selecione…</option>
-                {grupos.map((g) => (
-                  <option key={g._id || g.slug} value={g.slug}>{g.nome || g.slug}</option>
-                ))}
-              </select>
-            </label>
-          ) : null}
           {!isAutomatica && atribuicaoTipo === 'colaborador' ? (
             <label className="wf-step-editor__field">
               <span>Colaborador</span>
@@ -442,20 +427,6 @@ export default function WorkflowStepEditor({
                     ))}
                   </select>
                 </label>
-                {automatica.ctaAlvo === 'grupo' ? (
-                  <label className="wf-step-editor__field">
-                    <span>Grupo CTA</span>
-                    <select
-                      value={automatica.ctaGrupoSlug || ''}
-                      onChange={(e) => patchAutomatica({ ctaGrupoSlug: e.target.value })}
-                    >
-                      <option value="">Selecione…</option>
-                      {grupos.map((g) => (
-                        <option key={g._id || g.slug} value={g.slug}>{g.nome || g.slug}</option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
               </>
             ) : null}
           </div>
@@ -464,7 +435,6 @@ export default function WorkflowStepEditor({
         {acaoTipo === 'aprovacao' ? (
           <WorkflowRoutesEditor
             rotas={cfg.acao?.rotas || []}
-            grupos={grupos}
             onChange={(next) => patchAcao({ rotas: next })}
           />
         ) : null}

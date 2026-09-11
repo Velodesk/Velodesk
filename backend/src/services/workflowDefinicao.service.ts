@@ -9,7 +9,6 @@ import {
   IWorkflowPassoEnvelope,
 } from '../models/WorkflowDefinicao';
 import { evaluateGatilhoCriterios, buildTabulationFieldsFromTicket } from './workflowMatcher.service';
-import { getActiveGrupos } from './grupoResponsabilidade.service';
 
 let cachedActive: IWorkflowDefinicao[] | null = null;
 
@@ -236,11 +235,10 @@ export async function resolveWorkflowForTicket(ticket: {
   lateralForm?: Record<string, unknown>;
 }): Promise<IWorkflowDefinicao | null> {
   const fields = buildTabulationFieldsFromTicket(ticket);
-  const grupos = await getActiveGrupos();
   const workflows = await getActiveWorkflows();
 
   return workflows.find(
-    (wf) => evaluateGatilhoCriterios(wf.gatilho?.criterios || [], fields, grupos),
+    (wf) => evaluateGatilhoCriterios(wf.gatilho?.criterios || [], fields),
   ) || null;
 }
 

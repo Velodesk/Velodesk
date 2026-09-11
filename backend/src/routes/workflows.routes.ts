@@ -4,11 +4,6 @@ import { authMiddleware } from '../middleware/auth';
 import { supervisorMiddleware } from '../middleware/supervisor';
 import { isDeskConfigConnected } from '../config/database';
 import {
-  getGrupoById,
-  listGrupos,
-  getActiveGrupos,
-} from '../services/grupoResponsabilidade.service';
-import {
   createWorkflow,
   deleteWorkflow,
   getActiveWorkflows,
@@ -32,8 +27,7 @@ router.get('/', authMiddleware, async (_req, res: Response) => {
   try {
     if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
     const workflows = await getActiveWorkflows();
-    const grupos = await getActiveGrupos();
-    res.json({ workflows, grupos });
+    res.json({ workflows, grupos: [] });
   } catch (err) {
     console.error('[workflows] GET /:', err);
     return deskConfigUnavailable(res);
@@ -52,42 +46,7 @@ router.get('/all', authMiddleware, supervisorMiddleware, async (req, res: Respon
   }
 });
 
-router.get('/grupos-responsabilidade/list', authMiddleware, async (req, res: Response) => {
-  try {
-    if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
-    const includeInactive = req.query.includeInactive === 'true';
-    const grupos = await listGrupos(includeInactive);
-    res.json(grupos);
-  } catch (err) {
-    console.error('[workflows] GET /grupos-responsabilidade/list:', err);
-    return deskConfigUnavailable(res);
-  }
-});
-
-router.get('/grupos-responsabilidade/:id', authMiddleware, supervisorMiddleware, async (req, res: Response) => {
-  try {
-    if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
-    const grupo = await getGrupoById(String(req.params.id));
-    if (!grupo) return res.status(404).json({ message: 'Grupo não encontrado' });
-    res.json(grupo);
-  } catch (err) {
-    return deskConfigUnavailable(res);
-  }
-});
-
-router.post('/grupos-responsabilidade', authMiddleware, (_req, res: Response) => {
-  res.status(410).json({ message: 'Grupos de atuação descontinuados. Use atribuição por função.' });
-});
-
-router.put('/grupos-responsabilidade/:id', authMiddleware, (_req, res: Response) => {
-  res.status(410).json({ message: 'Grupos de atuação descontinuados. Use atribuição por função.' });
-});
-
-router.patch('/grupos-responsabilidade/:id', authMiddleware, (_req, res: Response) => {
-  res.status(410).json({ message: 'Grupos de atuação descontinuados. Use atribuição por função.' });
-});
-
-router.delete('/grupos-responsabilidade/:id', authMiddleware, (_req, res: Response) => {
+router.all('/grupos-responsabilidade*', authMiddleware, (_req, res: Response) => {
   res.status(410).json({ message: 'Grupos de atuação descontinuados. Use atribuição por função.' });
 });
 

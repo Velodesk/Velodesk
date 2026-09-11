@@ -4,7 +4,7 @@ import type { AuthPayload } from '../middleware/auth';
 import { ChamadoN1 } from '../models/ChamadoN1';
 import type { IChamadoN1 } from '../models/ChamadoN1';
 import { listOnlineEligiblePresenceKeys } from './agentPresence.service';
-import { listAgentesDesk } from './agenteDesk.service';
+import { listAgentesDeskLive } from './agenteDesk.service';
 import { listColaboradoresDesk } from './colaboradoresCadastro.service';
 import { extractFuncoes } from '../utils/normalizeFuncao';
 import { currentStatus, isConsumidorGovChamado, isProconChamado } from './chamado.mapper';
@@ -314,7 +314,7 @@ function agentEligibleForRoletaPool(agent: {
 }
 
 async function loadRoletaPoolAgents(): Promise<RoletaPoolAgent[]> {
-  const synced = await listAgentesDesk();
+  const synced = await listAgentesDeskLive();
   if (synced.length > 0) {
     return synced.map((agente) => ({
       email: agente.email,

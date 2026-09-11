@@ -953,6 +953,10 @@
     background: #FCC200;
 }
 
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-ticket-card__dot--email-failed {
+    background: #b45309;
+}
+
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-ticket-card__content {
     flex: 1;
     min-width: 0;

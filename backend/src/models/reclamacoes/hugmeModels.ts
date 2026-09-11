@@ -1,26 +1,10 @@
-/** hugmeModels v1.0.0 — models Hugme em chamados_reclamacoes */
+/** hugmeModels v2.0.0 — models Hugme em chamados_reclamacoes (registro descontinuado 2026-09-11) */
 import type { Model } from 'mongoose';
 import { getReclamacoesConnection } from '../../config/database';
-import {
-  ReclameAquiHugmeRegistroSchema,
-  type IReclameAquiHugmeRegistro,
-} from './ReclameAquiHugmeRegistro.schema';
 import {
   ReclameAquiHugmeImportBatchSchema,
   type IReclameAquiHugmeImportBatch,
 } from './ReclameAquiHugmeImportBatch.schema';
-
-export function getReclameAquiHugmeRegistroModel(): Model<IReclameAquiHugmeRegistro> {
-  const conn = getReclamacoesConnection();
-  if (conn.models.ReclameAquiHugmeRegistro) {
-    return conn.models.ReclameAquiHugmeRegistro as Model<IReclameAquiHugmeRegistro>;
-  }
-  return conn.model<IReclameAquiHugmeRegistro>(
-    'ReclameAquiHugmeRegistro',
-    ReclameAquiHugmeRegistroSchema,
-    'reclame_aqui_hugme_registros',
-  );
-}
 
 export function getReclameAquiHugmeImportBatchModel(): Model<IReclameAquiHugmeImportBatch> {
   const conn = getReclamacoesConnection();
@@ -34,4 +18,4 @@ export function getReclameAquiHugmeImportBatchModel(): Model<IReclameAquiHugmeIm
   );
 }
 
-export type { IReclameAquiHugmeRegistro, IReclameAquiHugmeImportBatch };
+export type { IReclameAquiHugmeImportBatch };

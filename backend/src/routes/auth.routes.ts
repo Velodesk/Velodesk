@@ -54,19 +54,10 @@ router.post('/login', async (req: Request, res: Response) => {
         name,
         email: normalizedEmail,
         password: hash,
-        role: access.role,
       });
-    } else {
-      let dirty = false;
-      if (user.role !== access.role) {
-        user.role = access.role;
-        dirty = true;
-      }
-      if (name && user.name !== name) {
-        user.name = name;
-        dirty = true;
-      }
-      if (dirty) await user.save();
+    } else if (name && user.name !== name) {
+      user.name = name;
+      await user.save();
     }
 
     const token = signToken({
@@ -130,19 +121,10 @@ router.post('/auth/google', async (req: Request, res: Response) => {
         name,
         email: googleUser.email,
         password: hash,
-        role: access.role,
       });
-    } else {
-      let dirty = false;
-      if (user.role !== access.role) {
-        user.role = access.role;
-        dirty = true;
-      }
-      if (name && user.name !== name) {
-        user.name = name;
-        dirty = true;
-      }
-      if (dirty) await user.save();
+    } else if (name && user.name !== name) {
+      user.name = name;
+      await user.save();
     }
 
     const token = signToken({

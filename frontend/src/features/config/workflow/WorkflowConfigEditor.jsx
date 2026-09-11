@@ -5,7 +5,6 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNotifications } from '../../../context/NotificationContext';
-import { useWorkflowConfig } from '../../../context/WorkflowConfigContext';
 import WorkflowConfigHeader from './WorkflowConfigHeader';
 import WorkflowConfigStepsTimeline from './WorkflowConfigStepsTimeline';
 import WorkflowCriteriaEditor from './WorkflowCriteriaEditor';
@@ -39,7 +38,6 @@ export default function WorkflowConfigEditor({
   onSave,
 }) {
   const { showNotification } = useNotifications();
-  const { grupos } = useWorkflowConfig();
   const [draft, setDraft] = useState(() => cloneDoc(initialWorkflow));
   const [expandStepId, setExpandStepId] = useState(null);
 
@@ -88,7 +86,7 @@ export default function WorkflowConfigEditor({
     const criterios = draft?.gatilho?.criterios || [];
     if (criterios.some((c) => {
       if (!String(c.campo || '').trim()) return true;
-      if (c.fonte === 'grupo_responsabilidade' || c.operador === 'not_empty') return false;
+      if (c.operador === 'not_empty') return false;
       return !String(c.valor || '').trim();
     })) {
       showNotification('Complete os critérios do gatilho antes de salvar.', 'error');
@@ -198,7 +196,6 @@ export default function WorkflowConfigEditor({
 
             <WorkflowConfigStepsTimeline
               passos={draft.passos || []}
-              grupos={grupos}
               onPassosChange={handlePassosChange}
               onAddStep={handleAddStep}
               expandStepId={expandStepId}

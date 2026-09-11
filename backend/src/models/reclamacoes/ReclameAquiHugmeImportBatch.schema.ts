@@ -1,6 +1,7 @@
-/** ReclameAquiHugmeImportBatch.schema v1.0.0 — log de lotes de importação Hugme */
+/** ReclameAquiHugmeImportBatch.schema v1.1.0 — log de lotes de importação Hugme */
 import { Schema, Document } from 'mongoose';
-import type { HugmeOrigemImportacao } from './ReclameAquiHugmeRegistro.schema';
+
+export type HugmeOrigemImportacao = 'base_inicial' | 'incremental';
 
 export interface IHugmeImportBatchError {
   rowIndex: number;

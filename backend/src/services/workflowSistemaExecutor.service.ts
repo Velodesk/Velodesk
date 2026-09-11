@@ -9,7 +9,6 @@ import { getAgentNomeOficial } from './agents/agentRegistry';
 import { detectEnvelopeModoFromChamado, wrapComposerOpening } from './clientMessageEnvelope.service';
 import { notifyAgentReplyAsync } from './emailNotification.service';
 import { createWorkflowNotificacao } from './workflowNotificacao.service';
-import { getActiveGrupos } from './grupoResponsabilidade.service';
 import { buildTabulationFieldsFromTicket } from './workflowMatcher.service';
 import { isAutomaticaStep, resolveAutomaticaConfig } from './workflowAutomatica.util';
 import { getEmailConteudoById } from './emailConteudo.service';
@@ -288,14 +287,6 @@ async function resolveCtaDestinatario(
     const atribuido = String(fields.atribuido || '').trim();
     if (atribuido.startsWith('grupo:')) return '';
     return atribuido;
-  }
-  if (alvo === 'grupo') {
-    const slug = String(automatica.ctaGrupoSlug || '').trim();
-    if (!slug) return '';
-    const grupos = await getActiveGrupos();
-    const grupo = grupos.find((g) => g.slug === slug);
-    const membro = grupo?.membros?.find((m) => m.tipo === 'email' || m.tipo === 'colaborador');
-    return String(membro?.valor || '').trim();
   }
   return '';
 }

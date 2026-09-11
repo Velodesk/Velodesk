@@ -3,7 +3,7 @@
  * campos, OU dentro do mesmo campo (paridade com backend)
  * VERSION: v1.12.0 | DATE: 2026-09-10
  */
-import { getRuntimeGrupos, getRuntimeWorkflows } from './workflowRuntimeStore';
+import { getRuntimeWorkflows } from './workflowRuntimeStore';
 
 function resolveStepIcon(acaoTipo) {
   switch (acaoTipo) {
@@ -108,18 +108,7 @@ function readIntegracaoValue(fields, campo) {
   return map[key] ?? fields[campo] ?? '';
 }
 
-function evaluateOneCriterio(criterio, fields, grupos) {
-  if (criterio.fonte === 'grupo_responsabilidade') {
-    const slug = criterio.campo || criterio.valor;
-    const grupo = grupos.find((g) => g.slug === slug);
-    if (!grupo) return false;
-    const atribuido = normalizeText(fields.atribuido);
-    const responsavel = normalizeText(fields.responsavel);
-    return (grupo.membros || []).some((m) => {
-      const val = normalizeText(m.valor);
-      return val && (atribuido.includes(val) || responsavel.includes(val) || atribuido === val);
-    });
-  }
+function evaluateOneCriterio(criterio, fields) {
   if (criterio.fonte === 'integracao') {
     const actual = readIntegracaoValue(fields, criterio.campo);
     return evaluateOperator(actual, criterio.operador, criterio.valor);
@@ -137,7 +126,7 @@ function criterioGroupKey(criterio) {
  * campo (mesma fonte+campo) entram com OU — espelha workflowMatcher.service.ts
  * do backend (evaluateCriterios), pra este motor local não divergir.
  */
-export function evaluateCriterios(criterios = [], fields, grupos = getRuntimeGrupos()) {
+export function evaluateCriterios(criterios = [], fields) {
   if (!criterios.length) return true;
 
   const groups = new Map();
@@ -148,14 +137,14 @@ export function evaluateCriterios(criterios = [], fields, grupos = getRuntimeGru
   });
 
   return [...groups.values()].every(
-    (group) => group.some((criterio) => evaluateOneCriterio(criterio, fields, grupos)),
+    (group) => group.some((criterio) => evaluateOneCriterio(criterio, fields)),
   );
 }
 
 /** Gatilho sem critérios nunca ativa o workflow */
-export function evaluateGatilhoCriterios(criterios = [], fields, grupos = getRuntimeGrupos()) {
+export function evaluateGatilhoCriterios(criterios = [], fields) {
   if (!criterios.length) return false;
-  return evaluateCriterios(criterios, fields, grupos);
+  return evaluateCriterios(criterios, fields);
 }
 
 function buildDecisionFromPasso(passoConfig, slug) {

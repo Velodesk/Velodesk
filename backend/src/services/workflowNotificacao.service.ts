@@ -250,25 +250,23 @@ export async function listNotificacoesForUser(email: string, limit = 30) {
     .lean();
 }
 
+/** Lida = sem utilidade — marcar como lida apaga o documento em vez de reter histórico morto. */
 export async function markNotificacaoLida(id: string, email: string): Promise<boolean> {
   const Model = getWorkflowNotificacaoModel();
   const normalized = String(email || '').trim().toLowerCase();
-  const result = await Model.findOneAndUpdate(
-    { _id: id, destinatarioEmail: normalized },
-    { lida: true },
-    { new: true },
-  );
+  const result = await Model.findOneAndDelete({ _id: id, destinatarioEmail: normalized });
   return Boolean(result);
 }
 
 export async function markNotificacoesLidasForTicket(ticketId: string, email: string): Promise<number> {
   const Model = getWorkflowNotificacaoModel();
   const normalized = String(email || '').trim().toLowerCase();
-  const result = await Model.updateMany(
-    { ticketId: new Types.ObjectId(ticketId), destinatarioEmail: normalized, lida: false },
-    { lida: true },
-  );
-  return result.modifiedCount ?? 0;
+  const result = await Model.deleteMany({
+    ticketId: new Types.ObjectId(ticketId),
+    destinatarioEmail: normalized,
+    lida: false,
+  });
+  return result.deletedCount ?? 0;
 }
 
 export async function countUnreadNotificacoes(email: string): Promise<number> {

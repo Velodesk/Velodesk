@@ -1,5 +1,8 @@
-/** emailBounceLog.service v1.0.0 — log de bounces/DSN descartados (sem virar ticket) */
-import { getEmailBounceLogModel } from '../models/EmailBounceLog';
+/**
+ * emailBounceDetection.util v1.0.0 — detecção pura de bounce/DSN (sem persistência, sem Mongoose)
+ * Extraído de emailBounceLog.service.ts quando o registro de bounces deixou de ser um log
+ * genérico separado e passou a virar `emailDeliveryFailures` dentro do próprio chamado.
+ */
 import type { InboundEmailPayload } from './inbound-email/types';
 
 const BOUNCE_SENDER_PATTERNS = [
@@ -72,31 +75,4 @@ export function isEmailBounce(payload: InboundEmailPayload): boolean {
     return true;
   }
   return false;
-}
-
-export async function logEmailBounce(payload: InboundEmailPayload): Promise<void> {
-  const Model = getEmailBounceLogModel();
-  await Model.create({
-    fromEmail: payload.from.email,
-    subject: payload.subject || '',
-    messageId: payload.messageId || '',
-    receivedAt: payload.receivedAt || new Date(),
-    viewed: false,
-  });
-}
-
-export async function countUnviewedBounces(): Promise<number> {
-  const Model = getEmailBounceLogModel();
-  return Model.countDocuments({ viewed: false });
-}
-
-export async function listRecentBounces(limit = 50) {
-  const Model = getEmailBounceLogModel();
-  return Model.find().sort({ receivedAt: -1 }).limit(limit).lean();
-}
-
-export async function markBouncesViewed(): Promise<number> {
-  const Model = getEmailBounceLogModel();
-  const result = await Model.updateMany({ viewed: false }, { viewed: true });
-  return result.modifiedCount ?? 0;
 }

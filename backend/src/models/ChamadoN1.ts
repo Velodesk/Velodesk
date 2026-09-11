@@ -97,6 +97,18 @@ export interface IClienteRef {
   clienteId: Types.ObjectId | null;
 }
 
+/**
+ * Registro permanente de falha de entrega (bounce/DSN) de um e-mail enviado pelo Desk pra este
+ * ticket. Detectado em email-inbound.service.ts (processInboundEmail) via
+ * emailBounceDetection.util.isEmailBounce, correlacionado ao ticket via findChamadoForEmailReply.
+ */
+export interface IEmailDeliveryFailure {
+  em: Date;
+  destinatario: string;
+  assunto: string;
+  messageId: string;
+}
+
 export interface IChamadoN1 extends Document {
   chamadoProtocolo: string;
   chamadoTitulo: string;
@@ -107,6 +119,7 @@ export interface IChamadoN1 extends Document {
   fusao?: IChamadoFusao;
   csat?: IChamadoCsat;
   aiSuggestionCache?: IAiSuggestionCache;
+  emailDeliveryFailures?: IEmailDeliveryFailure[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -240,6 +253,16 @@ const AiSuggestionCacheSchema = new Schema<IAiSuggestionCache>(
   { _id: false },
 );
 
+const EmailDeliveryFailureSchema = new Schema<IEmailDeliveryFailure>(
+  {
+    em: { type: Date, default: Date.now },
+    destinatario: { type: String, default: '' },
+    assunto: { type: String, default: '' },
+    messageId: { type: String, default: '' },
+  },
+  { _id: false },
+);
+
 const ChamadoN1Schema = new Schema<IChamadoN1>(
   {
     chamadoProtocolo: { type: String },
@@ -251,6 +274,7 @@ const ChamadoN1Schema = new Schema<IChamadoN1>(
     fusao: { type: ChamadoFusaoSchema, default: undefined },
     csat: { type: ChamadoCsatSchema, default: undefined },
     aiSuggestionCache: { type: AiSuggestionCacheSchema, default: undefined },
+    emailDeliveryFailures: { type: [EmailDeliveryFailureSchema], default: [] },
   },
   {
     timestamps: true,

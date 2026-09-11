@@ -1,6 +1,5 @@
 /** workflowMatcher v1.7.0 — evaluateCriterios agrupa por fonte+campo: E entre campos, OU dentro do mesmo campo */
 import { GRUPO_TO_FUNCAO_MAP } from '../config/funcaoPermissaoDefaults';
-import type { IGrupoResponsabilidade } from '../models/GrupoResponsabilidade';
 import type { IWorkflowCriterio } from '../models/WorkflowDefinicao';
 import type { IChamadoN1 } from '../models/ChamadoN1';
 import { isProconChamado, readTabulacaoSnapshot } from './chamado.mapper';
@@ -66,35 +65,10 @@ function evaluateOperator(actual: string, operador: string, valor: string): bool
   }
 }
 
-function matchesGrupo(
-  fields: Record<string, string>,
-  grupoSlug: string,
-  grupos: IGrupoResponsabilidade[],
-): boolean {
-  const grupo = grupos.find((g) => g.slug === grupoSlug);
-  if (!grupo) return false;
-
-  const atribuido = normalize(fields.atribuido);
-  const responsavel = normalize(fields.responsavel);
-
-  return (grupo.membros || []).some((membro) => {
-    const val = normalize(membro.valor);
-    if (!val) return false;
-    if (membro.tipo === 'colaborador' || membro.tipo === 'email') {
-      return atribuido.includes(val) || responsavel.includes(val) || atribuido === val || responsavel === val;
-    }
-    return false;
-  });
-}
-
 function evaluateOneCriterio(
   criterio: IWorkflowCriterio,
   fields: Record<string, string>,
-  grupos: IGrupoResponsabilidade[],
 ): boolean {
-  if (criterio.fonte === 'grupo_responsabilidade') {
-    return matchesGrupo(fields, criterio.campo || criterio.valor, grupos);
-  }
   if (criterio.fonte === 'integracao') {
     const actual = readIntegracaoField(fields, criterio.campo);
     return evaluateOperator(actual, criterio.operador, criterio.valor);
@@ -117,7 +91,6 @@ function criterioGroupKey(criterio: IWorkflowCriterio): string {
 export function evaluateCriterios(
   criterios: IWorkflowCriterio[],
   fields: Record<string, string>,
-  grupos: IGrupoResponsabilidade[] = [],
 ): boolean {
   if (!criterios?.length) return true;
 
@@ -129,7 +102,7 @@ export function evaluateCriterios(
   });
 
   return [...groups.values()].every(
-    (group) => group.some((criterio) => evaluateOneCriterio(criterio, fields, grupos)),
+    (group) => group.some((criterio) => evaluateOneCriterio(criterio, fields)),
   );
 }
 
@@ -137,10 +110,9 @@ export function evaluateCriterios(
 export function evaluateGatilhoCriterios(
   criterios: IWorkflowCriterio[],
   fields: Record<string, string>,
-  grupos: IGrupoResponsabilidade[] = [],
 ): boolean {
   if (!criterios?.length) return false;
-  return evaluateCriterios(criterios, fields, grupos);
+  return evaluateCriterios(criterios, fields);
 }
 
 export function buildTabulationFieldsFromTicket(ticket: {

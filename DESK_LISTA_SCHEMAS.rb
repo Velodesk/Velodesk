@@ -1,6 +1,14 @@
 listagem de schema de coleções do mongoDB - ESPECIFICA DESK
-  <!-- VERSION: v1.17.0 | DATE: 2026-09-08 | AUTHOR: VeloHub Development Team -->
-  <!-- v1.17.0: reclamacoes_reclameAqui ganha schema próprio (ReclamacaoReclameAqui.schema.ts),
+  <!-- VERSION: v1.18.0 | DATE: 2026-09-11 | AUTHOR: VeloHub Development Team -->
+  <!-- v1.18.0: auditoria de collections (11/09) — chamados_n1 ganha emailDeliveryFailures
+       (indicador de falha de entrega/bounce direto no ticket, substitui a tela separada
+       "Falhas de entrega" e a collection desk_config.email_bounce_log, descontinuada);
+       desk_config.grupos_responsabilidade REMOVIDA de vez (era má compreensão de atribuição
+       de workflow por função — ver nota no bloco abaixo); desk_config.desk_agentes REMOVIDA
+       de vez (fallback de função obsoleto = brecha de segurança; permissão agora é
+       fail-closed via console_funcionarios, sem espelho local); b2c_chamados.users perdeu o
+       campo role (nunca mais persistido — sempre derivado do cadastro oficial).
+  v1.17.0: reclamacoes_reclameAqui ganha schema próprio (ReclamacaoReclameAqui.schema.ts),
        campos de primeira classe + fusao (mecanismo cross-collection, referência p/ Procon/Bacen/CG);
        reclame_aqui_hugme_registros descontinuada (upsert direto em reclamacoes_reclameAqui). -->
 
@@ -17,11 +25,18 @@ listagem de schema de coleções do mongoDB - ESPECIFICA DESK
                            reclame_aqui_hugme_registros, reclame_aqui_hugme_import_batches (MONGODB_RECLAMACOES_DB_NAME)
                            — módulo Casos Especiais; conexão dedicada (getReclamacoesConnection, database.ts v1.9.0)
 
-  Coleções desk_config eliminadas (2026-07-20): desk_agentes, perfis_acesso, permissoes.
+  Coleções desk_config eliminadas: perfis_acesso, permissoes (2026-07-20).
   CORREÇÃO 2026-08-17: desk_funcoes_permissoes NÃO foi eliminada (nota anterior estava errada —
   drift de doc, nunca refletiu o código) — segue ativa via model DeskFuncaoPermissao, ver schema
   completo abaixo. workflow_notificacoes também NÃO foi eliminada — backing store do sininho.
   desk/docs/ACCESS_CAPABILITIES.md não existe no repo — referência removida (schema canônico = este arquivo).
+  CORREÇÃO 2026-09-11: desk_agentes NÃO tinha sido eliminada em 2026-07-20 (nota antiga também
+  estava errada) — seguiu ativa como espelho local de console_funcionarios até esta data, quando
+  foi eliminada de fato (auditoria de collections): usada como fallback de função quando o
+  colaborador não tinha atuacao no cadastro oficial, o que permitia função obsoleta sobreviver a
+  desligamento/afastamento não sincronizado — brecha de segurança. Modelo/service/rota deletados;
+  permission.service.ts::resolveUserFuncoes agora é fail-closed, 100% console_funcionarios, sem
+  fallback. grupos_responsabilidade também eliminada nesta data — ver nota no lugar do schema.
 
   Sem coleções: tickets, forms, users (identidade via sessão VeloHub).
 
@@ -120,9 +135,21 @@ listagem de schema de coleções do mongoDB - ESPECIFICA DESK
         }]
       }
     },
+    emailDeliveryFailures: [{       // Default: [] — subdocumento (_id: false) — NOVO 2026-09-11
+      em: Date,                     // Instante em que o bounce/DSN foi recebido
+      destinatario: String,         // E-mail do cliente que não recebeu (resolvido do próprio ticket)
+      assunto: String,              // Assunto do e-mail original que falhou
+      messageId: String             // Message-Id do e-mail original (correlação)
+    }],
     createdAt: Date,
     updatedAt: Date
   }
+  //emailDeliveryFailures: gravado por email-inbound.service.ts::recordEmailDeliveryFailure() quando
+  //  um bounce/DSN é correlacionado a este ticket via findChamadoForEmailReply() (assunto com
+  //  protocolo, ou In-Reply-To/References). Sem ticket correspondente, o bounce é descartado
+  //  silenciosamente (nada é persistido). Substitui a collection desk_config.email_bounce_log
+  //  (descontinuada 2026-09-11) — indicador vive permanentemente no próprio ticket, sem log à
+  //  parte; UI: ícone na lista de tickets (DeskTicketList.jsx, dot --email-failed).
   //Histórico runtime: registro[].metadados.workflow, registro[].metadados.requisicao,
   //registro[].metadados.sistemaExec, registro[].alteracoes
   //metadados.requisicao (audit, append ao ativar workflow):
@@ -550,19 +577,18 @@ listagem de schema de coleções do mongoDB - ESPECIFICA DESK
     updatedAt: Date
   }
 
-  //schema chamados_reclamacoes.reclame_aqui_hugme_registros — DESCONTINUADA (2026-09-08)
-  //Modelo/model ainda existem no código (backend/src/models/reclamacoes/ReclameAquiHugmeRegistro.
-  //  schema.ts, hugmeModels.ts::getReclameAquiHugmeRegistroModel()) mas NINGUÉM MAIS ESCREVE aqui —
-  //  hugmeImport.service.ts v2.0.0 passou a fazer upsert direto em reclamacoes_reclameAqui por
-  //  idOrigem. Motivo: era um registro DUPLICADO da mesma ocorrência (a coleção "operacional" já
-  //  é reclamacoes_reclameAqui) — reimportar a planilha só precisa enriquecer o doc existente, não
-  //  duplicá-lo numa coleção paralela.
-  //Documentos já gravados aqui antes da mudança ficam intactos, somente leitura — não usar como
-  //  fonte de nada novo. As rotas GET /api/reclame-aqui/hugme/registros[/:idOrigem] e /stats
-  //  foram repontadas pra consultar reclamacoes_reclameAqui diretamente (hugmeImport.service.ts
-  //  v2.0.0::listHugmeRegistros/getHugmeRegistroByIdOrigem/getHugmeImportStats) — mesma forma de
-  //  resposta, fonte de dado diferente. Nenhuma tela do CRM consumia essas rotas antes da mudança
-  //  (confirmado por grep no frontend) — risco de quebra era zero.
+  //schema chamados_reclamacoes.reclame_aqui_hugme_registros — REMOVIDA (2026-09-11)
+  //Descontinuada em 2026-09-08 (hugmeImport.service.ts v2.0.0 passou a fazer upsert direto em
+  //  reclamacoes_reclameAqui por idOrigem — era registro DUPLICADO da mesma ocorrência). Confirmado
+  //  na auditoria de collections de 2026-09-11 que nenhum código (rota, service ou tipo) ainda
+  //  referenciava o model — collection dropada (115 documentos, sem backup — dado já substituído/
+  //  redundante) e removidos: model+schema (ReclameAquiHugmeRegistro.schema.ts),
+  //  hugmeModels.ts::getReclameAquiHugmeRegistroModel(), e as funções mortas que ainda recebiam
+  //  esse tipo (registroToRaTicketSource, buildTicketPayloadFromHugmeRegistro,
+  //  createRaTicketFromHugmeRegistro, em reclameAquiTicketCreate.service.ts). O tipo
+  //  HugmeOrigemImportacao (único pedaço ainda em uso) foi movido para
+  //  ReclameAquiHugmeImportBatch.schema.ts. As rotas GET /api/reclame-aqui/hugme/registros[/:idOrigem]
+  //  e /stats seguem consultando reclamacoes_reclameAqui diretamente, como já documentado em 2026-09-08.
 
   //schema chamados_reclamacoes.reclame_aqui_hugme_import_batches
   //Modelo: ReclameAquiHugmeImportBatch — backend/src/models/reclamacoes/ReclameAquiHugmeImportBatch.schema.ts v1.0.0
@@ -707,24 +733,21 @@ listagem de schema de coleções do mongoDB - ESPECIFICA DESK
   //  cada feature existir, sem sobrescrever quem já foi configurado manualmente.
   //API: GET /funcoes-permissoes, GET /funcoes-permissoes/catalog, PUT /funcoes-permissoes/:slug
 
-  //schema desk_config.grupos_responsabilidade
-  //Modelo: GrupoResponsabilidade — backend/src/models/GrupoResponsabilidade.ts v1.0.0
-  //Índices: { slug: 1 } unique, { ativo: 1, ordem: 1 }
-  {
-    _id: ObjectId,
-    slug: String,                   // unique — ex.: "financeiro"
-    nome: String,
-    descricao: String,              // Default: ''
-    ordem: Number,                  // Default: 0
-    ativo: Boolean,                 // Default: true
-    membros: [{                     // _id: false
-      tipo: String,                 // 'colaborador' | 'email' | 'perfil_desk'
-      valor: String                 // colaboradorNome, email ou 'agent'|'supervisor'
-    }],
-    updatedBy: String,
-    createdAt: Date,
-    updatedAt: Date
-  }
+  //schema desk_config.grupos_responsabilidade — ELIMINADA (2026-09-11)
+  //Modelo/service deletados (backend/src/models/GrupoResponsabilidade.ts,
+  //  grupoResponsabilidade.service.ts). Motivo (auditoria de collections): má compreensão de uma
+  //  tarefa de atribuição de workflow — "grupo" foi implementado como lista de membros mantida à
+  //  parte (colaborador/e-mail cadastrado manualmente), quando deveria ter sido tratado como
+  //  função (já suportado nativamente via atribuicao.tipo:'funcao' + console_funcionarios). Antes
+  //  da remoção, confirmado no banco: 0 workflows usando fonte='grupo_responsabilidade' em
+  //  gatilho.criterios, 0 tickets com atribuido='grupo:*', 0 passos com CTA de grupo — apesar de
+  //  5 grupos cadastrados (com membros) sem nenhum consumidor real. Rotas
+  //  /api/workflows/grupos-responsabilidade* respondem 410 Gone. gatilho.criterios[].fonte e
+  //  passo.atribuicao.tipo/automatica.ctaAlvo perderam a opção 'grupo'/'grupo_responsabilidade'
+  //  (ver bloco workflow_definicoes abaixo — schema já atualizado, sem essas opções).
+  //Antigo shape do documento (histórico, só referência):
+  //  { _id, slug (unique), nome, descricao, ordem, ativo,
+  //    membros: [{ tipo: 'colaborador'|'email'|'perfil_desk', valor }], updatedBy, createdAt, updatedAt }
 
   //schema desk_config.workflow_definicoes
   //Modelo: WorkflowDefinicao — backend/src/models/WorkflowDefinicao.ts v1.5.0

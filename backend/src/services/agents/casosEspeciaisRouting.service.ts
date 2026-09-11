@@ -13,7 +13,7 @@ import {
 import { applyFuncaoEspecialAssignment } from '../assignmentRouter.service';
 import { tryActivateWorkflowOnTabulation } from '../workflowTicket.service';
 import { createCasoEspecialNotificacao } from '../workflowNotificacao.service';
-import { listAgentesDesk } from '../agenteDesk.service';
+import { listAgentesDeskLive } from '../agenteDesk.service';
 import { extractFuncoes } from '../../utils/normalizeFuncao';
 import type {
   CasoEspecialOrgao,
@@ -118,7 +118,7 @@ function updateTabulacaoCanal(chamado: IChamadoN1, config: CasoEspecialOrgaoConf
 }
 
 async function resolveTeamEmails(funcaoSlug: string): Promise<string[]> {
-  const agentes = await listAgentesDesk();
+  const agentes = await listAgentesDeskLive();
   const emails = agentes
     .filter((agente) => {
       if (agente.afastado) return false;
@@ -207,7 +207,7 @@ export async function routeCasoEspecialFormal(
       chamado.tabulacao?.[chamado.tabulacao.length - 1]?.responsavel ?? '',
     ).trim();
 
-    const agentes = await listAgentesDesk();
+    const agentes = await listAgentesDeskLive();
     const responsavelEmail = agentes.find(
       (a) => a.colaboradorNome === responsavel || a.email.split('@')[0] === responsavel,
     )?.email ?? agentes.find((a) => {

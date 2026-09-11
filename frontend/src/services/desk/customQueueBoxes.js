@@ -1,5 +1,5 @@
 /**
- * Caixas customizadas — filtros multi-critério (desk_agent_boxex)
+ * Caixas customizadas — filtros multi-critério (desk_agent_boxes)
  * VERSION: v2.2.0 | DATE: 2026-07-31
  */
 import { QUEUE_STATUSES } from './constants';

@@ -28,7 +28,6 @@ import {
   sortPassos,
 } from './workflowPathWalk.util';
 import { getActiveWorkflows, getWorkflowById, getWorkflowBySlug, resolveWorkflowForTicket } from './workflowDefinicao.service';
-import { getActiveGrupos } from './grupoResponsabilidade.service';
 import {
   buildTabulationFieldsFromChamado,
   buildTabulationFieldsFromTicket,
@@ -464,7 +463,6 @@ export async function startWorkflowForChamado(
 
   const ticketCtx = buildWorkflowTicketContextFromChamado(chamado);
   const fields = buildTabulationFieldsFromTicket(ticketCtx);
-  const grupos = await getActiveGrupos();
 
   let definicao: IWorkflowDefinicao | null = null;
   const slug = String(definicaoSlug || '').trim();
@@ -474,7 +472,7 @@ export async function startWorkflowForChamado(
     if (!definicao || definicao.ativo === false) {
       throw new WorkflowAdvanceError('Workflow selecionado não encontrado ou inativo', 400);
     }
-    if (!evaluateGatilhoCriterios(definicao.gatilho?.criterios || [], fields, grupos)) {
+    if (!evaluateGatilhoCriterios(definicao.gatilho?.criterios || [], fields)) {
       throw new WorkflowAdvanceError('Tabulação não compatível com o workflow selecionado', 400);
     }
   } else {

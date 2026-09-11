@@ -26,6 +26,8 @@ const EmailDisparoLogSchema = new Schema<IEmailDisparoLog>(
 );
 
 EmailDisparoLogSchema.index({ chamadoId: 1, conteudoId: 1, eventKey: 1 }, { unique: true });
+/** Ciclo útil do ticket (resolvido→fechado 48h + repescagem CSAT 48h) não passa de ~4 dias; 10 dias dá folga. */
+EmailDisparoLogSchema.index({ sentAt: 1 }, { expireAfterSeconds: 10 * 24 * 60 * 60 });
 
 export function getEmailDisparoLogModel(): Model<IEmailDisparoLog> {
   const conn = getDeskConfigConnection();
