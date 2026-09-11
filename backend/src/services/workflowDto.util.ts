@@ -198,6 +198,7 @@ export function buildLateralWorkflowDto(
     stepHistory,
     passosResumo,
     pendingDecision: wf.pendingDecision ?? null,
+    funcoesAdicionais: definicao.funcoesAdicionais || [],
   };
 }
 

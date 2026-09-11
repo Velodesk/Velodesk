@@ -375,6 +375,30 @@ export function canApproveWorkflow(perm = readCachedPermissions()) {
   return can('workflow', 'aprovar', perm?.permissoes);
 }
 
+/**
+ * Acesso consolidado ao Workflow (Gestão) — atuar_sempre + aprovar: vê e decide qualquer
+ * ticket de workflow, sem precisar bater com a função atribuída etapa a etapa. Único ponto
+ * de checagem dessa regra — antes estava duplicada em resolveWorkflowTeamQueueForUser e
+ * canAccessWorkflowApprovalConsole (e ausente em agentCanDecideTicket).
+ */
+export function hasConsolidatedWorkflowAccess(perm = readCachedPermissions()) {
+  if (!perm) return false;
+  return (
+    hasPermission(perm.permissoes, 'tickets', 'atuar_sempre')
+    && canApproveWorkflow(perm)
+  );
+}
+
+/** Funções extras com poder de decisão neste workflow (WorkflowDefinicao.funcoesAdicionais),
+ * além de quem já está atribuído na etapa — soma, não substitui. */
+function ticketFuncoesAdicionaisMatchesUser(ticket, perm) {
+  const wf = ticket?.lateralForm?.workflow || ticket?.workflow || {};
+  const extra = Array.isArray(wf.funcoesAdicionais) ? wf.funcoesAdicionais : [];
+  if (!extra.length) return false;
+  const slugs = extra.map((s) => normalizeFuncao(String(s || '').trim())).filter(Boolean);
+  return userFuncaoSlugs(perm).some((slug) => slugs.includes(slug));
+}
+
 const INTERRUPT_WORKFLOW_FUNCOES = ['suporte', 'gestao', 'suporte-supervisao', 'direcao'];
 
 /** Interromper workflow — suporte, supervisão e gestão. */
@@ -386,6 +410,7 @@ export function canInterruptWorkflow(perm = readCachedPermissions()) {
 }
 
 export function agentCanDecideTicket(ticket, perm = readCachedPermissions()) {
+  if (hasConsolidatedWorkflowAccess(perm)) return true;
   if (!can('workflow', 'avancar', perm?.permissoes)) return false;
 
   const atribuido = normalizeAtribuido(ticket?.lateralForm?.atribuido);
@@ -399,7 +424,7 @@ export function agentCanDecideTicket(ticket, perm = readCachedPermissions()) {
 
   if (atribuido.startsWith('funcao:')) {
     const slug = normalizeFuncao(atribuido.slice(7));
-    return userFuncaoSlugs(perm).includes(slug)
+    return (userFuncaoSlugs(perm).includes(slug) || ticketFuncoesAdicionaisMatchesUser(ticket, perm))
       && hasPermission(perm?.permissoes, 'tickets', 'atuar_atribuido');
   }
 
@@ -454,12 +479,7 @@ export function filterTicketForUser(ticket, perm = readCachedPermissions()) {
  */
 export function resolveWorkflowTeamQueueForUser(perm = readCachedPermissions()) {
   if (!perm) return null;
-  if (
-    hasPermission(perm.permissoes, 'tickets', 'atuar_sempre')
-    && canApproveWorkflow(perm)
-  ) {
-    return null;
-  }
+  if (hasConsolidatedWorkflowAccess(perm)) return null;
   if (!hasPermission(perm.permissoes, 'portal', 'workflow')) return null;
   if (!hasPermission(perm.permissoes, 'tickets', 'atuar_atribuido')) return null;
   const slugs = userFuncaoSlugs(perm);
@@ -469,5 +489,5 @@ export function resolveWorkflowTeamQueueForUser(perm = readCachedPermissions()) 
 /** Console consolidado de aprovação — atuar_sempre + aprovar ou fila de time. */
 export function canAccessWorkflowApprovalConsole(perm = readCachedPermissions()) {
   if (resolveWorkflowTeamQueueForUser(perm)) return true;
-  return canApproveWorkflow(perm) && hasPermission(perm?.permissoes, 'tickets', 'atuar_sempre');
+  return hasConsolidatedWorkflowAccess(perm);
 }
