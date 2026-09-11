@@ -778,13 +778,6 @@ export interface TicketDto {
   };
 }
 
-/** Limites por box na listagem GET /boxes */
-export const BOX_LIST_DEFAULT_LIMIT = 250;
-export const BOX_LIST_RESOLVED_LIMIT = 150;
-export const BOX_LIST_RESOLVED_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-
-const TERMINAL_BOX_STATUSES = new Set(['resolvido', 'cancelado', 'fechado']);
-
 export interface ChamadoMapContext {
   mode: 'list' | 'full';
   clienteBatch: ClienteDadosBatchContext;
@@ -822,18 +815,12 @@ export function buildBoxListFindOptions(
   extraFilter?: Record<string, unknown>,
 ): BoxListFindOptions {
   const baseFilter = buildChamadoQueryFilter(status, queue, responsavelCandidates, extraFilter);
-  const isTerminal = TERMINAL_BOX_STATUSES.has(status);
   const excludeAbsorvidos = excludeFusaoAbsorvidosFilter();
-
-  let filter: Record<string, unknown> = { $and: [baseFilter, excludeAbsorvidos] };
-  if (isTerminal) {
-    const since = new Date(Date.now() - BOX_LIST_RESOLVED_MAX_AGE_MS);
-    filter = { $and: [baseFilter, excludeAbsorvidos, { updatedAt: { $gte: since } }] };
-  }
+  const filter: Record<string, unknown> = { $and: [baseFilter, excludeAbsorvidos] };
 
   return {
     filter,
-    limit: isTerminal ? BOX_LIST_RESOLVED_LIMIT : BOX_LIST_DEFAULT_LIMIT,
+    limit: 0,
     sort: { updatedAt: -1 },
   };
 }
