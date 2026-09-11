@@ -5,7 +5,6 @@ import { getTabulacaoProdutoModel } from '../models/TabulacaoProduto';
 import { getDeskFuncaoPermissaoModel } from '../models/DeskFuncaoPermissao';
 import { invalidateTabulationCache } from './tabulation.service';
 import { ensureOrgaoMotivoCategorias } from './tabulationOpcoes.service';
-import { seedWorkflowConfig } from './workflowConfigSeed.service';
 import { seedFuncoesPermissoes, invalidateFuncaoPermissaoCache } from './funcaoPermissao.service';
 import { migrateGrupoToFuncao } from './migrateGrupoToFuncao.service';
 import { env } from '../config/env';
@@ -97,7 +96,6 @@ export async function seedDevelopmentData() {
 
   await seedTabulationConfig();
   await seedFuncoesPermissoes();
-  await seedWorkflowConfig();
   await runDeskConfigMigrations();
 }
 
