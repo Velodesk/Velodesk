@@ -808,6 +808,15 @@ export async function buildChamadoMapContext(
   return { mode, clienteBatch, workflowById };
 }
 
+/**
+ * Teto de itens carregados por coluna em GET /boxes. Isso é só uma limitação técnica de
+ * performance (evita `find()` sem limite trazendo milhares de tickets com join de
+ * cliente/workflow de uma vez, o que já causou timeout de 45s e derrubou a tela toda) —
+ * nunca deve ser confundido com a CONTAGEM do badge, que é sempre o total real e nunca
+ * usa esse limite (ver buildBoxCountFilter).
+ */
+const BOX_LIST_MAX_ITEMS = 500;
+
 export function buildBoxListFindOptions(
   status: string,
   queue?: string,
@@ -820,17 +829,16 @@ export function buildBoxListFindOptions(
 
   return {
     filter,
-    limit: 0,
+    limit: BOX_LIST_MAX_ITEMS,
     sort: { updatedAt: -1 },
   };
 }
 
 /**
- * Filtro pra CONTAGEM total do badge de fila — nunca aplica a janela de 30 dias que
- * buildBoxListFindOptions usa só pra limitar a lista paginada de Resolvidos/Cancelados/
- * Fechados a até 150 itens recentes. Contagem tem que sempre refletir o total real
- * (respeitando ver_todos vs meus-chamados, igual buildChamadoQueryFilter já faz) —
- * nunca capada pela janela/limite pensados só pra performance da lista exibida.
+ * Filtro pra CONTAGEM total do badge de fila — nunca aplica o teto de itens que
+ * buildBoxListFindOptions usa só pra limitar a lista exibida por performance.
+ * Contagem tem que sempre refletir o total real (respeitando ver_todos vs
+ * meus-chamados, igual buildChamadoQueryFilter já faz).
  */
 export function buildBoxCountFilter(
   status: string,
@@ -920,8 +928,8 @@ const STATUS_VARIANTS: Record<string, string[]> = {
   'em-aberto': ['em-aberto', 'em aberto'],
   'em-andamento': ['em-andamento', 'em andamento', 'em-aberto', 'em aberto'],
   pendente: ['pendente'],
-  /** Fila Resolvidos: resolvido + fechado + cancelado (badge distingue o status) */
-  resolvido: ['resolvido', 'fechado', 'cancelado'],
+  /** Fila Resolvidos: resolvido + fechado. Cancelado nunca conta nem aparece aqui. */
+  resolvido: ['resolvido', 'fechado'],
   cancelado: ['cancelado'],
   fechado: ['fechado'],
   'em-espera': ['em-espera', 'em espera'],
@@ -2440,7 +2448,7 @@ export function buildChamadoQueryFilter(status: string, queue?: string, responsa
     filters.push(excludeEspeciaisChannelsMongoFilter());
   }
 
-  if (queue === 'meus-chamados' && responsavelCandidates?.length && status !== 'resolvido') {
+  if (queue === 'meus-chamados' && responsavelCandidates?.length && status !== 'resolvido' && status !== 'fechado') {
     const responsavelFilter = status === 'novo'
       ? meusChamadosNovosResponsavelFilter(responsavelCandidates)
       : meusChamadosAgentScopeFilter(responsavelCandidates);

@@ -63,9 +63,10 @@ async function resolveQueueMode(
   return { queue: queueParam, extraFilter: undefined };
 }
 
-const TERMINAL_COLUMN_STATUSES = new Set(['resolvido', 'cancelado', 'fechado']);
+/** Fila "Resolvidos" = resolvido + fechado. Cancelado nunca conta nem aparece nela. */
+const RESOLVED_COLUMN_STATUSES = new Set(['resolvido', 'fechado']);
 
-function deskQueueIdFromColumn(column: { id: string; status: string }): string {
+function deskQueueIdFromColumn(column: { id: string; status: string }): string | null {
   const id = String(column.id || '').trim();
   if (id === 'meus-novos') return 'novos';
   if (id === 'meus-em-aberto' || id === 'meus-em-andamento') return 'em-andamento';
@@ -76,7 +77,8 @@ function deskQueueIdFromColumn(column: { id: string; status: string }): string {
   if (status === 'novo') return 'novos';
   if (status === 'em-aberto' || status === 'em-andamento') return 'em-andamento';
   if (status === 'pendente' || status === 'em-espera') return 'pendente';
-  if (TERMINAL_COLUMN_STATUSES.has(status)) return 'resolvidos';
+  if (RESOLVED_COLUMN_STATUSES.has(status)) return 'resolvidos';
+  if (status === 'cancelado') return null;
   return 'em-andamento';
 }
 
@@ -105,6 +107,7 @@ async function loadQueueCounts(
         extraFilter,
       );
       const deskQueueId = deskQueueIdFromColumn(column);
+      if (!deskQueueId) return;
       const total = await ChamadoN1.countDocuments(filter);
       counts[deskQueueId] = (counts[deskQueueId] || 0) + total;
     }),

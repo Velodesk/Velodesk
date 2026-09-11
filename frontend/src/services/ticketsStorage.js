@@ -60,7 +60,9 @@ const QUEUE_MAP = {
   novos: ['novos', 'novo'],
   'em-andamento': ['em-andamento', 'em-aberto'],
   pendente: ['em-espera', 'pendentes', 'pendente'],
-  resolvidos: ['resolvidos', 'resolvido', 'cancelado', 'fechado'],
+  /** Resolvidos = resolvido + fechado. Cancelado tem bucket próprio — nunca conta nem aparece aqui. */
+  resolvidos: ['resolvidos', 'resolvido', 'fechado'],
+  cancelados: ['cancelado'],
 };
 
 import { loadCustomQueues } from './desk/customQueueBoxes';

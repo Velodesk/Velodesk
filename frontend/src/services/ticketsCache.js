@@ -537,7 +537,8 @@ function resolveBoxIdForTicketStatus(status) {
   const normalized = String(status || '').trim().toLowerCase();
   if (normalized === 'em-aberto' || normalized === 'em-andamento') return 'em-andamento';
   if (normalized === 'pendente' || normalized === 'em-espera') return 'em-espera';
-  if (normalized === 'resolvido' || normalized === 'cancelado' || normalized === 'fechado') return 'resolvidos';
+  if (normalized === 'resolvido' || normalized === 'fechado') return 'resolvidos';
+  if (normalized === 'cancelado') return 'cancelados';
   return 'novos';
 }
 
@@ -1386,7 +1387,8 @@ export function replaceDraftIdInColumns(oldId, newTicket) {
   let boxId = 'novos';
   if (status === 'em-aberto' || status === 'em-andamento') boxId = 'em-andamento';
   else if (status === 'pendente' || status === 'em-espera') boxId = 'em-espera';
-  else if (status === 'resolvido' || status === 'cancelado' || status === 'fechado') boxId = 'resolvidos';
+  else if (status === 'resolvido' || status === 'fechado') boxId = 'resolvidos';
+  else if (status === 'cancelado') boxId = 'cancelados';
   const box = cols.find((c) => c.id === boxId) || cols[0];
   if (box) {
     if (!box.tickets) box.tickets = [];
