@@ -1,15 +1,18 @@
 /**
- * moduleStatus.service v1.0.0 — status dos serviços (Painel 360°), espelha o VeloHub
- * VERSION: v1.0.0 | DATE: 2026-08-31
+ * moduleStatus.service v1.1.0 — lê o array `servicos` (formato atual do VeloHub)
+ * VERSION: v1.1.0 | DATE: 2026-09-11
  *
  * Lê o snapshot mais recente de VeloHubCentral/console_config/module_status (mesma
- * coleção que alimenta o "mostrador de serviços" do VeloHub). Cada save é um documento
- * novo com um campo por módulo (prefixo "_", ex.: "_pessoal": "on"); não fazemos upsert
- * por módulo — só lemos o findOne mais recente por createdAt.
+ * coleção que alimenta o "mostrador de serviços" do VeloHub). O documento é um
+ * singleton (_id: "status") atualizado in-place, com a lista de serviços em
+ * `servicos: [{ key, nome, status, ordem }, ...]`.
  *
- * A lista de módulos NÃO é fixa aqui: pega dinamicamente todo campo prefixado com "_"
- * do documento (exceto "_id"), então um módulo novo/removido no VeloHub aparece/some do
- * Painel 360° sem precisar mexer no código do Desk.
+ * Formato antigo (campos soltos prefixados com "_", ex.: "_pessoal": "on") não é mais
+ * usado pelo VeloHub — se `servicos` não existir, caímos nesse formato como fallback
+ * só por segurança, mas não deveria mais ocorrer em produção.
+ *
+ * A lista de módulos NÃO é fixa aqui: vem inteira do array `servicos`, então um módulo
+ * novo/removido no VeloHub aparece/some do Painel 360° sem precisar mexer no Desk.
  */
 import { getConsoleConfigConnection, isConsoleConfigConnected } from '../config/database';
 
@@ -44,8 +47,25 @@ export async function getModuleStatusItems(): Promise<ModuleStatusItem[]> {
   const doc = await moduleStatusCollection().findOne({}, { sort: { createdAt: -1 } });
   if (!doc) return [];
 
+  const servicos = (doc as Record<string, unknown>).servicos;
+  if (Array.isArray(servicos)) {
+    return servicos
+      .map((item) => {
+        const s = (item ?? {}) as Record<string, unknown>;
+        const key = String(s.key ?? '').trim();
+        return {
+          key,
+          label: String(s.nome ?? '').trim() || labelFromFieldKey(key),
+          status: String(s.status ?? ''),
+        };
+      })
+      .filter((item) => item.label);
+  }
+
+  // Fallback — formato antigo (campos soltos prefixados com "_"). Nunca deveria
+  // ser necessário em produção; mantido só por segurança durante a transição.
   return Object.keys(doc)
-    .filter((key) => key.startsWith('_') && key !== '_id')
+    .filter((key) => key.startsWith('_') && key !== '_id' && key !== '__v')
     .map((key) => ({
       key: key.replace(/^_/, ''),
       label: labelFromFieldKey(key),
