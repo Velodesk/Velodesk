@@ -1,0 +1,791 @@
+/**
+ * dashboardOperacional.css v1.1.0 — 2 faixas de KPIs + filtro no header + layout mais denso.
+ * Segue variáveis do velodesk-ecosystem.css (--eco-*).
+ */
+
+/* ── SHELL ── */
+.dashop-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 28px 40px;
+  max-width: 1920px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.dashop-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dashop-header__title-block {
+  min-width: 200px;
+}
+
+.dashop-header__title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--eco-navy, #000058);
+}
+
+.dashop-header__subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.dashop-header__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dashop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--eco-blue, #1634FF);
+  background: var(--eco-blue, #1634FF);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+
+.dashop-btn:hover:not(:disabled) { background: #001DBD; }
+.dashop-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.dashop-btn--ghost {
+  background: transparent;
+  color: var(--eco-blue, #1634FF);
+}
+.dashop-btn--ghost:hover:not(:disabled) { background: rgba(22, 52, 255, 0.06); }
+
+.dashop-loading,
+.dashop-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.dashop-loading {
+  background: rgba(22, 52, 255, 0.06);
+  color: var(--eco-blue, #1634FF);
+}
+
+.dashop-error {
+  background: rgba(196, 41, 31, 0.08);
+  color: #C4291F;
+  border: 1px solid rgba(196, 41, 31, 0.2);
+}
+
+/* ── KPI BLOCK (agora + no período) ── */
+/* Em telas ≥ 1280px, as duas faixas ficam lado a lado (Agora 4/9 · Período 5/9),
+   aproveitando a largura. Em telas menores, empilham. */
+.dashop-kpi-block {
+  display: grid;
+  grid-template-columns: 4fr 5fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.dashop-kpi-block.is-loading { opacity: 0.7; }
+
+.dashop-kpi-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 1280px) {
+  .dashop-kpi-block { grid-template-columns: 1fr; }
+}
+
+.dashop-kpi-group__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashop-kpi-group__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+
+.dashop-kpi-group__tag--live {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.dashop-kpi-group__tag--period {
+  background: rgba(22, 52, 255, 0.10);
+  color: var(--eco-blue, #1634FF);
+}
+
+.dashop-kpi-group__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22C55E;
+  animation: dashopBlink 2s ease-in-out infinite;
+}
+
+@keyframes dashopBlink {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+.dashop-kpi-group__meta {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.dashop-kpi-grid {
+  display: grid;
+  gap: 12px;
+  flex: 1;
+}
+.dashop-kpi-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.dashop-kpi-grid--5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+.dashop-kpi {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 88, 0.08);
+  border-radius: 12px;
+  padding: 14px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 92px;
+  position: relative;
+  overflow: hidden;
+  cursor: help;
+}
+
+.dashop-kpi::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+}
+
+.dashop-kpi--ok::before   { background: #22C55E; }
+.dashop-kpi--warn::before { background: #F5A623; }
+.dashop-kpi--crit::before { background: #F04646; }
+.dashop-kpi--neutral::before { background: rgba(0, 0, 88, 0.18); }
+
+.dashop-kpi__label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.dashop-kpi__value {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--eco-navy, #000058);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  margin-top: auto;
+}
+
+.dashop-kpi--ok .dashop-kpi__value   { color: #15803d; }
+.dashop-kpi--warn .dashop-kpi__value { color: #8a6d00; }
+.dashop-kpi--crit .dashop-kpi__value { color: #C4291F; }
+
+@media (max-width: 900px) {
+  .dashop-kpi-grid--5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashop-kpi-grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── ALERTA ── */
+.dashop-alert-strip {
+  background: rgba(240, 70, 70, 0.08);
+  border: 1px solid rgba(240, 70, 70, 0.25);
+  color: #C4291F;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashop-alert-strip strong { font-size: 15px; }
+
+/* ── CARDS ── */
+.dashop-card {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 88, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashop-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(0, 0, 88, 0.06);
+  flex-wrap: wrap;
+}
+
+.dashop-card__head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dashop-card__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--eco-navy, #000058);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dashop-card__meta {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.dashop-card__empty {
+  margin: 0;
+  padding: 20px 14px;
+  text-align: center;
+  color: #64748b;
+  font-size: 12px;
+}
+
+/* ── ROW ── */
+.dashop-row {
+  display: grid;
+  gap: 12px;
+}
+
+.dashop-row--main {
+  grid-template-columns: 2fr 1fr;
+}
+
+.dashop-row--trend {
+  grid-template-columns: 3fr 2fr;
+}
+
+@media (max-width: 1100px) {
+  .dashop-row--main { grid-template-columns: 1fr; }
+  .dashop-row--trend { grid-template-columns: 1fr; }
+}
+
+/* ── TREND MINI ── */
+.dashop-trend__chart-wrap {
+  padding: 8px 14px 6px;
+  max-width: 780px;
+}
+
+.dashop-trend__svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.dashop-trend__legend {
+  display: flex;
+  gap: 16px;
+  padding: 0 14px 12px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.dashop-trend__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dashop-trend__legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.dashop-trend__legend-swatch--bars {
+  background: var(--eco-blue, #1634FF);
+  opacity: 0.85;
+}
+
+.dashop-trend__legend-swatch--line {
+  height: 2px;
+  background: #F5A623;
+  border-radius: 1px;
+  margin-top: 5px;
+}
+
+/* Filtro do card de tendência */
+.dashop-trend__filter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.dashop-trend__pills {
+  display: inline-flex;
+  gap: 4px;
+  background: rgba(0, 0, 88, 0.05);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.dashop-trend__pill {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s;
+}
+
+.dashop-trend__pill:hover {
+  color: var(--eco-navy, #000058);
+}
+
+.dashop-trend__pill.is-active {
+  background: #fff;
+  color: var(--eco-blue, #1634FF);
+  box-shadow: 0 1px 2px rgba(0, 0, 88, 0.08);
+}
+
+.dashop-trend__range {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.dashop-trend__range input[type="date"] {
+  border: 1px solid rgba(0, 0, 88, 0.15);
+  background: #fff;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--eco-navy, #000058);
+  color-scheme: light;
+  font-family: inherit;
+}
+
+/* ── TOP 3 MOTIVOS ── */
+.dashop-top-motivos__list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0 8px;
+}
+
+.dashop-top-motivos__row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(0, 0, 88, 0.04);
+}
+
+.dashop-top-motivos__row:last-child { border-bottom: none; }
+
+.dashop-top-motivos__rank {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(22, 52, 255, 0.10);
+  color: var(--eco-blue, #1634FF);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dashop-top-motivos__info {
+  min-width: 0;
+}
+
+.dashop-top-motivos__motivo {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--eco-navy, #000058);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashop-top-motivos__produto {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashop-top-motivos__bar-wrap {
+  height: 4px;
+  background: rgba(0, 0, 88, 0.06);
+  border-radius: 2px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.dashop-top-motivos__bar {
+  height: 100%;
+  background: var(--eco-blue, #1634FF);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.dashop-top-motivos__stats {
+  text-align: right;
+  min-width: 52px;
+}
+
+.dashop-top-motivos__count {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--eco-navy, #000058);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashop-top-motivos__pct {
+  font-size: 10px;
+  color: #64748b;
+}
+
+/* ── CHANNEL BARS ── */
+.dashop-channel-bars {
+  padding: 10px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dashop-channel-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashop-channel-row__label {
+  width: 82px;
+  font-size: 11px;
+  color: var(--eco-navy, #000058);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.dashop-channel-row__bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: rgba(0, 0, 88, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dashop-channel-row__bar {
+  height: 100%;
+  background: var(--eco-blue, #1634FF);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.dashop-channel-row__pct {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  width: 78px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── TABLE ── */
+.dashop-table-wrap { overflow-x: auto; }
+
+.dashop-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.dashop-table th {
+  padding: 8px 14px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(0, 0, 88, 0.03);
+  border-bottom: 1px solid rgba(0, 0, 88, 0.08);
+}
+
+.dashop-table th:not(:first-child) { text-align: right; }
+
+.dashop-table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(0, 0, 88, 0.04);
+  vertical-align: middle;
+}
+
+.dashop-table tr:last-child td { border-bottom: none; }
+
+.dashop-table__row.is-clickable { cursor: pointer; }
+.dashop-table__row.is-clickable:hover { background: rgba(22, 52, 255, 0.04); }
+
+.dashop-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--eco-navy, #000058);
+}
+
+.dashop-num.is-ok    { color: #15803d; }
+.dashop-num.is-warn  { color: #8a6d00; }
+.dashop-num.is-crit  { color: #C4291F; }
+.dashop-num.is-muted { color: #94a3b8; }
+
+/* ── AGENT CELL ── */
+.dashop-agent-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashop-agent-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(22, 52, 255, 0.12);
+  color: var(--eco-blue, #1634FF);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 2px solid transparent;
+}
+
+.dashop-agent-avatar.is-online { border-color: #22C55E; }
+
+.dashop-agent-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--eco-navy, #000058);
+}
+
+.dashop-agent-status {
+  font-size: 10px;
+  margin-top: 1px;
+}
+
+.dashop-agent-status.is-online  { color: #15803d; }
+.dashop-agent-status.is-offline { color: #94a3b8; }
+
+/* ── WORKFLOW CARD ── */
+.dashop-workflow__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashop-workflow__row {
+  display: grid;
+  grid-template-columns: 2fr 90px 90px 100px 100px 32px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(0, 0, 88, 0.04);
+  font-size: 13px;
+}
+
+.dashop-workflow__row:last-child { border-bottom: none; }
+
+.dashop-workflow__row--head {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  background: rgba(0, 0, 88, 0.03);
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.dashop-workflow__row--head > span:not(:first-child) { text-align: right; }
+
+.dashop-workflow__row.is-clickable {
+  cursor: pointer;
+}
+
+.dashop-workflow__row.is-clickable:hover {
+  background: rgba(22, 52, 255, 0.04);
+}
+
+.dashop-workflow__row.is-clickable:focus-visible {
+  outline: 2px solid var(--eco-blue, #1634FF);
+  outline-offset: -2px;
+}
+
+.dashop-workflow__area {
+  font-weight: 600;
+  color: var(--eco-navy, #000058);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashop-workflow__chevron {
+  color: #94a3b8;
+  text-align: center;
+  font-size: 12px;
+}
+
+.dashop-workflow__detail {
+  background: rgba(0, 0, 88, 0.02);
+  border-top: 1px solid rgba(0, 0, 88, 0.06);
+  border-bottom: 1px solid rgba(0, 0, 88, 0.06);
+  padding: 10px 16px 14px;
+}
+
+.dashop-workflow__detail.is-crit {
+  background: rgba(240, 70, 70, 0.03);
+  border-top-color: rgba(240, 70, 70, 0.12);
+  border-bottom-color: rgba(240, 70, 70, 0.12);
+}
+
+.dashop-workflow__detail.is-crit .dashop-workflow__detail-head strong {
+  color: #C4291F;
+}
+
+.dashop-workflow__badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.dashop-workflow__badge--ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.dashop-workflow__badge--crit {
+  background: rgba(240, 70, 70, 0.12);
+  color: #C4291F;
+}
+
+.dashop-workflow__badge--muted {
+  background: rgba(0, 0, 88, 0.06);
+  color: #64748b;
+}
+
+.dashop-workflow__detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.dashop-workflow__detail-head strong {
+  color: var(--eco-navy, #000058);
+  font-size: 12px;
+}
+
+.dashop-workflow__detail-meta {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.dashop-workflow__detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 88, 0.06);
+}
+
+.dashop-workflow__detail-table th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(0, 0, 88, 0.06);
+}
+
+.dashop-workflow__detail-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(0, 0, 88, 0.03);
+  vertical-align: middle;
+}
+
+.dashop-workflow__detail-table tr:last-child td { border-bottom: none; }
+
+@media (max-width: 900px) {
+  .dashop-workflow__row {
+    grid-template-columns: 2fr 60px 60px 70px 70px 24px;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+}
+
+/* ── BREACH TICKET ── */
+.dashop-ticket-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--eco-navy, #000058);
+}
+
+.dashop-ticket-meta {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 1px;
+}

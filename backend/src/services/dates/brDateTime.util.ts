@@ -2,7 +2,7 @@
  * brDateTime.util v1.0.0 — parse/persistência e bounds de dia civil em America/Sao_Paulo
  * VERSION: v1.0.0 | DATE: 2026-08-18
  */
-import { brasiliaDayBoundsUtc, parseDbTimestampAsInstant } from '../realtime/dates/brasilDay';
+import { brasiliaDayBoundsUtc, parseDbTimestampAsInstant } from './brasilDay';
 
 export const BRT_OFFSET = '-03:00';
 

@@ -33,7 +33,7 @@ export const PROFILES = {
     icon: 'fa-user-tie',
     color: '#000058',
     desc: 'SLA, performance da equipe e escalonamentos',
-    nav: ['workspace', 'tickets', 'busca-tickets', 'realtime', 'preferencias', 'atendimento-ia-telefonico', 'config', ...ESPECIAIS_NAV_IDS],
+    nav: ['workspace', 'tickets', 'busca-tickets', 'preferencias', 'atendimento-ia-telefonico', 'config', ...ESPECIAIS_NAV_IDS],
     defaultPage: 'workspace',
   },
   workflow: {
@@ -62,13 +62,6 @@ export const PROFILES = {
 
 export const NAV_ITEMS = [
   { id: 'workspace', path: '/workspace', label: 'Painel 360°', icon: 'ti-layout-grid', tooltip: 'Painel 360°' },
-  {
-    id: 'realtime',
-    path: '/realtime',
-    label: 'Realtime',
-    icon: 'ti-broadcast',
-    tooltip: 'Painel operacional ao vivo',
-  },
   { id: 'reports', path: '/reports', label: 'Relatórios', icon: 'ti-chart-bar', tooltip: 'Relatórios' },
   { id: 'tickets', path: '/tickets', label: 'Tickets', icon: 'ti-ticket', tooltip: 'Tickets' },
   {

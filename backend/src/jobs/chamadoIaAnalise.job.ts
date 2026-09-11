@@ -22,28 +22,6 @@ async function runCycleSafe(): Promise<void> {
   }
 }
 
-/** Dispara o ciclo agora (botão "Atualizar análise" no Realtime) — reusa o mesmo lock do job periódico. */
-export async function runChamadoIaAnaliseNow(): Promise<{
-  skipped: boolean;
-  success?: boolean;
-  candidatos?: number;
-  classificados?: number;
-  error?: string;
-}> {
-  if (running) return { skipped: true };
-  if (!env.chamadoIaAnaliseEnabled) return { skipped: true, error: 'CHAMADO_IA_ANALISE_ENABLED=false' };
-  if (!isMongoConnected()) return { skipped: true, error: 'MongoDB indisponível' };
-  if (!isAgentsConfigured()) return { skipped: true, error: 'IA não configurada (OPENAI_API_KEY)' };
-
-  running = true;
-  try {
-    const result = await runChamadoIaAnaliseAgentCycle();
-    return { skipped: false, ...result };
-  } finally {
-    running = false;
-  }
-}
-
 export function startChamadoIaAnaliseJob(): void {
   if (!env.chamadoIaAnaliseEnabled) {
     console.info('[chamado-ia-analise-job] CHAMADO_IA_ANALISE_ENABLED=false — job não iniciado.');

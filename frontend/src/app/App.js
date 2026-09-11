@@ -58,7 +58,6 @@ import CasoEspecialDetailPage from '../features/workspace/components/gestaoDetai
 import AiUsageDetailPage from '../features/workspace/components/gestaoDetail/AiUsageDetailPage';
 import CsatDetailPage from '../features/workspace/components/gestaoDetail/CsatDetailPage';
 import AtendimentoIaTelefonicoPage from '../pages/AtendimentoIaTelefonicoPage';
-import RealtimePage from '../pages/RealtimePage';
 import { PermissionProvider } from '../context/PermissionContext';
 
 import { initCockpitGlobals } from '../config/cockpitConfig';
@@ -123,7 +122,6 @@ function AppRoutes() {
 
             { path: 'atendimento-ia-telefonico/*', element: React.createElement(AtendimentoIaTelefonicoPage) },
 
-            { path: 'realtime', element: React.createElement(RealtimePage) },
 
             { path: 'client-portal', element: React.createElement(ClientPortalPage) },
 

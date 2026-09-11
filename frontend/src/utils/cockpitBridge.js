@@ -9,7 +9,6 @@ const PAGE_ROUTES = {
   'busca-tickets': '/busca-tickets',
   preferencias: '/preferencias',
   'atendimento-ia-telefonico': '/atendimento-ia-telefonico',
-  realtime: '/realtime',
   'alteracoes-cadastrais': '/alteracoes-cadastrais',
   especiais: '/workspace',
   'especiais-reclame-aqui': '/especiais/reclame-aqui',

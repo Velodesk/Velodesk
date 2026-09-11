@@ -16,7 +16,7 @@ import {
 import { findClienteByPhone, resolveClienteRefFromBody } from '../cliente.service';
 import { notifyTicketOpenedAsync } from '../emailNotification.service';
 import { runInboundPostCreateHooks } from '../agents/inboundAgentPipeline.service';
-import { publishTicketEvent } from '../realtime/ticketEventsBroadcast.service';
+import { publishTicketEvent } from '../presence/ticketEventsBroadcast.service';
 import type {
   InboundTicketOrigin,
   InboundTicketOriginConfig,

@@ -190,6 +190,13 @@ export const moduleStatusApi = {
   list: () => api.get('/module-status').then((r) => r.data),
 };
 
+export const dashboardOperacionalApi = {
+  /** Payload agregado do painel operacional do supervisor Desk (Fase 1). Aceita filtro de período. */
+  get: (params) => api.get('/dashboard/operacional', { params }).then((r) => r.data),
+  /** Bloco de tendência (série de volume/CSAT + top motivos) com filtro de período próprio. */
+  trend: (params) => api.get('/dashboard/operacional/trend', { params }).then((r) => r.data),
+};
+
 export const gestaoInsightsApi = {
   /** Payload unificado dos cards analíticos (resumo, volume dia, motivos, casos especiais, risco). */
   painel: (params) => api.get('/gestao-insights/painel', { params }).then((r) => r.data),
@@ -207,15 +214,6 @@ export const gestaoInsightsApi = {
     api.get('/gestao-insights/voz-cliente', { params }).then((r) => r.data),
   vozClienteTickets: (params) =>
     api.get('/gestao-insights/voz-cliente/tickets', { params }).then((r) => r.data),
-};
-
-export const realtimeApi = {
-  health: () => api.get('/realtime/health').then((r) => r.data),
-  dashboard: () => api.get('/realtime/dashboard').then((r) => r.data),
-  liveCalls: () => api.get('/realtime/live-calls').then((r) => r.data),
-  syncCalls: () => api.post('/realtime/sync/calls').then((r) => r.data),
-  syncEvents: () => api.post('/realtime/sync/events').then((r) => r.data),
-  refreshIa: () => api.post('/realtime/ia/refresh').then((r) => r.data),
 };
 
 export const ticketIaAnalysisApi = {

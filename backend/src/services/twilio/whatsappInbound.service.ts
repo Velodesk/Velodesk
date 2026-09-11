@@ -7,7 +7,7 @@ import twilio from 'twilio';
 import { env } from '../../config/env';
 import { ChamadoN1 } from '../../models/ChamadoN1';
 import { ChamadoIaAnalise } from '../../models/ChamadoIaAnalise';
-import { publishTicketEvent } from '../realtime/ticketEventsBroadcast.service';
+import { publishTicketEvent } from '../presence/ticketEventsBroadcast.service';
 import {
   appendStatusTransition,
   currentStatus,

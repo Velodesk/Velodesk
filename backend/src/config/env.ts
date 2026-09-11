@@ -266,6 +266,8 @@ export const env = {
     .map((item) => item.trim())
     .filter(Boolean),
   chamadoIaAnaliseEnabled: process.env.CHAMADO_IA_ANALISE_ENABLED !== 'false',
+  /** Sync diário de custo Twilio WhatsApp → coleção `whatsapp_message_costs` (consumido pelo WFM). */
+  whatsappCostSyncEnabled: process.env.WHATSAPP_COST_SYNC_ENABLED !== 'false',
   /** Batch periódico de re-varredura da IA de telefonia (sort pesado em telephony_calls).
    * Desativado por padrão: cada ligação já é classificada na chegada (telephonyInbound). */
   telephonyIaBatchEnabled: process.env.TELEPHONY_IA_BATCH_ENABLED === 'true',
@@ -331,9 +333,6 @@ export const env = {
     || process.env.SUPABASE_SERVICE_ROLE_KEY
     || ''
   ).trim(),
-  realtimeTelephonyProvider: (process.env.REALTIME_TELEPHONY_PROVIDER || 'supabase').trim().toLowerCase(),
-  telecom55ApiKey: (process.env.TELECOM55_API_KEY || '').trim(),
-  telecom55ApiUrl: (process.env.TELECOM55_API_URL || 'https://reportapi02.55pbx.com:50500').trim().replace(/\/+$/, ''),
   telecom55WebhookSecret: (
     process.env.TELECOM55_WEBHOOK_SECRET
     || process.env.WEBHOOK_SECRET

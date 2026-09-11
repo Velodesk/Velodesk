@@ -15,7 +15,7 @@ import {
   resolveInboundClientReplyStatus,
   shouldSpawnNewTicketOnInbound,
 } from './chamado.mapper';
-import { publishTicketEvent } from './realtime/ticketEventsBroadcast.service';
+import { publishTicketEvent } from './presence/ticketEventsBroadcast.service';
 import { normalizeEmail, resolveClienteRefFromEmail } from './cliente.service';
 import { notifyTicketOpenedAsync } from './emailNotification.service';
 import { runInboundPostCreateHooks } from './agents/inboundAgentPipeline.service';

@@ -34,7 +34,7 @@ import {
 import { TabulacaoValidationError } from '../services/tabulation.service';
 import { notifyAgentReplyAsync, notifyChamadoCreatedAsync } from '../services/emailNotification.service';
 import { evaluateEmailTriggers } from '../services/emailTrigger.service';
-import { publishTicketEvent } from '../services/realtime/ticketEventsBroadcast.service';
+import { publishTicketEvent } from '../services/presence/ticketEventsBroadcast.service';
 import { reconcileChamadoAttachmentScanStatuses } from '../services/attachmentScanReconcile.service';
 import { getCachedBoxes } from '../services/boxesCache.service';
 import { runInboundAgentPipeline, runInboundPostCreateHooks } from '../services/agents/inboundAgentPipeline.service';
