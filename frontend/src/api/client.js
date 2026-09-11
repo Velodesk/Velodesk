@@ -396,6 +396,11 @@ export const mailRulesApi = {
     api.delete(`/mail-rules/${encodeURIComponent(list)}/${encodeURIComponent(id)}`).then((r) => r.data),
 };
 
+export const emailBouncesApi = {
+  list: () => api.get('/email-bounces').then((r) => r.data),
+  markViewed: () => api.post('/email-bounces/mark-viewed').then((r) => r.data),
+};
+
 export const emailOutboundApi = {
   opcoes: () => api.get('/email-outbound/opcoes').then((r) => r.data),
   layout: () => api.get('/email-outbound/layout').then((r) => r.data),

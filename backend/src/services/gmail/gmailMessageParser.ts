@@ -89,5 +89,6 @@ export function gmailMessageToInboundPayload(message: gmail_v1.Schema$Message): 
     textBody,
     htmlBody: html || undefined,
     receivedAt: message.internalDate ? new Date(Number(message.internalDate)) : new Date(),
+    autoSubmitted: getHeader(headers, 'Auto-Submitted') || undefined,
   };
 }

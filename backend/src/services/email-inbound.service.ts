@@ -21,6 +21,7 @@ import { notifyTicketOpenedAsync } from './emailNotification.service';
 import { runInboundPostCreateHooks } from './agents/inboundAgentPipeline.service';
 import { runCasosEspeciaisTriagem } from './agents/casosEspeciaisTrigger.service';
 import { matchMailRule } from './mailRules.service';
+import { isEmailBounce, logEmailBounce } from './emailBounceLog.service';
 import {
   claimInboundMessage,
   markInboundMessageDone,
@@ -345,6 +346,20 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
   const messageId = normalizeMessageId(payload.messageId);
   if (!messageId) {
     throw new Error('Message-Id ausente no e-mail inbound');
+  }
+
+  if (isEmailBounce(payload)) {
+    await logEmailBounce(payload);
+    console.info('[email-inbound] bounce descartado (sem ticket)', {
+      from: payload.from.email,
+      messageId,
+      subject: payload.subject,
+    });
+    return {
+      action: 'skipped',
+      reason: 'bounce',
+      messageId,
+    };
   }
 
   const rule = matchMailRule(payload);

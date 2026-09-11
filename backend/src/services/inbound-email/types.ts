@@ -21,6 +21,7 @@ export interface InboundEmailPayload {
   htmlBody?: string;
   attachments?: InboundEmailAttachment[];
   receivedAt: Date;
+  autoSubmitted?: string;
 }
 
 export type InboundEmailProcessAction = 'created' | 'replied' | 'duplicate' | 'skipped';
@@ -29,6 +30,6 @@ export interface InboundEmailProcessResult {
   action: InboundEmailProcessAction;
   chamadoProtocolo?: string;
   ticketId?: string;
-  reason?: 'spam' | 'ignored';
+  reason?: 'spam' | 'ignored' | 'bounce';
   messageId?: string;
 }

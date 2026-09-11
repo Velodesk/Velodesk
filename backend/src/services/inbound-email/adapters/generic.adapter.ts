@@ -24,6 +24,31 @@ function parseRecipients(value: unknown): string[] {
   return raw.split(',').map((part) => parseEmailAddress(part).email).filter(Boolean);
 }
 
+/**
+ * Mailgun manda os headers originais em `message-headers` (JSON stringificado ou já
+ * parseado) como array de pares [nome, valor]. Outros provedores podem mandar o campo
+ * `Auto-Submitted`/`auto-submitted` direto no corpo do webhook.
+ */
+function extractAutoSubmittedHeader(body: Record<string, unknown>): string | undefined {
+  const direct = body['Auto-Submitted'] ?? body['auto-submitted'] ?? body.autoSubmitted;
+  if (direct) return String(direct).trim() || undefined;
+
+  const raw = body['message-headers'];
+  if (!raw) return undefined;
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (Array.isArray(parsed)) {
+      const found = parsed.find((pair) => (
+        Array.isArray(pair) && String(pair[0] ?? '').toLowerCase() === 'auto-submitted'
+      ));
+      if (found) return String(found[1] ?? '').trim() || undefined;
+    }
+  } catch {
+    /* ignore malformed message-headers */
+  }
+  return undefined;
+}
+
 export function parseGenericInboundEmail(body: Record<string, unknown>): InboundEmailPayload {
   const fromRaw = body.from ?? body.sender ?? body.From ?? '';
   const fromParsed = typeof fromRaw === 'object' && fromRaw !== null
@@ -63,5 +88,6 @@ export function parseGenericInboundEmail(body: Record<string, unknown>): Inbound
         })
       : undefined,
     receivedAt: body.receivedAt ? new Date(String(body.receivedAt)) : new Date(),
+    autoSubmitted: extractAutoSubmittedHeader(body),
   };
 }
