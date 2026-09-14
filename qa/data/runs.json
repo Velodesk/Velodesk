@@ -1,0 +1,17 @@
+[
+  {
+    "runId": "20260914-1706",
+    "iniciadoEm": "2026-09-14T17:06:00.115Z",
+    "finalizadoEm": "2026-09-14T17:06:20.278Z",
+    "resumo": {
+      "total": 49,
+      "sim": 20,
+      "nao": 4,
+      "parcial": 2,
+      "conhecidas": 0,
+      "bloqueados": 22,
+      "naoTestaveis": 1,
+      "naoTestados": 0
+    }
+  }
+]
