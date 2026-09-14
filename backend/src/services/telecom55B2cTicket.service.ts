@@ -4,9 +4,9 @@
  * espírito (compõe ticket + notifica CTA), payload e regras de negócio diferentes.
  */
 import { Types } from 'mongoose';
-import { User } from '../models/User';
 import { ChamadoN1 } from '../models/ChamadoN1';
 import { createChamadoFromBody } from './chamado.mapper';
+import { findColaboradorByEmail, resolveColaboradorDisplayName } from './colaboradoresCadastro.service';
 import { findOrCreateClienteFromCpfLookup } from './cliente.service';
 import { createWorkflowNotificacao } from './workflowNotificacao.service';
 import { runInboundPostCreateHooks } from './agents/inboundAgentPipeline.service';
@@ -57,15 +57,22 @@ export function resolveCategoriaFromUra(callTerminal: string, callUra: string): 
   return URA_TO_CATEGORIA[normalizeUra(callUra)] || DEFAULT_CATEGORIA;
 }
 
+/**
+ * Fonte de verdade é o cadastro de colaboradores do VeloHub (funcionarios_cadastroColaboradores,
+ * console_funcionarios) — o mesmo usado no login (auth.routes.ts). O model `User` local é só um
+ * cache "sombra" criado na primeira vez que o colaborador loga no Desk; um agente com acesso
+ * liberado mas que nunca logou não existe lá, e o lookup falhava sempre por isso, independente
+ * de qual cluster Mongo o Desk usa.
+ */
 async function resolveAgentByBranchEmail(branchEmail: string): Promise<{ email: string; displayName: string } | null> {
-  const user = await User.findOne({ email: branchEmail }).select('email name').lean();
-  if (!user?.email) {
-    console.info('[telecom55-b2c-ticket] atendente não resolvido no cadastro User', { branchEmail });
+  const colaborador = await findColaboradorByEmail(branchEmail);
+  if (!colaborador?.userMail) {
+    console.info('[telecom55-b2c-ticket] atendente não resolvido no cadastro de colaboradores', { branchEmail });
     return null;
   }
   return {
-    email: String(user.email).trim().toLowerCase(),
-    displayName: String(user.name || user.email).trim(),
+    email: String(colaborador.userMail).trim().toLowerCase(),
+    displayName: resolveColaboradorDisplayName(colaborador),
   };
 }
 
