@@ -47,6 +47,10 @@ import ReportsPage from '../pages/ReportsPage';
 
 import ClientPortalPage from '../pages/ClientPortalPage';
 import WorkflowPage from '../pages/WorkflowPage';
+// TEMP (dev local): WorkflowFinalizadosPage referencia exports que ainda não existem em
+// workflowApprovalData.js/workflowTeamQueues.js e quebra o boot do Vite. Religar quando essa
+// feature (WIP de outra sessão) estiver com os exports implementados.
+// import WorkflowFinalizadosPage from '../features/workflow/WorkflowFinalizadosPage';
 import AlteracoesCadastraisPage from '../pages/AlteracoesCadastraisPage';
 import EspeciaisSelectPage from '../features/especiais/EspeciaisSelectPage';
 import EspeciaisChannelPage from '../features/especiais/EspeciaisChannelPage';
@@ -95,6 +99,8 @@ function AppRoutes() {
             { path: 'workspace/gestao/csat', element: React.createElement(CsatDetailPage) },
 
             { path: 'workflow', element: React.createElement(WorkflowPage) },
+
+            // { path: 'workflow/finalizados', element: React.createElement(WorkflowFinalizadosPage) },
 
             { path: 'reports', element: React.createElement(ReportsPage) },
 

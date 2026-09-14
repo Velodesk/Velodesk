@@ -12,7 +12,6 @@ export type EnvelopeModo = 'primeiro_contato' | 'continuacao';
 export interface WrapComposerOpeningParams {
   nucleo: string;
   clientName?: string;
-  agentName?: string;
   messages?: TicketAiMessageInput[];
   modo?: EnvelopeModo;
 }
@@ -42,17 +41,11 @@ export function resolveClientGreetingName(clientName?: string, fallback = 'clien
   return first || fallback;
 }
 
-function resolveAgentDisplayName(agentName?: string): string {
-  const name = trimStr(agentName, 120);
-  return name || 'Atendimento Velotax';
-}
-
 /**
- * Abertura mecânica aplicada no composer — envelope completo no 1º contato
- * ("Olá, X, tudo bem?\n\nEu sou Y...") ou só a saudação curta nas mensagens
- * seguintes ("Oi, X, tudo bem?"). Sem se apresentar de novo, mas sempre cordial.
+ * Abertura mecânica aplicada no composer — só a saudação ("Olá, X, tudo bem?" no 1º
+ * contato, "Oi, X, tudo bem?" nas seguintes), sem se apresentar. Curta e cordial.
  */
-const MECHANICAL_OPENING_RE = /^(?:Olá,\s*.+?,\s*tudo bem\?\s*\r?\n\s*\r?\nEu sou .+?, do time de atendimento Velotax\.\s*\r?\n\s*\r?\n|Oi,\s*.+?,\s*tudo bem\?\s*\r?\n\s*\r?\n)/s;
+const MECHANICAL_OPENING_RE = /^(?:Olá|Oi),(?:\s*.+?,)?\s*tudo bem\?\s*\r?\n\s*\r?\n/s;
 
 /** Remove abertura mecânica do composer para obter só o núcleo (refinar, IA). */
 export function stripComposerOpening(text: string): string {
@@ -68,20 +61,15 @@ export function wrapComposerOpening(params: WrapComposerOpeningParams): string {
   if (!nucleo) return '';
 
   const modo = params.modo ?? detectEnvelopeModo(params.messages);
-  const clientGreeting = resolveClientGreetingName(params.clientName);
+  // Sem nome real resolvido, a saudação fica sem nome ("Oi, tudo bem?") em vez de usar a
+  // palavra genérica "cliente" — mesma lógica de resolveTicketSaudacao em placeholders.util.ts.
+  const clientGreeting = resolveClientGreetingName(params.clientName, '');
+  const saudacaoCurta = clientGreeting ? `Oi, ${clientGreeting}, tudo bem?` : 'Oi, tudo bem?';
+  const saudacaoLonga = clientGreeting ? `Olá, ${clientGreeting}, tudo bem?` : 'Olá, tudo bem?';
 
   if (modo === 'continuacao') {
-    // Sem se apresentar de novo — mas continua cordial: só a saudação curta.
-    return [`Oi, ${clientGreeting}, tudo bem?`, '', nucleo].join('\n');
+    return [saudacaoCurta, '', nucleo].join('\n');
   }
 
-  const agentDisplay = resolveAgentDisplayName(params.agentName);
-
-  return [
-    `Olá, ${clientGreeting}, tudo bem?`,
-    '',
-    `Eu sou ${agentDisplay}, do time de atendimento Velotax.`,
-    '',
-    nucleo,
-  ].join('\n');
+  return [saudacaoLonga, '', nucleo].join('\n');
 }

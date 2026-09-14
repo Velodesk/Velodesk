@@ -6,8 +6,14 @@
  */
 import { cfg } from '../config';
 import type { Contexto } from '../contexto';
-import { colChamados } from '../db';
+import { colChamados, buscarComRetry } from '../db';
 import { ok, falha, parcial, bloqueado, comTicket } from '../resultado';
+
+/** Busca o chamado por protocolo, tentando de novo se a condição não bater (ver buscarComRetry em db.ts). */
+async function buscarChamadoComRetry(protocolo: string, condicaoOk: (doc: any) => boolean): Promise<any> {
+  const col = await colChamados();
+  return buscarComRetry(() => col.findOne({ chamadoProtocolo: protocolo }), condicaoOk);
+}
 
 export async function checarMesclas(ctx: Contexto): Promise<void> {
   const { api, coletor } = ctx;
@@ -54,8 +60,10 @@ export async function checarMesclas(ctx: Contexto): Promise<void> {
     }
     mesclou = true;
     if (ctx.temBanco) {
-      const col = await colChamados();
-      const doc = await col.findOne({ chamadoProtocolo: ativo.protocolo });
+      const doc = await buscarChamadoComRetry(
+        ativo.protocolo,
+        (d) => d?.fusao?.fundido === true && d?.fusao?.hierarquia === 'superior',
+      );
       const fusao: any = doc?.fusao ?? {};
       if (fusao.fundido !== true || fusao.hierarquia !== 'superior') {
         return comTicket(
@@ -81,8 +89,10 @@ export async function checarMesclas(ctx: Contexto): Promise<void> {
   await coletor.checar('M02', async () => {
     if (!mesclou) return bloqueado('A mesclagem não aconteceu nesta rodada.');
     if (!ctx.temBanco) return bloqueado('Sem acesso ao banco para conferir o ticket absorvido.');
-    const col = await colChamados();
-    const doc = await col.findOne({ chamadoProtocolo: inativo.protocolo });
+    const doc = await buscarChamadoComRetry(
+      inativo.protocolo,
+      (d) => d?.fusao?.fundido === true && d?.fusao?.hierarquia === 'inferior',
+    );
     const registros: any[] = doc?.registro ?? [];
     const statusAtual = registros.length ? String(registros[registros.length - 1].status ?? '') : '';
     const fusao: any = doc?.fusao ?? {};

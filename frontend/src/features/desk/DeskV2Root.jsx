@@ -77,6 +77,11 @@ import { apiTicketToCockpit, cockpitTicketToApi } from '../../api/adapters/ticke
 import { lookupClient, upsertClientFromContact } from '../../services/clientDb';
 import { clientsApi, colaboradoresApi, ticketsApi } from '../../api/client';
 import { persistClienteContact, applyClienteDocToTicket, mapClienteDocToContact } from '../../api/adapters/clienteAdapter';
+import {
+  approveWorkflowDecision,
+  rejectWorkflowDecision,
+  requestWorkflowInfo,
+} from '../../services/workflow/workflowDecisionHandlers';
 import { useTickets } from '../../context/TicketsContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
@@ -316,6 +321,7 @@ export default function DeskV2Root() {
   const [colaboradorAtuacao, setColaboradorAtuacao] = useState([]);
   const [advancingWorkflow, setAdvancingWorkflow] = useState(false);
   const [cancelingWorkflow, setCancelingWorkflow] = useState(false);
+  const [decidingWorkflow, setDecidingWorkflow] = useState(false);
   const [startingWorkflow, setStartingWorkflow] = useState(false);
   const [assumingTicket, setAssumingTicket] = useState(false);
   const [workflowStartModalOpen, setWorkflowStartModalOpen] = useState(false);
@@ -2310,6 +2316,16 @@ export default function DeskV2Root() {
     return true;
   })();
 
+  const canDecideWorkflow = Boolean(
+    ticket
+    && !ticket?.workflow?.pendingPersist
+    && workflowProgress
+    && workflowProgress.workflow?.status !== 'completed'
+    && workflowProgress.activeStep?.acao?.tipo === 'aprovacao'
+    && canAdvanceWorkflowStep(ticket, deskPermissions)
+    && !ticketReadOnly,
+  );
+
   const canManageWorkflow = useMemo(
     () => Boolean(ticket && isTicketWorkflowActive(ticket) && canInterruptWorkflow(permsCtx?.permissions)),
     [ticket, permsCtx?.permissions],
@@ -2367,6 +2383,55 @@ export default function DeskV2Root() {
     syncTicketViews,
     ticket,
   ]);
+
+  const handleApproveWorkflow = useCallback(async () => {
+    if (!ticket || isDraftTicket(ticket) || decidingWorkflow) return;
+    setDecidingWorkflow(true);
+    try {
+      await approveWorkflowDecision(ticket.id || ticket._id);
+      await syncTicketViews();
+      showNotification('Workflow aprovado.', 'success');
+    } catch (err) {
+      showNotification(
+        err?.response?.data?.message || 'Não foi possível aprovar o workflow.',
+        'warning',
+      );
+    } finally {
+      setDecidingWorkflow(false);
+    }
+  }, [decidingWorkflow, showNotification, syncTicketViews, ticket]);
+
+  const handleRejectWorkflow = useCallback(async () => {
+    if (!ticket || isDraftTicket(ticket) || decidingWorkflow) return;
+    setDecidingWorkflow(true);
+    try {
+      await rejectWorkflowDecision(ticket.id || ticket._id);
+      await syncTicketViews();
+      showNotification('Workflow reprovado.', 'success');
+    } catch (err) {
+      showNotification(
+        err?.response?.data?.message || 'Não foi possível reprovar o workflow.',
+        'warning',
+      );
+    } finally {
+      setDecidingWorkflow(false);
+    }
+  }, [decidingWorkflow, showNotification, syncTicketViews, ticket]);
+
+  const handleWorkflowRequestInfo = useCallback(async (message) => {
+    if (!ticket || isDraftTicket(ticket)) return;
+    try {
+      await requestWorkflowInfo(ticket.id || ticket._id, message, 'workflow');
+      await syncTicketViews();
+      showNotification('Mensagem enviada ao responsável.', 'success');
+    } catch (err) {
+      showNotification(
+        err?.response?.data?.message || 'Não foi possível enviar a mensagem.',
+        'error',
+      );
+      throw err;
+    }
+  }, [showNotification, syncTicketViews, ticket]);
 
   useEffect(() => {
     if (workflowPublicLocked && composeMode === 'public') {
@@ -2514,6 +2579,11 @@ export default function DeskV2Root() {
               cancelingWorkflow={cancelingWorkflow}
               canAdvanceWorkflow={canAdvanceWorkflow && !ticketReadOnly}
               canManageWorkflow={canManageWorkflow && !ticketReadOnly}
+              canDecideWorkflow={canDecideWorkflow}
+              decidingWorkflow={decidingWorkflow}
+              onApproveWorkflow={handleApproveWorkflow}
+              onRejectWorkflow={handleRejectWorkflow}
+              onWorkflowRequestInfo={handleWorkflowRequestInfo}
             />
             <nav className="tabs-top" aria-label="Navegação do ticket">
               <div className="tabs-top__tabs">

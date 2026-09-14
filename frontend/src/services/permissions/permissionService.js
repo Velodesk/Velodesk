@@ -376,15 +376,19 @@ export function canApproveWorkflow(perm = readCachedPermissions()) {
 }
 
 /**
- * Acesso consolidado ao Workflow (Gestão) — atuar_sempre + aprovar: vê e decide qualquer
- * ticket de workflow, sem precisar bater com a função atribuída etapa a etapa. Único ponto
- * de checagem dessa regra — antes estava duplicada em resolveWorkflowTeamQueueForUser e
+ * Acesso consolidado ao Workflow (Gestão) — ver_todos + aprovar: vê e decide qualquer ticket
+ * de workflow, sem precisar bater com a função atribuída etapa a etapa. Único ponto de checagem
+ * dessa regra — antes estava duplicada em resolveWorkflowTeamQueueForUser e
  * canAccessWorkflowApprovalConsole (e ausente em agentCanDecideTicket).
+ *
+ * `ver_todos` (não `atuar_sempre`) é o sinal certo de "visão de gestão/oversight": várias
+ * funções operacionais (ex.: N2) têm `atuar_sempre` pra agir em qualquer ticket dentro do
+ * próprio fluxo, sem que isso signifique acesso às filas de aprovação de outros times.
  */
 export function hasConsolidatedWorkflowAccess(perm = readCachedPermissions()) {
   if (!perm) return false;
   return (
-    hasPermission(perm.permissoes, 'tickets', 'atuar_sempre')
+    hasPermission(perm.permissoes, 'tickets', 'ver_todos')
     && canApproveWorkflow(perm)
   );
 }

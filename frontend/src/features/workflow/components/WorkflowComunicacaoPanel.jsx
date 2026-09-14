@@ -34,6 +34,7 @@ export default function WorkflowComunicacaoPanel({
   responsibleAgent,
   busy = false,
   onSubmit,
+  readOnly = false,
 }) {
   const [message, setMessage] = useState('');
   const [thread, setThread] = useState([]);
@@ -167,6 +168,7 @@ export default function WorkflowComunicacaoPanel({
         )}
       </div>
 
+      {readOnly ? null : (
       <form className="wf-approval-comunicacao-panel__form" onSubmit={handleSubmit}>
         <textarea
           ref={textareaRef}
@@ -192,6 +194,7 @@ export default function WorkflowComunicacaoPanel({
           {sending ? 'Enviando…' : 'Enviar'}
         </button>
       </form>
+      )}
     </aside>
   );
 }

@@ -1,9 +1,12 @@
 /**
- * db v1.0.0 — leitura direta do MongoDB para as checagens por dados
+ * db v1.1.0 — leitura direta do MongoDB para as checagens por dados
  *
- * Escreve em UM único caso: marcar csat.enviado no ticket criado pelo próprio
- * QA, para poder testar o registro da nota de ponta a ponta. Nenhuma escrita
- * toca ticket que não seja de QA (ver `exigirTicketDeQa`).
+ * Duas escritas, ambas de propósito único:
+ *  1. Marca csat.enviado no ticket criado pelo próprio QA, para poder testar o
+ *     registro da nota de ponta a ponta. Nenhuma escrita toca ticket que não
+ *     seja de QA (ver `exigirTicketDeQa`).
+ *  2. Grava o retrato da rodada (estadoSentinela.ts) numa coleção própria do
+ *     agente (qa_sentinela_*) — nunca toca dado de cliente/ticket real.
  */
 import { MongoClient, type Db, type Document, ObjectId } from 'mongodb';
 import { cfg, ehEmailSeguro, TravaDeSegurancaError } from './config';
@@ -38,6 +41,10 @@ export const colConteudos = async () => (await dbConfig()).collection('email_con
 export const colTransporte = async () => (await dbConfig()).collection('email_transport');
 export const colContadores = async () => (await dbChamados()).collection('sequence_counters');
 
+// ── Sentinela Velodesk (dashboard) — coleção própria, nunca toca dado real ──
+export const colQaSentinelaEstado = async () => (await dbConfig()).collection('qa_sentinela_estado');
+export const colQaSentinelaRuns = async () => (await dbConfig()).collection('qa_sentinela_runs');
+
 // ── filtros reaproveitados do backend ──────────────────────────────────────
 
 /** Status corrente = status do último item de registro[]. */
@@ -55,12 +62,39 @@ export const filtroQa = (): Document => ({
 });
 
 /**
+ * Repete uma leitura no Mongo até a condição bater, ou desiste depois de
+ * `tentativas`. Existe porque o agente lê o banco por uma conexão separada da
+ * do backend — a escrita já foi confirmada (`await save()`) antes da API
+ * responder sucesso, mas no cluster compartilhado pode levar uma fração de
+ * segundo pra ficar visível numa leitura vinda de outro lugar. Sem isso, o
+ * agente reportava falso negativo (ação correta, só lida cedo demais) em
+ * qualquer checagem no formato "chama a API, depois confere no banco".
+ */
+export async function buscarComRetry<T>(
+  buscar: () => Promise<T>,
+  condicaoOk: (valor: T) => boolean,
+  tentativas = 4,
+  intervaloMs = 400,
+): Promise<T> {
+  let valor: T;
+  for (let i = 0; i < tentativas; i += 1) {
+    valor = await buscar();
+    if (condicaoOk(valor)) return valor;
+    if (i < tentativas - 1) await new Promise((r) => setTimeout(r, intervaloMs));
+  }
+  return valor!;
+}
+
+/**
  * Trava: só devolve o ticket se ele foi criado pelo QA. Qualquer escrita passa
  * por aqui — é o que impede o agente de mexer em ticket de cliente real.
  */
 export async function exigirTicketDeQa(ticketId: string): Promise<Document> {
   const col = await colChamados();
-  const doc = await col.findOne({ _id: new ObjectId(ticketId) });
+  const doc = await buscarComRetry(
+    () => col.findOne({ _id: new ObjectId(ticketId) }),
+    (d) => Boolean(d),
+  );
   if (!doc) throw new TravaDeSegurancaError(`Ticket ${ticketId} não encontrado.`);
   const ehQa = (doc.registro ?? []).some(
     (r: any) => r?.metadados?.inboundTicketMetadata?.origemQa === MARCA_QA,

@@ -47,6 +47,11 @@ export default function DeskClientProfileBar({
   cancelingWorkflow = false,
   canAdvanceWorkflow = false,
   canManageWorkflow = false,
+  canDecideWorkflow = false,
+  decidingWorkflow = false,
+  onApproveWorkflow,
+  onRejectWorkflow,
+  onWorkflowRequestInfo,
   hydratingContact = false,
 }) {
   const { showNotification } = useNotifications();
@@ -369,7 +374,15 @@ export default function DeskClientProfileBar({
                 />
               </div>
               <div className="ticket-client-profile__header-side-actions">
-                {showInlineAdvance ? (
+                {canDecideWorkflow ? (
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm desk-workflow-advance-btn ticket-client-advance-btn"
+                    onClick={() => setWorkflowModalOpen(true)}
+                  >
+                    Decidir
+                  </button>
+                ) : showInlineAdvance ? (
                   <button
                     type="button"
                     className="btn-primary btn-sm desk-workflow-advance-btn ticket-client-advance-btn"
@@ -395,6 +408,11 @@ export default function DeskClientProfileBar({
               advancing={advancingWorkflow}
               canAdvance={canAdvanceWorkflow}
               canCancel={canManageWorkflow}
+              canDecide={canDecideWorkflow}
+              deciding={decidingWorkflow}
+              onApproveWorkflow={onApproveWorkflow}
+              onRejectWorkflow={onRejectWorkflow}
+              onWorkflowRequestInfo={onWorkflowRequestInfo}
             />
           </div>
         ) : null}

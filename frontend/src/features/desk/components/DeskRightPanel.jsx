@@ -13,6 +13,7 @@ import { isTicketInWorkflow, isTicketWorkflowActive } from '../../../services/de
 import { resolveComunicacaoResumo, ticketHasComunicacaoWorkflow } from '../../../services/workflow/workflowDecisionHandlers';
 import { useDeskColaboradores } from '../../../hooks/useDeskColaboradores';
 import { formatResponsavelForDisplay } from '../../../services/desk/responsavelDisplay';
+import DeskRightPanelServiceStatus from './DeskRightPanelServiceStatus';
 
 const CANAL_OPTIONS_FALLBACK = ['WhatsApp', 'Telefone', 'E-mail', 'Portal'];
 const TIPO_OPTIONS_FALLBACK = ['Reclamação', 'Solicitação', 'Dúvida', 'Informação'];
@@ -326,6 +327,8 @@ export default function DeskRightPanel({
             tabulacaoMotivo={effectiveRightFields.motivo}
           />
         </section>
+
+        <DeskRightPanelServiceStatus />
       </div>
       <div className="crm-right-panel__footer">
         <button
