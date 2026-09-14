@@ -70,6 +70,7 @@ export function parseInboundTicketPayload(body: Record<string, unknown>): Inboun
     text,
     clientName,
     chamadoProtocolo: chamadoProtocolo || undefined,
+    internal: body.internal === true || body.isInternal === true,
     clientCPF: clientCPF || undefined,
     clientPhone: clientPhone || undefined,
     clientEmail: clientEmail || undefined,
@@ -194,7 +195,9 @@ async function appendInboundReply(
   payload: InboundTicketPayload,
   config: InboundTicketOriginConfig,
 ): Promise<InboundTicketResult> {
-  const statusOverride = resolveInboundClientReplyStatus(chamado);
+  // Nota interna só é suportada na origem chat — demais origens sempre respondem em público.
+  const internal = origin === 'chat' && payload.internal === true;
+  const statusOverride = internal ? undefined : resolveInboundClientReplyStatus(chamado);
   const metadados: Record<string, unknown> = {
     source: config.source,
     inboundTicketOrigin: origin,
@@ -202,8 +205,9 @@ async function appendInboundReply(
     ...(payload.metadata ? { inboundTicketMetadata: payload.metadata } : {}),
   };
 
-  // sender 'them' → origin 'cliente' (originFromSender em chamado.mapper.ts)
-  appendMessage(chamado, payload.text, false, 'them', payload.attachments ?? [], metadados, statusOverride);
+  // sender 'them' → origin 'cliente' (mensagem pública do cliente); nota interna é anexada
+  // em nome do bot/sistema, então usa 'me' → origin 'agente' (originFromSender em chamado.mapper.ts).
+  appendMessage(chamado, payload.text, internal, internal ? 'me' : 'them', payload.attachments ?? [], metadados, statusOverride);
 
   if (statusOverride && statusOverride !== normalizeStatusValue(currentStatus(chamado))) {
     appendStatusTransition(chamado, statusOverride, {

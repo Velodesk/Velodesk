@@ -15,6 +15,7 @@ export interface InboundTicketPayload {
   text: string;
   clientName: string;
   chamadoProtocolo?: string;
+  internal?: boolean;
   clientCPF?: string;
   clientPhone?: string;
   clientEmail?: string;
