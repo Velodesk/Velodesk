@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { cfg } from './config';
 import type { Coletor, TicketRef } from './resultado';
+import { colQaSentinelaEstado, colQaSentinelaRuns } from './db';
 
 const DIR_DADOS = path.join(__dirname, '..', 'data');
 const ARQ_ESTADO = path.join(DIR_DADOS, 'estado-atual.json');
@@ -138,4 +139,43 @@ export function gravarEstadoSentinela(estado: EstadoAtual): void {
   }
 
   fs.writeFileSync(ARQ_RUNS, JSON.stringify(historico, null, 2) + '\n', 'utf8');
+}
+
+/**
+ * Grava o mesmo retrato direto no MongoDB (coleções `qa_sentinela_estado` e
+ * `qa_sentinela_runs`, banco `desk_config`) — é dali que a rotina que
+ * atualiza o dashboard Sentinela Velodesk lê, sem precisar passar pelo git.
+ * Documento único (`_id: "atual"`) para o estado corrente; um documento por
+ * rodada (capado nas últimas MAX_RUNS_HISTORICO) para o histórico.
+ */
+export async function gravarEstadoSentinelaMongo(estado: EstadoAtual): Promise<void> {
+  const colEstado = await colQaSentinelaEstado();
+  await colEstado.updateOne(
+    { _id: 'atual' },
+    { $set: { ...estado, atualizadoEm: new Date().toISOString() } },
+    { upsert: true },
+  );
+
+  const colRuns = await colQaSentinelaRuns();
+  await colRuns.updateOne(
+    { _id: estado.runId },
+    {
+      $set: {
+        runId: estado.runId,
+        iniciadoEm: estado.iniciadoEm,
+        finalizadoEm: estado.finalizadoEm,
+        resumo: estado.resumo,
+      },
+    },
+    { upsert: true },
+  );
+
+  // Mantém só as últimas MAX_RUNS_HISTORICO rodadas na coleção de histórico.
+  const antigas = await colRuns
+    .find({}, { projection: { _id: 1 }, sort: { iniciadoEm: -1 } })
+    .skip(MAX_RUNS_HISTORICO)
+    .toArray();
+  if (antigas.length) {
+    await colRuns.deleteMany({ _id: { $in: antigas.map((d) => d._id) } });
+  }
 }

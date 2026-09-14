@@ -1,9 +1,12 @@
 /**
- * db v1.0.0 — leitura direta do MongoDB para as checagens por dados
+ * db v1.1.0 — leitura direta do MongoDB para as checagens por dados
  *
- * Escreve em UM único caso: marcar csat.enviado no ticket criado pelo próprio
- * QA, para poder testar o registro da nota de ponta a ponta. Nenhuma escrita
- * toca ticket que não seja de QA (ver `exigirTicketDeQa`).
+ * Duas escritas, ambas de propósito único:
+ *  1. Marca csat.enviado no ticket criado pelo próprio QA, para poder testar o
+ *     registro da nota de ponta a ponta. Nenhuma escrita toca ticket que não
+ *     seja de QA (ver `exigirTicketDeQa`).
+ *  2. Grava o retrato da rodada (estadoSentinela.ts) numa coleção própria do
+ *     agente (qa_sentinela_*) — nunca toca dado de cliente/ticket real.
  */
 import { MongoClient, type Db, type Document, ObjectId } from 'mongodb';
 import { cfg, ehEmailSeguro, TravaDeSegurancaError } from './config';
@@ -37,6 +40,10 @@ export const colDisparos = async () => (await dbConfig()).collection('email_disp
 export const colConteudos = async () => (await dbConfig()).collection('email_conteudos');
 export const colTransporte = async () => (await dbConfig()).collection('email_transport');
 export const colContadores = async () => (await dbChamados()).collection('sequence_counters');
+
+// ── Sentinela Velodesk (dashboard) — coleção própria, nunca toca dado real ──
+export const colQaSentinelaEstado = async () => (await dbConfig()).collection('qa_sentinela_estado');
+export const colQaSentinelaRuns = async () => (await dbConfig()).collection('qa_sentinela_runs');
 
 // ── filtros reaproveitados do backend ──────────────────────────────────────
 

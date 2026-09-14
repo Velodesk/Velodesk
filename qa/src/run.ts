@@ -28,7 +28,7 @@ import { checarTelas } from './checks/ui';
 import { limparTicketsDaRodada } from './limpeza';
 import { gerarDevolutivas } from './ia';
 import { alimentarPlanilha, nomeRodada, resumoTexto } from './relatorio';
-import { montarEstadoAtual, gravarEstadoSentinela } from './estadoSentinela';
+import { montarEstadoAtual, gravarEstadoSentinela, gravarEstadoSentinelaMongo } from './estadoSentinela';
 
 const RAIZ = path.join(__dirname, '..');
 const PLANILHA = process.env.QA_PLANILHA
@@ -136,8 +136,6 @@ async function main() {
     if (!executados.has(c.id)) coletor.naoExecutado(c.id, 'Não chegou a ser executado nesta rodada.');
   }
 
-  await desconectar();
-
   // Devolutiva: sugestão curta de correção para cada caso que não passou.
   const devolutivas = await gerarDevolutivas(coletor.resultados);
   if (devolutivas.aviso) {
@@ -162,15 +160,28 @@ async function main() {
   console.log(`\nPlanilha atualizada: ${PLANILHA}`);
   if (fs.existsSync(ctx.dirPrints)) console.log(`Prints da rodada: ${ctx.dirPrints}`);
 
-  // Retrato da rodada pro dashboard Sentinela Velodesk — o workflow comita
-  // qa/data/*.json; uma rotina agendada à parte lê dali e atualiza o site.
+  // Retrato da rodada pro dashboard Sentinela Velodesk — grava no Mongo
+  // (fonte de verdade que a rotina agendada lê pra atualizar o site) e também
+  // em qa/data/*.json local, só como registro/depuração de cada rodada.
+  const estado = montarEstadoAtual({ runId, inicio, fim, coletor, somenteLeitura: cfg.somenteLeitura });
   try {
-    const estado = montarEstadoAtual({ runId, inicio, fim, coletor, somenteLeitura: cfg.somenteLeitura });
     gravarEstadoSentinela(estado);
-    console.log('[qa] estado da rodada gravado em qa/data/ para o Sentinela.');
+    console.log('[qa] estado da rodada gravado em qa/data/ (local).');
   } catch (err) {
-    console.warn('[qa] falha ao gravar o estado para o Sentinela:', err instanceof Error ? err.message : err);
+    console.warn('[qa] falha ao gravar qa/data/ local:', err instanceof Error ? err.message : err);
   }
+  if (ctx.temBanco) {
+    try {
+      await gravarEstadoSentinelaMongo(estado);
+      console.log('[qa] estado da rodada gravado no Mongo para o Sentinela.');
+    } catch (err) {
+      console.warn('[qa] falha ao gravar o estado no Mongo para o Sentinela:', err instanceof Error ? err.message : err);
+    }
+  } else {
+    console.warn('[qa] sem banco nesta rodada — Sentinela não foi atualizado.');
+  }
+
+  await desconectar();
 
   const falharNaFalha = String(process.env.QA_FALHAR_NA_FALHA ?? 'true').toLowerCase() !== 'false';
   const r = coletor.resumo;
