@@ -40,7 +40,7 @@ import {
 } from '../services/realtime/telecom55/webhook.service';
 import { isRealtimeSupabaseConfigured } from '../config/supabaseRealtime';
 import { processInboundTicket } from '../services/inbound-ticket/inboundTicket.service';
-import { listClientTicketsForApp } from '../services/inbound-ticket/inboundTicketRead.service';
+import { getClientTicketHistory, listClientTicketsForApp } from '../services/inbound-ticket/inboundTicketRead.service';
 import { ORIGIN_CANAL_CONFIG } from '../services/inbound-ticket/types';
 import { verifyWhatsAppOutboundMediaToken } from '../services/twilio/whatsappOutboundMedia.util';
 import { openSentAttachment } from '../services/sentAttachmentStorage.service';
@@ -370,11 +370,11 @@ router.post('/tickets', inboundTicketAuthMiddleware, async (req, res: Response) 
   }
 });
 
-/** Leitura server-to-server dos tickets do cliente — só o backend do app tem motivo de chamar isso em nome de alguém. */
+/** Leitura server-to-server dos tickets do cliente — origens app e chat têm motivo de chamar isso em nome de alguém. */
 router.get('/tickets/client', inboundTicketAuthMiddleware, async (req, res: Response) => {
   try {
-    if (req.inboundTicketOrigin !== 'app') {
-      return res.status(403).json({ message: 'Leitura de tickets do cliente é exclusiva da origem app' });
+    if (req.inboundTicketOrigin !== 'app' && req.inboundTicketOrigin !== 'chat') {
+      return res.status(403).json({ message: 'Leitura de tickets do cliente é exclusiva das origens app e chat' });
     }
 
     const clientCPF = String(req.query.clientCPF ?? '').trim();
@@ -395,6 +395,35 @@ router.get('/tickets/client', inboundTicketAuthMiddleware, async (req, res: Resp
   } catch (err) {
     console.error('[inbound/tickets/client]', err);
     return res.status(500).json({ message: 'Falha ao listar tickets do cliente' });
+  }
+});
+
+/** Leitura de um chamado + histórico de mensagens públicas — origem chat, validado por CPF/telefone/e-mail do cliente. */
+router.get('/tickets/:chamadoProtocolo', inboundTicketAuthMiddleware, async (req, res: Response) => {
+  try {
+    if (req.inboundTicketOrigin !== 'chat') {
+      return res.status(403).json({ message: 'Leitura de chamado por protocolo é exclusiva da origem chat' });
+    }
+
+    const clientCPF = String(req.query.clientCPF ?? '').trim();
+    const clientPhone = String(req.query.clientPhone ?? '').trim();
+    const clientEmail = String(req.query.clientEmail ?? '').trim();
+    if (!clientCPF && !clientPhone && !clientEmail) {
+      return res.status(400).json({ message: 'Informe clientCPF, clientPhone ou clientEmail' });
+    }
+
+    const ticket = await getClientTicketHistory(req.params.chamadoProtocolo, {
+      clientCPF,
+      clientPhone,
+      clientEmail,
+    });
+    if (!ticket) {
+      return res.status(404).json({ message: 'Chamado não encontrado para este cliente' });
+    }
+    return res.json({ ticket });
+  } catch (err) {
+    console.error('[inbound/tickets/:chamadoProtocolo]', err);
+    return res.status(500).json({ message: 'Falha ao buscar chamado' });
   }
 });
 

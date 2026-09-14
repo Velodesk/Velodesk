@@ -34,6 +34,16 @@ export interface ClientTicketSummary {
   ultimaMensagem: ClientTicketMessageSummary | null;
 }
 
+export interface ClientTicketHistory {
+  chamadoProtocolo: string;
+  titulo: string;
+  status: string;
+  canal: string;
+  createdAt: Date;
+  updatedAt: Date;
+  mensagens: ClientTicketMessageSummary[];
+}
+
 function remetenteFromOrigin(origin: unknown): ClientTicketMessageSummary['remetente'] {
   const value = String(origin ?? '').trim().toLowerCase();
   if (value === 'cliente') return 'cliente';
@@ -95,7 +105,7 @@ async function resolveClienteIdForRead(identifiers: ClientTicketIdentifiers): Pr
   return null;
 }
 
-/** Lista os tickets do cliente para exibição no app — CPF > telefone > e-mail, nessa ordem de prioridade. */
+/** Lista os tickets do cliente para exibição no app/chat — CPF > telefone > e-mail, nessa ordem de prioridade. */
 export async function listClientTicketsForApp(
   identifiers: ClientTicketIdentifiers,
   limit = DEFAULT_LIMIT,
@@ -113,4 +123,60 @@ export async function listClientTicketsForApp(
     .limit(safeLimit);
 
   return chamados.map(serializeForClientRead);
+}
+
+/** Histórico de mensagens PÚBLICAS do ticket, em ordem — nunca expõe anotação interna. */
+function resolveMensagensPublicas(chamado: IChamadoN1): ClientTicketMessageSummary[] {
+  const registro = chamado.registro ?? [];
+  const mensagens: ClientTicketMessageSummary[] = [];
+  for (const entry of registro) {
+    const texto = String(entry?.mensagemPublica ?? '').trim();
+    if (!texto) continue;
+    mensagens.push({
+      texto,
+      remetente: remetenteFromOrigin(entry?.origin),
+      data: entry?.data ? new Date(entry.data) : new Date(chamado.updatedAt ?? Date.now()),
+    });
+  }
+  return mensagens;
+}
+
+function serializeForClientHistory(chamado: IChamadoN1): ClientTicketHistory {
+  const tabs = chamado.tabulacao ?? [];
+  const canal = String(tabs[tabs.length - 1]?.canal ?? '').trim()
+    || resolveCanalLabelFromSource(readChamadoOriginSource(chamado));
+
+  return {
+    chamadoProtocolo: String(chamado.chamadoProtocolo ?? ''),
+    titulo: String(chamado.chamadoTitulo ?? ''),
+    status: currentStatus(chamado),
+    canal,
+    createdAt: new Date(chamado.createdAt ?? Date.now()),
+    updatedAt: new Date(chamado.updatedAt ?? Date.now()),
+    mensagens: resolveMensagensPublicas(chamado),
+  };
+}
+
+/**
+ * Busca um chamado por protocolo + histórico de mensagens públicas, validado contra o
+ * cliente informado (CPF > telefone > e-mail). Retorna null se o chamado não existe ou
+ * não pertence ao cliente identificado.
+ */
+export async function getClientTicketHistory(
+  chamadoProtocolo: string,
+  identifiers: ClientTicketIdentifiers,
+): Promise<ClientTicketHistory | null> {
+  const protocolo = String(chamadoProtocolo ?? '').trim();
+  if (!protocolo) return null;
+
+  const clienteId = await resolveClienteIdForRead(identifiers);
+  if (!clienteId) return null;
+
+  const chamado = await ChamadoN1.findOne({
+    chamadoProtocolo: protocolo,
+    'cliente.clienteId': clienteId,
+  });
+  if (!chamado) return null;
+
+  return serializeForClientHistory(chamado);
 }
