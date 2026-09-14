@@ -7,7 +7,7 @@
  */
 import { cfg } from '../config';
 import type { Contexto } from '../contexto';
-import { colChamados, filtroStatusAtual, filtroStatusAtualEm } from '../db';
+import { colChamados, filtroStatusAtual, filtroStatusAtualEm, buscarComRetry } from '../db';
 import { ok, falha, parcial, bloqueado, comTicket } from '../resultado';
 
 const TRES_DIAS = 3 * 24 * 60 * 60 * 1000;
@@ -109,9 +109,15 @@ export async function checarFinalizacao(ctx: Contexto): Promise<void> {
     }
     if (ctx.temBanco) {
       const col = await colChamados();
-      const doc = await col.findOne({ chamadoProtocolo: principal.protocolo });
-      const registros: any[] = doc?.registro ?? [];
-      const statusAtual = registros.length ? String(registros[registros.length - 1].status ?? '') : '';
+      const statusDoDoc = (d: any) => {
+        const registros: any[] = d?.registro ?? [];
+        return registros.length ? String(registros[registros.length - 1].status ?? '') : '';
+      };
+      const doc = await buscarComRetry(
+        () => col.findOne({ chamadoProtocolo: principal.protocolo }),
+        (d) => statusDoDoc(d) === 'resolvido',
+      );
+      const statusAtual = statusDoDoc(doc);
       if (statusAtual !== 'resolvido') {
         return comTicket(falha(`A API aceitou, mas o ticket ficou com status "${statusAtual}" em vez de "resolvido".`), principal);
       }

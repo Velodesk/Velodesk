@@ -8,7 +8,7 @@
  */
 import { cfg, exigirEmailSeguro } from '../config';
 import type { Contexto, Tabulacao } from '../contexto';
-import { MARCA_QA, colChamados, colContadores, filtroQa } from '../db';
+import { MARCA_QA, colChamados, colContadores, filtroQa, buscarComRetry } from '../db';
 import { ok, falha, parcial, bloqueado, comTicket } from '../resultado';
 
 const PREFIXO = 'qa-velodesk';
@@ -208,9 +208,9 @@ export async function checarMensagens(ctx: Contexto): Promise<void> {
     }
     if (ctx.temBanco) {
       const col = await colChamados();
-      const doc = await col.findOne({ chamadoProtocolo: ticket.protocolo });
-      const temNota = (doc?.registro ?? []).some((x: any) => String(x?.anotacaoInterna ?? '').includes(ctx.runId));
-      if (!temNota) return comTicket(falha('A API aceitou a anotação, mas ela não apareceu no histórico do ticket.'), ticket);
+      const temNota = (doc: any) => (doc?.registro ?? []).some((x: any) => String(x?.anotacaoInterna ?? '').includes(ctx.runId));
+      const doc = await buscarComRetry(() => col.findOne({ chamadoProtocolo: ticket.protocolo }), temNota);
+      if (!temNota(doc)) return comTicket(falha('A API aceitou a anotação, mas ela não apareceu no histórico do ticket.'), ticket);
     }
     return comTicket(ok('Anotação interna gravada no histórico do ticket.'), ticket);
   });
@@ -232,7 +232,9 @@ export async function checarMensagens(ctx: Contexto): Promise<void> {
     }
     if (ctx.temBanco) {
       const col = await colChamados();
-      const doc = await col.findOne({ chamadoProtocolo: ticket.protocolo });
+      const temPublica = (d: any) =>
+        (d?.registro ?? []).some((x: any) => String(x?.mensagemPublica ?? '').includes(ctx.runId));
+      const doc = await buscarComRetry(() => col.findOne({ chamadoProtocolo: ticket.protocolo }), temPublica);
       const registros: any[] = doc?.registro ?? [];
       const publica = registros.find((x) => String(x?.mensagemPublica ?? '').includes(ctx.runId));
       if (!publica) return comTicket(falha('A resposta foi aceita pela API, mas não ficou gravada na conversa do ticket.'), ticket);
@@ -265,7 +267,10 @@ export async function checarMensagens(ctx: Contexto): Promise<void> {
     }
     if (!ctx.temBanco) return bloqueado('Sem acesso ao banco para conferir a tabulação gravada.');
     const col = await colChamados();
-    const doc = await col.findOne({ chamadoProtocolo: ticket.protocolo });
+    const doc = await buscarComRetry(
+      () => col.findOne({ chamadoProtocolo: ticket.protocolo }),
+      (d) => Boolean((d?.tabulacao ?? []).length),
+    );
     const tabs: any[] = doc?.tabulacao ?? [];
     const atual = tabs[tabs.length - 1];
     if (!atual) return comTicket(falha('Nenhuma tabulação foi gravada no ticket.'), ticket);

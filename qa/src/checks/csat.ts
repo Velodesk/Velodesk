@@ -8,7 +8,7 @@
  *  2. audita os números e o acúmulo, que é o que revela rotina parada.
  */
 import type { Contexto } from '../contexto';
-import { colChamados, filtroStatusAtual, prepararCsatDoTicketQa } from '../db';
+import { colChamados, filtroStatusAtual, prepararCsatDoTicketQa, buscarComRetry } from '../db';
 import { ok, falha, parcial, bloqueado, comTicket } from '../resultado';
 
 const QUATRO_DIAS = 4 * 24 * 60 * 60 * 1000;
@@ -38,7 +38,11 @@ export async function checarCsat(ctx: Contexto): Promise<void> {
       return comTicket(falha(`Registro da nota recusado (status ${r.status}): ${r.body?.message ?? ''}`), principal);
     }
     const col = await colChamados();
-    const doc = await col.findOne({ chamadoProtocolo: principal.protocolo });
+    const csatOk = (d: any) => {
+      const c: any = d?.csat ?? {};
+      return c.nota === 5 && c.respondido === true && Boolean(c.respondidoEm);
+    };
+    const doc = await buscarComRetry(() => col.findOne({ chamadoProtocolo: principal.protocolo }), csatOk);
     const csat: any = doc?.csat ?? {};
     if (csat.nota !== 5 || csat.respondido !== true || !csat.respondidoEm) {
       return comTicket(
@@ -79,7 +83,10 @@ export async function checarCsat(ctx: Contexto): Promise<void> {
     const r = await api.responderCsat({ protocolo: principal.protocolo, nota: 1, comentario: 'segunda tentativa' });
     if (r.status !== 200) return comTicket(parcial(`Segunda resposta devolveu status ${r.status}.`), principal);
     const col = await colChamados();
-    const doc = await col.findOne({ chamadoProtocolo: principal.protocolo });
+    const doc = await buscarComRetry(
+      () => col.findOne({ chamadoProtocolo: principal.protocolo }),
+      (d) => d?.csat?.nota != null,
+    );
     const nota = doc?.csat?.nota;
     if (nota === 5) return comTicket(ok('Segunda resposta não alterou a nota original (5).'), principal);
     return comTicket(falha(`A nota foi sobrescrita: virou ${nota} quando deveria permanecer 5.`), principal);
