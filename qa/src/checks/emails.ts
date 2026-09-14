@@ -3,7 +3,7 @@
  */
 import { cfg, ehEmailSeguro } from '../config';
 import type { Contexto } from '../contexto';
-import { colChamados, colClientes, colConteudos, colDisparos, filtroQa } from '../db';
+import { colChamados, colClientes, colConteudos, colDisparos, filtroQa, buscarComRetry } from '../db';
 import { ok, falha, parcial, bloqueado, comTicket } from '../resultado';
 
 const VINTE_QUATRO_H = 24 * 60 * 60 * 1000;
@@ -110,15 +110,23 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
     if (!principal) return bloqueado('Nenhum ticket de teste disponível.');
     if (!ctx.temBanco) return bloqueado('Sem acesso ao banco para conferir o histórico do ticket.');
     const col = await colChamados();
-    const doc = await col.findOne({ chamadoProtocolo: principal.protocolo });
-    const registros: any[] = doc?.registro ?? [];
     // Os dois caminhos de envio ao cliente gravam marcas diferentes:
     // e-mail automático por gatilho → emailPadraoId/emailPadraoNome;
     // resposta do agente → emailOutboundMessageId (persistOutboundEmailMeta).
     // `emailMessageId` NÃO entra aqui: é campo de e-mail recebido.
-    const enviados = registros.filter(
-      (r) => r?.metadados?.emailPadraoId || r?.metadados?.emailPadraoNome || r?.metadados?.emailOutboundMessageId,
+    const enviadosDoDoc = (d: any): any[] =>
+      (d?.registro ?? []).filter(
+        (r: any) => r?.metadados?.emailPadraoId || r?.metadados?.emailPadraoNome || r?.metadados?.emailOutboundMessageId,
+      );
+    // Mais tolerante que as outras checagens (5 tentativas, 600ms) — o disparo do
+    // e-mail é assíncrono no backend, não confirmado antes da resposta da API.
+    const doc = await buscarComRetry(
+      () => col.findOne({ chamadoProtocolo: principal.protocolo }),
+      (d) => enviadosDoDoc(d).length > 0,
+      5,
+      600,
     );
+    const enviados = enviadosDoDoc(doc);
     const emails = await emailsDoCpf(cfg.cpfQa);
     const forasDaLista = emails.filter((e) => !ehEmailSeguro(e));
     if (forasDaLista.length) {
