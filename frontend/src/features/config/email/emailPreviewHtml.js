@@ -46,6 +46,12 @@ export function buildTicketBoxPreviewHtml(protocolo, titulo) {
 }
 
 /**
+ * Tamanho (px) de cada estrela na prévia — espelha CSAT_STAR_SIZE_BY_RATING do backend
+ * (csatEmail.service.ts): crescente de 1 a 5, nota 1 é a menor e a 5 a maior.
+ */
+const CSAT_STAR_SIZE_BY_RATING = { 1: 28, 2: 32, 3: 36, 4: 40, 5: 44 };
+
+/**
  * Bloco visual das 5 estrelas do e-mail de CSAT — usado SÓ na simulação.
  * No envio real esse bloco é gerado pelo backend (csatEmail.service.ts,
  * buildCsatStarsHtml) com links de verdade; aqui é só uma representação
@@ -53,13 +59,19 @@ export function buildTicketBoxPreviewHtml(protocolo, titulo) {
  */
 export function buildCsatStarsPreviewHtml() {
   const stars = [1, 2, 3, 4, 5]
-    .map((n) => `<td align="center" valign="top" style="padding:0 4px;">
+    .map((n) => {
+      const size = CSAT_STAR_SIZE_BY_RATING[n];
+      // valign="bottom" + altura fixa: estrelas de tamanhos diferentes ficam ancoradas
+      // embaixo da célula, então os números 1-5 alinham na mesma linha reta (espelha
+      // csatEmail.service.ts/buildCsatStarsHtml).
+      return `<td align="center" valign="bottom" height="70" style="padding:0 4px;">
       <span style="display:inline-block;">
-        <img src="${CSAT_STAR_DATA_URI}" width="32" height="32" alt="★" style="display:inline-block;width:32px;height:32px;border:0;">
+        <img src="${CSAT_STAR_DATA_URI}" width="${size}" height="${size}" alt="★" style="display:inline-block;width:${size}px;height:${size}px;border:0;">
         <br>
         <span style="font-size:11px;color:#9AA0AE;">${n}</span>
       </span>
-    </td>`)
+    </td>`;
+    })
     .join('\n');
 
   return `
