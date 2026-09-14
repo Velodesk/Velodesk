@@ -12,7 +12,7 @@ import { createWorkflowNotificacao } from './workflowNotificacao.service';
 import { buildTabulationFieldsFromTicket } from './workflowMatcher.service';
 import { isAutomaticaStep, resolveAutomaticaConfig } from './workflowAutomatica.util';
 import { getEmailConteudoById } from './emailConteudo.service';
-import { applyTicketPlaceholders } from './placeholders.util';
+import { applyTicketPlaceholders, resolveChamadoClientName } from './placeholders.util';
 
 const WEBHOOK_TIMEOUT_MS = 15000;
 
@@ -150,7 +150,7 @@ async function sendRespostaClienteNucleo(
 ): Promise<SistemaExecResult> {
   const composerText = wrapComposerOpening({
     nucleo,
-    agentName: getAgentNomeOficial(1),
+    clientName: await resolveChamadoClientName(chamado),
     modo: detectEnvelopeModoFromChamado(chamado),
   });
 

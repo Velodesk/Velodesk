@@ -301,7 +301,6 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
       const composerText = wrapComposerOpening({
         nucleo: respostaAtual,
         clientName: input.clientName,
-        agentName: input.nomeOperador || getAgentNomeOficial(1),
         messages: input.messages,
       });
       await sendAutonomousReply(chamado, composerText);

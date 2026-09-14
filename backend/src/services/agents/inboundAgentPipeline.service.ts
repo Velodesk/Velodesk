@@ -15,11 +15,7 @@ import {
   buildTicketIaMessagesFromChamado,
   hasMeaningfulClientContextInChamado,
 } from '../ticketIaAdapter.service';
-
-function extractClientName(chamado: IChamadoN1): string {
-  const reg = chamado.registro?.[0];
-  return String(reg?.autor || '').trim();
-}
+import { resolveChamadoClientName } from '../placeholders.util';
 
 function extractMessagesFromChamado(chamado: IChamadoN1): TicketAiMessageInput[] {
   return buildTicketIaMessagesFromChamado(chamado).map((item) => ({
@@ -88,7 +84,7 @@ export async function runInboundAgentPipeline(
       titulo: chamado.chamadoTitulo,
       canal: extractCanal(chamado),
       status: currentStatus(chamado),
-      clientName: extractClientName(chamado),
+      clientName: await resolveChamadoClientName(chamado),
       nomeOperador: 'Atendimento Velotax',
       contextSource: hasClient ? 'public' : 'internal',
       messages: hasClient ? messages : undefined,
