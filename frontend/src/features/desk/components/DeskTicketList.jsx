@@ -2,12 +2,13 @@
  * DeskTicketList v2.4.0 — badge verde para workflow concluído
  * VERSION: v2.4.0 | DATE: 2026-08-18
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   formatTicketListDate,
   formatTicketListTime,
   getDeskSearchInferredLabel,
   getSlaClass,
+  getTicketProtocolLabel,
   getTicketQueueEntryAt,
   getTicketTitle,
   isClienteRespondeuRead,
@@ -17,6 +18,7 @@ import {
   normalizeTicketForDeskV2,
 } from '../../../services/desk/utils';
 import { useTicketPresenceMap } from '../../../context/TicketPresenceContext';
+import BulkActionPopover from './BulkActionPopover';
 
 export default function DeskTicketList({
   activeTicketId,
@@ -38,6 +40,9 @@ export default function DeskTicketList({
   showSkeleton = false,
 }) {
   const [query, setQuery] = useState(searchQuery);
+  const [mergeSelectedIds, setMergeSelectedIds] = useState(() => new Set());
+  const [bulkActionOpen, setBulkActionOpen] = useState(false);
+  const bulkActionBtnRef = useRef(null);
   const skeletonItems = [1, 2, 3, 4, 5, 6];
   const detectedLabel = getDeskSearchInferredLabel(query);
   const presenceByTicketId = useTicketPresenceMap();
@@ -49,6 +54,32 @@ export default function DeskTicketList({
   const handleQueryChange = (value) => {
     setQuery(value);
     onSearchChange?.(value);
+  };
+
+  const handleToggleMergeSelect = (ticketId) => {
+    setMergeSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) next.delete(ticketId);
+      else next.add(ticketId);
+      return next;
+    });
+  };
+
+  const boxTicketIds = useMemo(
+    () => entries.map(({ ticket: t }) => String(t.id)),
+    [entries],
+  );
+  const allBoxSelected = boxTicketIds.length > 0 && boxTicketIds.every((id) => mergeSelectedIds.has(id));
+
+  const handleToggleSelectAllInBox = () => {
+    setMergeSelectedIds((prev) => {
+      if (allBoxSelected) {
+        const next = new Set(prev);
+        boxTicketIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...boxTicketIds]);
+    });
   };
 
   return (
@@ -122,28 +153,62 @@ export default function DeskTicketList({
           <div className="ticket-list-tabs-bar">
             <div className="ticket-list-tabs" role="tablist" aria-label="Ordenar tickets">
               {['data', 'sla'].map((sort) => (
-                <button
-                  key={sort}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeSort === sort}
-                  className={'ticket-list-tab' + (activeSort === sort ? ' is-active' : '')}
-                  onClick={() => onSortChange(sort)}
-                >
-                  {sort === 'data' ? 'Data' : 'SLA'}
-                </button>
+                <span key={sort} className="ticket-list-tab-wrap">
+                  {sort === 'data' ? (
+                    <input
+                      type="checkbox"
+                      className="client360-merge-check"
+                      checked={allBoxSelected}
+                      onChange={handleToggleSelectAllInBox}
+                      aria-label={allBoxSelected ? 'Desmarcar todos os tickets desta caixa' : 'Selecionar todos os tickets desta caixa'}
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeSort === sort}
+                    className={'ticket-list-tab' + (activeSort === sort ? ' is-active' : '')}
+                    onClick={() => onSortChange(sort)}
+                  >
+                    {sort === 'data' ? 'Data' : 'SLA'}
+                  </button>
+                </span>
               ))}
             </div>
-            <button
-              type="button"
-              className={'ticket-list-entry-sort' + (entrySortOldestFirst ? ' is-active' : '')}
-              onClick={onToggleEntrySort}
-              title={entrySortOldestFirst ? 'Entrada: mais antigos primeiro' : 'Ordenar por entrada na caixa (mais antigos primeiro)'}
-              aria-label="Ordenar por entrada na caixa"
-              aria-pressed={entrySortOldestFirst}
-            >
-              <i className="ti ti-sort-ascending" aria-hidden="true" />
-            </button>
+            <div className="ticket-list-actions">
+              <button
+                ref={bulkActionBtnRef}
+                type="button"
+                className={'ticket-list-entry-sort' + (bulkActionOpen ? ' is-active' : '')}
+                title="Atuação em massa"
+                aria-label="Atuação em massa"
+                aria-expanded={bulkActionOpen}
+                aria-haspopup="dialog"
+                onClick={() => setBulkActionOpen((prev) => !prev)}
+              >
+                <i className="ti ti-pencil" aria-hidden="true" />
+              </button>
+              <BulkActionPopover
+                open={bulkActionOpen}
+                onClose={() => setBulkActionOpen(false)}
+                anchorRef={bulkActionBtnRef}
+                selectedTicketIds={mergeSelectedIds}
+                onApplied={() => {
+                  setMergeSelectedIds(new Set());
+                  onReload?.();
+                }}
+              />
+              <button
+                type="button"
+                className={'ticket-list-entry-sort' + (entrySortOldestFirst ? ' is-active' : '')}
+                onClick={onToggleEntrySort}
+                title={entrySortOldestFirst ? 'Entrada: mais antigos primeiro' : 'Ordenar por entrada na caixa (mais antigos primeiro)'}
+                aria-label="Ordenar por entrada na caixa"
+                aria-pressed={entrySortOldestFirst}
+              >
+                <i className="ti ti-sort-ascending" aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
           {searchActive ? (
@@ -199,13 +264,26 @@ export default function DeskTicketList({
                 tabIndex={0}
                 onKeyDown={(e) => e.key === 'Enter' && onSelectTicket(t.id)}
               >
-                {slaCritical ? (
-                  <span
-                    className="crm-ticket-card__dot crm-ticket-card__dot--sla-critical"
-                    title="SLA crítico — fora do prazo"
-                    aria-label="SLA crítico — fora do prazo"
+                <span
+                  className="crm-ticket-card__merge-check"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    className="client360-merge-check"
+                    checked={mergeSelectedIds.has(String(t.id))}
+                    onChange={() => handleToggleMergeSelect(String(t.id))}
+                    aria-label={`Selecionar #${getTicketProtocolLabel(t) || t.id} para mesclagem`}
                   />
-                ) : null}
+                  {slaCritical ? (
+                    <span
+                      className="crm-ticket-card__dot crm-ticket-card__dot--sla-critical"
+                      title="SLA crítico — fora do prazo"
+                      aria-label="SLA crítico — fora do prazo"
+                    />
+                  ) : null}
+                </span>
                 {clienteRespondeu ? (
                   <span
                     className="crm-ticket-card__dot crm-ticket-card__dot--cliente-respondeu"

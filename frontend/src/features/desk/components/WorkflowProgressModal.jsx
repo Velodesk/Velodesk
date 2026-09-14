@@ -11,6 +11,7 @@ import {
 } from '../../../services/desk/utils';
 import { getWorkflowStepSubtitle } from '../../../services/desk/workflowDefinitions';
 import { useWorkflowConfig } from '../../../context/WorkflowConfigContext';
+import WorkflowApprovalFooter from '../../workflow/components/WorkflowApprovalFooter';
 
 function StepIcon({ step }) {
   if (step.state === 'completed') {
@@ -32,6 +33,11 @@ export default function WorkflowProgressModal({
   advancing = false,
   canAdvance = false,
   canCancel = true,
+  canDecide = false,
+  deciding = false,
+  onApproveWorkflow,
+  onRejectWorkflow,
+  onWorkflowRequestInfo,
 }) {
   const { workflows } = useWorkflowConfig();
   const progress = useMemo(
@@ -131,7 +137,18 @@ export default function WorkflowProgressModal({
           ) : (
             <span aria-hidden="true" />
           )}
-          {canAdvance && !workflowCancelled && !workflowFinished ? (
+          {canDecide && !workflowCancelled && !workflowFinished ? (
+            <div className="desk-workflow-modal__decision">
+              <WorkflowApprovalFooter
+                awaitingDecision
+                actions={['approve', 'reject']}
+                busy={deciding}
+                onApprove={onApproveWorkflow}
+                onReject={onRejectWorkflow}
+                onMarkPending={onWorkflowRequestInfo}
+              />
+            </div>
+          ) : canAdvance && !workflowCancelled && !workflowFinished ? (
             <button
               type="button"
               className="btn-primary desk-workflow-modal__btn-advance"
