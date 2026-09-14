@@ -627,7 +627,7 @@ export function resolveWorkflowTeamQueueForUser(
   resolved: ResolvedUserPermissions,
 ): string | null {
   if (
-    hasPermission(resolved.permissoes, 'tickets', 'atuar_sempre')
+    hasPermission(resolved.permissoes, 'tickets', 'ver_todos')
     && canApproveWorkflow(resolved)
   ) {
     return null;
@@ -743,7 +743,7 @@ export async function canWorkflowComunicacao(
   }
 
   if (await canActOnTicketAsync(resolved, chamado)) return true;
-  if (canApproveWorkflow(resolved) && hasPermission(resolved.permissoes, 'tickets', 'atuar_sempre')) {
+  if (canApproveWorkflow(resolved) && hasPermission(resolved.permissoes, 'tickets', 'ver_todos')) {
     return true;
   }
   return false;
@@ -901,9 +901,12 @@ export async function canUserActOnWorkflowStep(
 
   // Gestão / visão global em etapa de aprovação — não depende de workflow.avancar,
   // pois perfis de aprovação (ex.: "Visão Workflow") atuam via workflow.aprovar.
+  // `ver_todos` (não `atuar_sempre`) é o sinal certo de visão de gestão: funções operacionais
+  // (ex.: N2) têm `atuar_sempre` pra agir no próprio fluxo, sem que isso deva liberar aprovar/
+  // reprovar etapas de workflows de outros times.
   if (
     isApprovalStep
-    && hasPermission(resolved.permissoes, 'tickets', 'atuar_sempre')
+    && hasPermission(resolved.permissoes, 'tickets', 'ver_todos')
     && canApproveWorkflow(resolved)
   ) {
     return true;

@@ -56,25 +56,26 @@ export default function WorkflowApprovalDetail({
           essentials={detail.essentials}
           slaLabel={detail.slaLabel}
         />
-        <WorkflowComunicacaoPanel
-          ticket={detail.ticket}
-          responsibleAgent={detail.responsibleAgent}
-          busy={busy}
-          onSubmit={onRequestInfoSubmit}
-        />
+        <div className="wf-approval-detail__side">
+          <WorkflowComunicacaoPanel
+            ticket={detail.ticket}
+            responsibleAgent={detail.responsibleAgent}
+            busy={busy}
+            onSubmit={onRequestInfoSubmit}
+          />
+          <WorkflowApprovalFooter
+            teamId={teamId}
+            awaitingDecision={detail.awaitingDecision}
+            actions={detail.actions}
+            actionLabels={detail.actionLabels}
+            busy={busy}
+            onFeito={handleFeito}
+            onApprove={onApprove}
+            onReject={onReject}
+            onMarkPending={onRequestInfoSubmit}
+          />
+        </div>
       </div>
-
-      <WorkflowApprovalFooter
-        teamId={teamId}
-        awaitingDecision={detail.awaitingDecision}
-        actions={detail.actions}
-        actionLabels={detail.actionLabels}
-        busy={busy}
-        onFeito={handleFeito}
-        onApprove={onApprove}
-        onReject={onReject}
-        onMarkPending={onRequestInfoSubmit}
-      />
     </section>
   );
 }
