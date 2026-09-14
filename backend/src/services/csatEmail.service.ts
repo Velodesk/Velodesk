@@ -75,6 +75,12 @@ export function buildCsatProtocoloLineHtml(protocolo: string): string {
   return `<p style="margin:0 0 16px 0;font-size:13px;color:#5A6472;font-family:Arial,sans-serif;">Avaliação referente ao protocolo <strong style="color:#1634FF;">${safeProtocolo}</strong>.</p>`;
 }
 
+/**
+ * Tamanho (px) de cada estrela — crescente de 1 a 5: nota 1 é a menor e a estrela vai
+ * crescendo até a nota 5, a maior (reforça visualmente que 5 é a nota máxima).
+ */
+const CSAT_STAR_SIZE_BY_RATING: Record<number, number> = { 1: 28, 2: 32, 3: 36, 4: 40, 5: 44 };
+
 /** Monta o bloco HTML das 5 estrelas clicáveis (cada uma é um <a href> com nota na URL). */
 export function buildCsatStarsHtml(protocolo: string): string {
   const base = env.twilioWebhookPublicBaseUrl.replace(/\/+$/, '');
@@ -83,10 +89,15 @@ export function buildCsatStarsHtml(protocolo: string): string {
   const stars = [1, 2, 3, 4, 5]
     .map((n) => {
       const href = escapeHtmlAttribute(`${base}/csat?protocolo=${safeProtocolo}&nota=${n}`);
+      const size = CSAT_STAR_SIZE_BY_RATING[n];
       const starVisual = starDataUri
-        ? `<img src="${starDataUri}" width="32" height="32" alt="★" style="display:inline-block;width:32px;height:32px;border:0;">`
-        : `<span style="font-size:32px;line-height:1;color:#FFB800;">★</span>`;
-      return `<td align="center" valign="top" style="padding:0 4px;">
+        ? `<img src="${starDataUri}" width="${size}" height="${size}" alt="★" style="display:inline-block;width:${size}px;height:${size}px;border:0;">`
+        : `<span style="font-size:${size}px;line-height:1;color:#FFB800;">★</span>`;
+      // valign="bottom" + altura fixa: estrelas de tamanhos diferentes (crescente 1→5) ficam
+      // ancoradas embaixo da célula, então o número abaixo de cada uma alinha na mesma linha
+      // reta — sem isso (valign="top"), cada número começa logo depois da sua estrela e a
+      // fileira de números fica em zigue-zague.
+      return `<td align="center" valign="bottom" height="70" style="padding:0 4px;">
       <a href="${href}" target="_blank" style="text-decoration:none;display:inline-block;">
         ${starVisual}
         <br>
