@@ -94,6 +94,7 @@ import {
   notifyWorkflowMensagemToResponsavel,
 } from '../services/workflowNotificacao.service';
 import { isDraftTicketId } from '../utils/persistedTicketId';
+import { deleteReclamacoesByChamadoId } from '../services/reclamacoes/reclamacao.service';
 
 const router = Router();
 
@@ -343,6 +344,9 @@ router.delete('/:id', authMiddleware, async (req, res: Response) => {
     throw err;
   }
   await chamado.deleteOne();
+  await deleteReclamacoesByChamadoId(String(chamado._id)).catch((err: Error) => {
+    console.warn('[tickets.routes] deleteReclamacoesByChamadoId fail-soft:', err.message);
+  });
   res.json({ success: true });
 });
 
