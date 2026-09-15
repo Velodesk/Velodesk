@@ -714,7 +714,7 @@
     box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
 }
 
-.bulk-action-popover__row {
+.bulk-action-popover__group {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -722,9 +722,35 @@
     border-bottom: 0.5px solid #f0f1f5;
 }
 
-.bulk-action-popover__row:last-of-type {
+.bulk-action-popover__group:last-child {
     padding-bottom: 0;
     border-bottom: none;
+}
+
+.bulk-action-popover__row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.bulk-action-popover__failures {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding: 8px 10px;
+    list-style: none;
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 8px;
+    max-height: 140px;
+    overflow-y: auto;
+}
+
+.bulk-action-popover__failures li {
+    font-size: 12px;
+    line-height: 1.4;
+    color: #991B1B;
 }
 
 .bulk-action-popover__row--done {
@@ -4921,6 +4947,10 @@
     flex: 1 1 auto;
 }
 
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-ticket-response .octa-response-panel-body {
+    overflow: visible;
+}
+
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-ticket-response .octa-comment-panel-row {
     align-items: flex-start;
 }
@@ -4991,6 +5021,13 @@
     position: relative;
     overflow: hidden;
     gap: 0;
+}
+
+/* overflow:hidden acima recorta o menu de macros (abre pra cima, "bottom: 100%+6px") antes
+   dele alcançar as abas Cliente/Público/Interno, que ficam fora deste container — sem isso,
+   a aba de cima aparenta ficar por cima do menu quando na verdade ele foi só cortado. */
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-ticket-response .crm-compose-editor-zone--overlay-footer {
+    overflow: visible;
 }
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-editor-zone--overlay-footer.internal-form {
@@ -5128,6 +5165,7 @@
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-macros-menu {
     position: relative;
     flex-shrink: 0;
+    z-index: 41;
 }
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-macros-menu__trigger {
@@ -5147,6 +5185,8 @@
     bottom: calc(100% + 6px);
     min-width: 220px;
     max-width: 320px;
+    max-height: 88px;
+    overflow-y: auto;
     background: #fff;
     border: 0.5px solid #E4E6EA;
     border-radius: 8px;

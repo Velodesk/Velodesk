@@ -9,6 +9,8 @@ import { createPortal } from 'react-dom';
 import { useDeskColaboradores } from '../../../hooks/useDeskColaboradores';
 import { useNotifications } from '../../../context/NotificationContext';
 import { ticketsApi } from '../../../api/client';
+import { findTicketEntry } from '../../../services/ticketsStorage';
+import { getTicketProtocolLabel } from '../../../services/desk/utils';
 
 const ACTION_OPTIONS = [
   { value: 'status', label: 'Salvar o ticket com status' },
@@ -54,7 +56,7 @@ function useAnchoredPosition(open, anchorRef) {
 }
 
 export default function BulkActionPopover({ open, onClose, anchorRef, selectedTicketIds, onApplied }) {
-  const [actions, setActions] = useState([{ id: 1, type: '', value: '', done: false }]);
+  const [actions, setActions] = useState([{ id: 1, type: '', value: '', done: false, failures: [] }]);
   const [applyingId, setApplyingId] = useState(null);
   const popRef = useRef(null);
   const style = useAnchoredPosition(open, anchorRef);
@@ -63,7 +65,7 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
 
   useEffect(() => {
     if (!open) {
-      setActions([{ id: 1, type: '', value: '', done: false }]);
+      setActions([{ id: 1, type: '', value: '', done: false, failures: [] }]);
       setApplyingId(null);
       return undefined;
     }
@@ -92,7 +94,10 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
   };
 
   const handleAddAction = () => {
-    setActions((prev) => [...prev, { id: (prev[prev.length - 1]?.id || 0) + 1, type: '', value: '', done: false }]);
+    setActions((prev) => [
+      ...prev,
+      { id: (prev[prev.length - 1]?.id || 0) + 1, type: '', value: '', done: false, failures: [] },
+    ]);
   };
 
   const secondOptionsFor = (type) => {
@@ -116,21 +121,31 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
       const results = await Promise.allSettled(
         ticketIds.map((id) => ticketsApi.update(id, payload)),
       );
-      const failed = results.filter((r) => r.status === 'rejected').length;
-      const ok = results.length - failed;
+      const failures = [];
+      results.forEach((result, index) => {
+        if (result.status !== 'rejected') return;
+        const id = ticketIds[index];
+        const ticket = findTicketEntry(id)?.ticket;
+        failures.push({
+          id,
+          protocol: getTicketProtocolLabel(ticket) || `#${id}`,
+          message: result.reason?.response?.data?.message || result.reason?.message || 'Falha desconhecida',
+        });
+      });
+      const ok = results.length - failures.length;
 
-      if (ok && !failed) {
+      if (ok && !failures.length) {
         showNotification(`${ok} ticket(s) atualizado(s) com sucesso.`, 'success');
-      } else if (ok && failed) {
-        showNotification(`${ok} ticket(s) atualizado(s); ${failed} falharam.`, 'warning');
+      } else if (ok && failures.length) {
+        showNotification(`${ok} ticket(s) atualizado(s); ${failures.length} falharam.`, 'warning');
       } else {
         showNotification('Não foi possível aplicar a ação em nenhum ticket selecionado.', 'error');
       }
 
-      if (ok) {
-        setActions((prev) => prev.map((a) => (a.id === action.id ? { ...a, done: true } : a)));
-        onApplied?.();
-      }
+      setActions((prev) => prev.map((a) => (
+        a.id === action.id ? { ...a, done: ok > 0, failures } : a
+      )));
+      if (ok) onApplied?.();
     } finally {
       setApplyingId(null);
     }
@@ -139,13 +154,26 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
   return createPortal(
     <div ref={popRef} className="bulk-action-popover" style={style} role="dialog" aria-label="Atuação em massa">
       {actions.map((action) => {
+        const failuresBlock = action.failures?.length ? (
+          <ul className="bulk-action-popover__failures" aria-label="Tickets que falharam">
+            {action.failures.map((f) => (
+              <li key={f.id}>
+                <strong>#{f.protocol}</strong> — {f.message}
+              </li>
+            ))}
+          </ul>
+        ) : null;
+
         if (action.done) {
           const typeLabel = ACTION_OPTIONS.find((opt) => opt.value === action.type)?.label || '';
           const valueLabel = secondOptionsFor(action.type)?.find((opt) => opt.value === action.value)?.label || action.value;
           return (
-            <div key={action.id} className="bulk-action-popover__row bulk-action-popover__row--done">
-              <i className="ti ti-check" aria-hidden="true" />
-              <span>{typeLabel}: <strong>{valueLabel}</strong></span>
+            <div key={action.id} className="bulk-action-popover__group">
+              <div className="bulk-action-popover__row bulk-action-popover__row--done">
+                <i className="ti ti-check" aria-hidden="true" />
+                <span>{typeLabel}: <strong>{valueLabel}</strong></span>
+              </div>
+              {failuresBlock}
             </div>
           );
         }
@@ -161,44 +189,47 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
         const applying = applyingId === action.id;
 
         return (
-          <div key={action.id} className="bulk-action-popover__row">
-            <select
-              className="bulk-action-popover__select"
-              value={action.type}
-              disabled={applying}
-              onChange={(e) => handleTypeChange(action.id, e.target.value)}
-            >
-              <option value="">Selecionar ação</option>
-              {ACTION_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-
-            {secondOptions ? (
+          <div key={action.id} className="bulk-action-popover__group">
+            <div className="bulk-action-popover__row">
               <select
                 className="bulk-action-popover__select"
-                value={action.value}
-                disabled={applying || (action.type === 'agente' && loadingAgents)}
-                onChange={(e) => handleValueChange(action.id, e.target.value)}
+                value={action.type}
+                disabled={applying}
+                onChange={(e) => handleTypeChange(action.id, e.target.value)}
               >
-                <option value="">{secondPlaceholder}</option>
-                {secondOptions.map((opt) => (
+                <option value="">Selecionar ação</option>
+                {ACTION_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
-            ) : null}
 
-            {action.type && action.value ? (
-              <button
-                type="button"
-                className="bulk-action-popover__done"
-                disabled={applying}
-                onClick={() => handleMarkDone(action)}
-              >
-                <i className={applying ? 'ti ti-loader-2 bulk-action-popover__spin' : 'ti ti-check'} aria-hidden="true" />
-                {applying ? 'Aplicando…' : 'Feito'}
-              </button>
-            ) : null}
+              {secondOptions ? (
+                <select
+                  className="bulk-action-popover__select"
+                  value={action.value}
+                  disabled={applying || (action.type === 'agente' && loadingAgents)}
+                  onChange={(e) => handleValueChange(action.id, e.target.value)}
+                >
+                  <option value="">{secondPlaceholder}</option>
+                  {secondOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              ) : null}
+
+              {action.type && action.value ? (
+                <button
+                  type="button"
+                  className="bulk-action-popover__done"
+                  disabled={applying}
+                  onClick={() => handleMarkDone(action)}
+                >
+                  <i className={applying ? 'ti ti-loader-2 bulk-action-popover__spin' : 'ti ti-check'} aria-hidden="true" />
+                  {applying ? 'Aplicando…' : 'Feito'}
+                </button>
+              ) : null}
+            </div>
+            {failuresBlock}
           </div>
         );
       })}
