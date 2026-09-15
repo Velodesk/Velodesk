@@ -1,11 +1,10 @@
 /**
- * RaDadosEditableFields — ID Reclame Aqui, Assunto e Prazo de resposta editáveis no DADOS
+ * RaDadosEditableFields — ID Reclame Aqui e Assunto editáveis no DADOS
  */
 import React, { useEffect, useState } from 'react';
 import { reclamacoesApi } from '../../../api/client';
 import { useNotifications } from '../../../context/NotificationContext';
 import { patchReclamacao } from '../../../services/especiais/reclameAquiStore';
-import { formatRaDeadlineLabel } from '../../../services/especiais/reclameAquiTicketService';
 import { formatComplaintDate } from './raTicketFormatters';
 
 /** Converte ISO -> valor aceito por <input type="datetime-local"> (hora local). */
@@ -27,14 +26,12 @@ export default function RaDadosEditableFields({ raItem, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [idReclamacaoRa, setIdReclamacaoRa] = useState(raItem?.idReclamacaoRa || '');
   const [assunto, setAssunto] = useState(raItem?.assunto || '');
-  const [prazoRa, setPrazoRa] = useState(raItem?.prazoRa || '');
   const [dataReclamacao, setDataReclamacao] = useState(raItem?.dataReclamacao || '');
   const [editingDataReclamacao, setEditingDataReclamacao] = useState(false);
 
   useEffect(() => {
     setIdReclamacaoRa(raItem?.idReclamacaoRa || '');
     setAssunto(raItem?.assunto || '');
-    setPrazoRa(raItem?.prazoRa || '');
     setDataReclamacao(raItem?.dataReclamacao || '');
     setEditingDataReclamacao(false);
   }, [raItem?.id]);
@@ -74,12 +71,6 @@ export default function RaDadosEditableFields({ raItem, onSaved }) {
     const value = assunto.trim();
     if (value === (raItem.assunto || '')) return;
     patchFields({ assunto: value });
-  };
-
-  const handlePrazoChange = (raw) => {
-    const iso = raw ? new Date(raw).toISOString() : '';
-    setPrazoRa(iso);
-    patchFields({ prazoLegal: iso || null });
   };
 
   const handleDataReclamacaoChange = (raw) => {
@@ -169,22 +160,6 @@ export default function RaDadosEditableFields({ raItem, onSaved }) {
           )}
         </div>
       )}
-      <div>
-        <dt>Prazo de resposta</dt>
-        {manual ? (
-          <dd>
-            <input
-              type="datetime-local"
-              className="ra-registro__input"
-              value={toDatetimeLocalInput(prazoRa)}
-              onChange={(e) => handlePrazoChange(e.target.value)}
-              disabled={saving}
-            />
-          </dd>
-        ) : (
-          <dd className="ra-ticket__deadline-value">{formatRaDeadlineLabel(raItem.prazoRa)}</dd>
-        )}
-      </div>
     </>
   );
 }
