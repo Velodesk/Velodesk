@@ -275,9 +275,12 @@ export function generateProtocolo() {
 }
 
 export function buildRegistroDefaults(item = {}) {
-  const now = new Date().toISOString();
-  const prazoLegal = item.prazoLegal || daysFromNow(10, 18);
-  const sla = computeSlaFromPrazo(prazoLegal);
+  // Nunca cair pra "now"/daysFromNow aqui: esta função roda a cada releitura do item (F5, troca
+  // de ticket, poll de fundo), não só na criação. Um fallback vivo faria data/prazo "andarem"
+  // pra hora atual a cada visita em vez de ficarem congelados no momento real de criação — quem
+  // precisa desses defaults na criação de uma demanda nova é createEmptyDemanda, uma única vez.
+  const prazoLegal = item.prazoLegal || '';
+  const sla = prazoLegal ? computeSlaFromPrazo(prazoLegal) : { slaPct: 0, slaTone: 'green' };
   return {
     protocoloBacen: item.protocoloBacen || generateProtocolo(),
     consumidor: item.consumidor || '',
@@ -288,7 +291,7 @@ export function buildRegistroDefaults(item = {}) {
     assunto: item.assunto || '',
     descricao: item.descricao || '',
     idDemanda: item.idDemanda || '',
-    dataDemanda: item.dataDemanda || now,
+    dataDemanda: item.dataDemanda || '',
     orgaoBacen: item.orgaoBacen || '',
     cidade: item.cidade || '',
     uf: item.uf || '',
@@ -324,6 +327,10 @@ export function createEmptyDemanda() {
   return {
     ...buildRegistroDefaults({
       protocoloBacen: generateProtocolo(),
+      // now/prazo só nascem aqui, uma vez, na criação — depois disso o valor persiste e
+      // buildRegistroDefaults não o sobrescreve mais em releituras.
+      dataDemanda: new Date().toISOString(),
+      prazoLegal: daysFromNow(10, 18),
       isDraft: true,
     }),
     id,
