@@ -12,7 +12,7 @@ import {
   parseApiInstant,
 } from '../../utils/dateTimeBr';
 import { getTicketColumns, saveTicketColumns, getAllCockpitTickets, mapTicketQueueId } from '../ticketsStorage';
-import { getDeskQueueOptimisticDelta, markTicketResolvedOptimistic } from './queueCounts';
+import { getDeskQueueDisplayCount, getDeskQueueOptimisticDelta, markTicketResolvedOptimistic } from './queueCounts';
 import { getWorkflowInfoRequestsForTicket } from '../workflow/workflowInfoNotifications';
 import { ticketBelongsInMeusTicketsList, ticketBelongsInAgentNovosQueue, ticketMatchesAgentResponsavel, shouldUseMeusChamadosFila, shouldViewAllDeskTickets, readDeskProfileId } from './responsavelSegmentation';
 import { isEspeciaisDeskExcludedTicket } from '../especiais/especiaisChannelDetection';
@@ -1396,6 +1396,15 @@ export async function resolveDeskSearchEntriesAsync(
 }
 
 export function countByQueue(queueId) {
+  // Filas padrão do Desk, Meus Tickets e caixas personalizadas: contagem real do servidor
+  // (countDocuments sem limite, GET /boxes/queue-counts) — NUNCA o tamanho da lista carregada,
+  // que é limitada a BOX_LIST_MAX_ITEMS (chamado.mapper.ts) só por performance de renderização
+  // dos cards. Contagem capada por lista já causou bug real (badge travado em 500 com >500
+  // tickets na fila). O fallback abaixo só roda antes do primeiro sync da API (transitório) —
+  // nunca deve virar a fonte permanente de nenhum contador.
+  const realCount = getDeskQueueDisplayCount(queueId);
+  if (realCount !== null) return realCount;
+
   if (isMeusTicketsQueue(queueId)) {
     return filterMyTicketsEntries('').length;
   }
