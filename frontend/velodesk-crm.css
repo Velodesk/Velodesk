@@ -9613,6 +9613,10 @@ body.desk-v2-mode #cockpitFocusContext {
     gap: 8px;
 }
 
+#velodeskDeskV2Root .desk-my-tickets-table__header-actions .ticket-list-entry-sort {
+    margin-bottom: 0;
+}
+
 #velodeskDeskV2Root .desk-my-tickets-table__body {
     flex: 1;
     min-height: 0;
@@ -9712,8 +9716,23 @@ body.desk-v2-mode #cockpitFocusContext {
     border-bottom: 0.5px solid #eef0f4;
 }
 
+#velodeskDeskV2Root .desk-my-tickets-table__th-check { width: 32px; }
 #velodeskDeskV2Root .desk-my-tickets-table__th-num { width: 148px; }
 #velodeskDeskV2Root .desk-my-tickets-table__th-sla { width: 140px; }
+
+#velodeskDeskV2Root .desk-my-tickets-table__checkbox-cell {
+    cursor: default;
+}
+
+#velodeskDeskV2Root .desk-my-tickets-table__checkbox-cell .client360-merge-check {
+    width: 13px;
+    height: 13px;
+}
+
+#velodeskDeskV2Root .desk-my-tickets-table__th-check .client360-merge-check {
+    width: 13px;
+    height: 13px;
+}
 
 #velodeskDeskV2Root .desk-my-tickets-table__row {
     cursor: pointer;
