@@ -75,9 +75,16 @@ function truncate(value: string, max: number): string {
   return `${trimmed.slice(0, max - 1).trim()}…`;
 }
 
+/**
+ * Nome pro slot {{1}} do template Twilio aprovado — nunca o chamadoTitulo (mesmo motivo do
+ * cadastro em placeholders.util.ts: o título do ticket já causou nome errado tipo "Central" ou
+ * "Atendimento" grudando como se fosse nome de cliente). "Cliente" só entra aqui porque o
+ * template WhatsApp é um texto fixo pré-aprovado pela Meta com variável obrigatória — não dá
+ * pra omitir o nome como se faz no e-mail/composer; é o único lugar do sistema onde esse
+ * fallback genérico ainda é necessário.
+ */
 function resolveTemplateClientName(chamado: IChamadoN1, dados: IClienteDados | null): string {
-  const full = String(dados?.clienteNome ?? '').trim()
-    || String(chamado.chamadoTitulo ?? '').trim();
+  const full = String(dados?.clienteNome ?? '').trim();
   return resolveClientGreetingName(full, 'Cliente');
 }
 
