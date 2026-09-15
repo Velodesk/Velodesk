@@ -765,7 +765,7 @@ const CPF_HISTORY_RAW_LIMIT = 300;
 
 /**
  * Histórico bruto (documentos ChamadoN1 completos, sem DTO) do CPF — uso interno de jobs/agentes
- * que precisam do texto completo do ticket (ex.: Agente 5, correlação de tickets relacionados).
+ * que precisam do texto completo do ticket (ex.: Agente 6, correlação de tickets relacionados).
  * Mesma regra de match de CPF (tolerante a máscara) e exclusão de fusão de searchTicketsByCpfDeskBar,
  * mas sem restrição de visibilidade nem mapeamento pra TicketDto.
  */

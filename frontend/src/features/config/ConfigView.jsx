@@ -93,9 +93,11 @@ export default function ConfigView() {
             <>
               <header className="config-content-header">
                 <span className="config-content-eyebrow">Central de configurações</span>
-                <div className="config-content-title-row">
-                  <h3>{active?.label}</h3>
-                </div>
+                {section !== 'email' ? (
+                  <div className="config-content-title-row">
+                    <h3>{active?.label}</h3>
+                  </div>
+                ) : null}
               </header>
 
               {section === 'forms' ? (

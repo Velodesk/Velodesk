@@ -133,7 +133,10 @@ export async function buildTicketPlaceholderValues(
   const tab = Array.isArray(chamado.tabulacao) ? chamado.tabulacao[chamado.tabulacao.length - 1] : null;
   const clientName = opts.clientName ?? await resolveChamadoClientName(chamado);
   return {
-    nomeCliente: clientName ? resolveClientGreetingName(clientName, 'Cliente') : 'Cliente',
+    // Sem nome resolvido, o placeholder vira string vazia — nunca o título genérico "Cliente"
+    // (mesma regra da saudação em resolveTicketSaudacao, mas aqui vale pro corpo do e-mail
+    // também, onde o admin pode ter inserido {nomeCliente} fora da linha de saudação).
+    nomeCliente: clientName ? resolveClientGreetingName(clientName, '') : '',
     nomeAgente: String(tab?.responsavel || '').trim() || 'Atendimento Velotax',
     numeroTicket: String(chamado.chamadoProtocolo || '').trim(),
     produtoTicket: String(tab?.produto || '').trim(),

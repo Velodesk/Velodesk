@@ -1,56 +1,43 @@
-/** mailRules.routes v1.0.0 — CRUD mail_ignorado / mail_spam / mail_priority */
+/** mailPrioritySubjectRules.routes v1.0.0 — CRUD desk_config.mail_priority_subject */
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { supervisorMiddleware } from '../middleware/supervisor';
 import { isDeskConfigConnected } from '../config/database';
 import {
-  createMailRule,
-  deleteMailRule,
-  listMailRules,
-  patchMailRule,
-  type MailRulesListKey,
-} from '../services/mailRules.service';
+  createMailPrioritySubjectRule,
+  deleteMailPrioritySubjectRule,
+  listMailPrioritySubjectRules,
+  patchMailPrioritySubjectRule,
+} from '../services/mailPrioritySubjectRules.service';
 
 const router = Router();
 
-const LIST_KEYS = new Set<MailRulesListKey>(['ignorado', 'spam', 'priority']);
-
 function actorName(req: Request): string {
   return req.user?.name || req.user?.email || 'sistema';
-}
-
-function parseListKey(raw: string): MailRulesListKey | null {
-  const key = String(raw ?? '').trim().toLowerCase();
-  return LIST_KEYS.has(key as MailRulesListKey) ? (key as MailRulesListKey) : null;
 }
 
 function deskConfigUnavailable(res: Response) {
   return res.status(503).json({ message: 'Configuração de e-mail indisponível' });
 }
 
-router.get('/:list', authMiddleware, async (req, res: Response) => {
+router.get('/', authMiddleware, async (_req, res: Response) => {
   try {
-    const list = parseListKey(String(req.params.list));
-    if (!list) return res.status(400).json({ message: 'Lista inválida' });
     if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
-    const items = await listMailRules(list);
-    return res.json({ list, items });
+    const items = await listMailPrioritySubjectRules();
+    return res.json({ items });
   } catch (err) {
-    console.error('[mailRules] GET /:list', err);
+    console.error('[mail-priority-subjects] GET /', err);
     return deskConfigUnavailable(res);
   }
 });
 
-router.post('/:list', authMiddleware, supervisorMiddleware, async (req, res: Response) => {
+router.post('/', authMiddleware, supervisorMiddleware, async (req, res: Response) => {
   try {
-    const list = parseListKey(String(req.params.list));
-    if (!list) return res.status(400).json({ message: 'Lista inválida' });
     if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
-
-    const item = await createMailRule(
-      list,
+    const item = await createMailPrioritySubjectRule(
       {
-        type: req.body?.type,
+        area: req.body?.area,
+        matchType: req.body?.matchType,
         value: req.body?.value,
         note: req.body?.note,
         orgao: req.body?.orgao,
@@ -65,14 +52,10 @@ router.post('/:list', authMiddleware, supervisorMiddleware, async (req, res: Res
   }
 });
 
-router.patch('/:list/:id', authMiddleware, supervisorMiddleware, async (req, res: Response) => {
+router.patch('/:id', authMiddleware, supervisorMiddleware, async (req, res: Response) => {
   try {
-    const list = parseListKey(String(req.params.list));
-    if (!list) return res.status(400).json({ message: 'Lista inválida' });
     if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
-
-    const item = await patchMailRule(
-      list,
+    const item = await patchMailPrioritySubjectRule(
       String(req.params.id),
       {
         active: typeof req.body?.active === 'boolean' ? req.body.active : undefined,
@@ -87,17 +70,14 @@ router.patch('/:list/:id', authMiddleware, supervisorMiddleware, async (req, res
   }
 });
 
-router.delete('/:list/:id', authMiddleware, supervisorMiddleware, async (req, res: Response) => {
+router.delete('/:id', authMiddleware, supervisorMiddleware, async (req, res: Response) => {
   try {
-    const list = parseListKey(String(req.params.list));
-    if (!list) return res.status(400).json({ message: 'Lista inválida' });
     if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
-
-    const ok = await deleteMailRule(list, String(req.params.id));
+    const ok = await deleteMailPrioritySubjectRule(String(req.params.id));
     if (!ok) return res.status(404).json({ message: 'Regra não encontrada' });
     return res.json({ success: true });
   } catch (err) {
-    console.error('[mailRules] DELETE /:list/:id', err);
+    console.error('[mail-priority-subjects] DELETE /:id', err);
     return deskConfigUnavailable(res);
   }
 });

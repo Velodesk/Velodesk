@@ -15,8 +15,9 @@ import {
 } from '../../../services/desk/utils';
 import { getClient360WorkflowIconMeta } from '../../../services/workflow/workflowTeamQueues';
 import { SLA_SHORT_LABELS } from '../../../services/desk/constants';
+import BulkActionPopover from './BulkActionPopover';
 
-function renderTicketRows(sectionEntries, onSelectTicket) {
+function renderTicketRows(sectionEntries, onSelectTicket, mergeSelectedIds, onToggleMergeSelect) {
   return sectionEntries.map(({ ticket }) => {
     normalizeTicketForDeskV2(ticket);
     const protocol = getTicketProtocolLabel(ticket) || String(ticket.id || '');
@@ -25,6 +26,7 @@ function renderTicketRows(sectionEntries, onSelectTicket) {
     const slaLabel = formatTicketSlaRemaining(ticket);
     const slaStatus = SLA_SHORT_LABELS[slaClass] || 'No prazo';
     const workflowIcon = getClient360WorkflowIconMeta(ticket);
+    const ticketId = String(ticket.id);
 
     return (
       <tr
@@ -35,6 +37,15 @@ function renderTicketRows(sectionEntries, onSelectTicket) {
         role="button"
         tabIndex={0}
       >
+        <td className="desk-my-tickets-table__checkbox-cell" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            className="client360-merge-check"
+            checked={mergeSelectedIds.has(ticketId)}
+            onChange={() => onToggleMergeSelect(ticketId)}
+            aria-label={`Selecionar #${protocol || ticketId} para atuação em massa`}
+          />
+        </td>
         <td className="desk-my-tickets-table__num">{protocol || '—'}</td>
         <td className="desk-my-tickets-table__title-cell">
           <span className="desk-my-tickets-table__title-inner">
@@ -61,17 +72,32 @@ function renderTicketRows(sectionEntries, onSelectTicket) {
   });
 }
 
-function TicketGrid({ id, children }) {
+function TicketGrid({ id, sectionEntries, mergeSelectedIds, onToggleMergeSelect, onToggleSectionSelectAll, onSelectTicket }) {
+  const sectionIds = useMemo(
+    () => sectionEntries.map(({ ticket }) => String(ticket.id)),
+    [sectionEntries],
+  );
+  const allSelected = sectionIds.length > 0 && sectionIds.every((id) => mergeSelectedIds.has(id));
+
   return (
     <table className="desk-my-tickets-table__grid" id={id}>
       <thead>
         <tr>
+          <th className="desk-my-tickets-table__th-check">
+            <input
+              type="checkbox"
+              className="client360-merge-check"
+              checked={allSelected}
+              onChange={() => onToggleSectionSelectAll(sectionIds, allSelected)}
+              aria-label={allSelected ? 'Desmarcar todos os tickets desta caixa' : 'Selecionar todos os tickets desta caixa'}
+            />
+          </th>
           <th className="desk-my-tickets-table__th-num">Número</th>
           <th className="desk-my-tickets-table__th-title">Título</th>
           <th className="desk-my-tickets-table__th-sla">SLA</th>
         </tr>
       </thead>
-      <tbody>{children}</tbody>
+      <tbody>{renderTicketRows(sectionEntries, onSelectTicket, mergeSelectedIds, onToggleMergeSelect)}</tbody>
     </table>
   );
 }
@@ -85,6 +111,29 @@ export default function DeskMyTicketsTable({
   refreshing = false,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [mergeSelectedIds, setMergeSelectedIds] = useState(() => new Set());
+  const [bulkActionOpen, setBulkActionOpen] = useState(false);
+  const bulkActionBtnRef = useRef(null);
+
+  const handleToggleMergeSelect = (ticketId) => {
+    setMergeSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) next.delete(ticketId);
+      else next.add(ticketId);
+      return next;
+    });
+  };
+
+  const handleToggleSectionSelectAll = (sectionIds, allSelected) => {
+    setMergeSelectedIds((prev) => {
+      if (allSelected) {
+        const next = new Set(prev);
+        sectionIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...sectionIds]);
+    });
+  };
 
   const localSearchActive = Boolean(searchQuery.trim());
   const searchActive = localSearchActive || externalSearchActive;
@@ -177,6 +226,28 @@ export default function DeskMyTicketsTable({
         </div>
         <div className="desk-my-tickets-table__header-actions">
           <button
+            ref={bulkActionBtnRef}
+            type="button"
+            className={'ticket-list-entry-sort' + (bulkActionOpen ? ' is-active' : '')}
+            title="Atuação em massa"
+            aria-label="Atuação em massa"
+            aria-expanded={bulkActionOpen}
+            aria-haspopup="dialog"
+            onClick={() => setBulkActionOpen((prev) => !prev)}
+          >
+            <i className="ti ti-pencil" aria-hidden="true" />
+          </button>
+          <BulkActionPopover
+            open={bulkActionOpen}
+            onClose={() => setBulkActionOpen(false)}
+            anchorRef={bulkActionBtnRef}
+            selectedTicketIds={mergeSelectedIds}
+            onApplied={() => {
+              setMergeSelectedIds(new Set());
+              onReload?.();
+            }}
+          />
+          <button
             type="button"
             className={'crm-icon-btn desk-my-tickets-table__refresh' + (refreshing ? ' is-refreshing' : '')}
             onClick={() => onReload?.()}
@@ -225,9 +296,14 @@ export default function DeskMyTicketsTable({
               </button>
 
               {!isCollapsed ? (
-                <TicketGrid id={`deskMyTicketsSection-${section.id}`}>
-                  {renderTicketRows(section.entries, onSelectTicket)}
-                </TicketGrid>
+                <TicketGrid
+                  id={`deskMyTicketsSection-${section.id}`}
+                  sectionEntries={section.entries}
+                  mergeSelectedIds={mergeSelectedIds}
+                  onToggleMergeSelect={handleToggleMergeSelect}
+                  onToggleSectionSelectAll={handleToggleSectionSelectAll}
+                  onSelectTicket={onSelectTicket}
+                />
               ) : null}
             </section>
           );

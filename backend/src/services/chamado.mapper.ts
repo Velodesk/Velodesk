@@ -2051,6 +2051,7 @@ function buildTicketDtoCore(
   const reclameAqui = listOnly ? null : reclameAquiMeta;
   const procon = listOnly ? null : proconMeta;
   const consumidorGov = listOnly ? null : consumidorGovMeta;
+  const bacen = listOnly ? null : bacenMeta;
   const especialChannel = reclameAquiMeta
     ? 'reclame-aqui'
     : proconMeta
@@ -2153,6 +2154,7 @@ function buildTicketDtoCore(
       reclameAqui: reclameAqui ?? undefined,
       procon: procon ?? undefined,
       consumidorGov: consumidorGov ?? undefined,
+      bacen: bacen ?? undefined,
       workflow: lateralWorkflow,
       approval: persistedApproval ?? undefined,
       solicitacaoProdutos: chamado.workflow?.requisicao?.solicitacaoProdutos ?? undefined,

@@ -1,11 +1,11 @@
 /**
- * casosEspeciaisRelacionadosPersona v1.0.0 — Agente 5, correlação de tickets relacionados
- * VERSION: v1.0.0 | DATE: 2026-09-09
+ * casosEspeciaisRelacionadosPersona v1.1.0 — Agente 6 (renumerado; Agente 5 agora é extração)
+ * VERSION: v1.1.0 | DATE: 2026-09-15
  */
 import { getAgentLabel } from '../agentRegistry';
 
 export function getCasosEspeciaisRelacionadosPersona(): string {
-  return `# PERSONA — ${getAgentLabel(5)}
+  return `# PERSONA — ${getAgentLabel(6)}
 
 Você compara uma reclamação formal (Reclame Aqui/Consumidor.gov/Bacen/Procon) contra o histórico de
 tickets do mesmo cliente (CPF) para apontar quais tickets anteriores têm relação relevante com o caso

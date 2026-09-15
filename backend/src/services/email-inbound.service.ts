@@ -1,5 +1,5 @@
 /** email-inbound.service v1.20.0 — plain truncado cede ao HTML completo no inbound */
-import { addBrCivilDaysIso } from './dates/brDateTime.util';
+import { addBrCivilDaysIso, addBrUtilDaysIso } from './dates/brDateTime.util';
 import { decodeBasicHtmlEntities } from './emailHtml.util';
 import { ChamadoN1 } from '../models/ChamadoN1';
 import { ChamadoIaAnalise } from '../models/ChamadoIaAnalise';
@@ -245,6 +245,10 @@ function addDaysIso(iso: string, days: number): string {
   return addBrCivilDaysIso(iso, days, { hour: 18, minute: 0 });
 }
 
+function addUtilDaysIso(iso: string, days: number): string {
+  return addBrUtilDaysIso(iso, days, { hour: 18, minute: 0 });
+}
+
 export async function findChamadoByEmailMessageId(messageId: string) {
   const normalized = normalizeMessageId(messageId);
   if (!normalized) return null;
@@ -465,6 +469,11 @@ export function buildCgovStructuredTicketBody(
   const assunto = String(parsed.assunto || '').trim() || 'Demanda Consumidor.Gov';
   const descricao = String(parsed.descricao || '').trim();
   const telefone = parsed.telefone ? [parsed.telefone] : [];
+  const dataDemanda = parsed.dataAberturaIso || new Date().toISOString();
+  // Prazo real vem do e-mail (assunto ou corpo, ex.: "Prazo: 10/08") — só cai no cálculo de
+  // +10 dias corridos quando o e-mail não trouxer essa informação (Consumidor.gov é corridos;
+  // Bacen usa dias úteis — ver addUtilDaysIso em buildBacenStructuredTicketBody).
+  const prazoLegal = parsed.prazoIso || addDaysIso(dataDemanda, 10);
 
   return {
     title: assunto,
@@ -502,8 +511,8 @@ export function buildCgovStructuredTicketBody(
         orgaoGov: 'Consumidor.gov.br',
         cidade: parsed.cidade,
         uf: parsed.uf,
-        prazoLegal: parsed.prazoIso,
-        dataDemanda: parsed.dataAberturaIso,
+        prazoLegal,
+        dataDemanda,
         statusGov: 'nao-respondida',
       },
     },
@@ -525,8 +534,9 @@ export function buildBacenStructuredTicketBody(
   const telefone = parsed.telefone ? [parsed.telefone] : [];
   const dataDemanda = parsed.dataDemandaIso || new Date().toISOString();
   // Prazo real vem do assunto do e-mail (ex.: "Prazo: 06/08/2026"); só cai no cálculo de
-  // +10 dias corridos quando o e-mail não trouxer essa informação.
-  const prazoLegal = parsed.prazoIso || addDaysIso(dataDemanda, 10);
+  // +10 dias ÚTEIS (Bacen — diferente do Consumidor.gov, que é 10 dias corridos) quando o
+  // e-mail não trouxer essa informação.
+  const prazoLegal = parsed.prazoIso || addUtilDaysIso(dataDemanda, 10);
 
   return {
     title: assunto,

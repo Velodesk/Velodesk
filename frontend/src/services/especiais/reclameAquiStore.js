@@ -268,7 +268,6 @@ export function generateProtocolo() {
 }
 
 export function buildRegistroDefaults(item = {}) {
-  const now = new Date().toISOString();
   const prazoRa = item.prazoRa || '';
   const sla = prazoRa ? computeSlaFromPrazo(prazoRa) : { slaPct: 0, slaTone: 'green' };
   return {
@@ -281,7 +280,11 @@ export function buildRegistroDefaults(item = {}) {
     assunto: item.assunto || '',
     descricao: item.descricao || '',
     idReclamacaoRa: item.idReclamacaoRa || '',
-    dataReclamacao: item.dataReclamacao || now,
+    // Nunca cair pra "now" aqui: esta função roda a cada releitura do item (F5, troca de ticket,
+    // poll de fundo), não só na criação. Um fallback vivo faria a data "andar" pra hora atual a
+    // cada visita em vez de ficar congelada na hora real de entrada/criação do ticket — quem
+    // precisa de "now" na criação de um rascunho novo é createEmptyReclamacao, uma única vez.
+    dataReclamacao: item.dataReclamacao || '',
     produto: item.produto || '',
     tipo: item.tipo || 'Reclamação',
     motivo: item.motivo || '',
@@ -316,6 +319,9 @@ export function createEmptyReclamacao() {
       protocoloRa: '',
       idReclamacaoRa: '',
       prazoRa: '',
+      // "now" só nasce aqui, uma vez, na criação do rascunho — depois disso o valor persiste e
+      // buildRegistroDefaults não o sobrescreve mais em releituras.
+      dataReclamacao: new Date().toISOString(),
       passivelNota: false,
       isDraft: true,
     }),
