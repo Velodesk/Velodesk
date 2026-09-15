@@ -102,6 +102,114 @@ export function addBrCivilDaysIso(
   return new Date(`${targetKey}T${pad2(hour)}:${pad2(minute)}:00${BRT_OFFSET}`).toISOString();
 }
 
+function addUtcDaysToYmd(year: number, month: number, day: number, delta: number): [number, number, number] {
+  const d = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  d.setUTCDate(d.getUTCDate() + delta);
+  return [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()];
+}
+
+/** Domingo de Páscoa (algoritmo de Meeus/Jones/Butcher — calendário gregoriano). */
+function easterSunday(year: number): [number, number] {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return [month, day];
+}
+
+const holidaysByYearCache = new Map<number, Set<string>>();
+
+/**
+ * Feriados nacionais brasileiros (calendário bancário/ANBIMA) pro ano dado — fixos + móveis
+ * calculados a partir da Páscoa (Carnaval, Sexta-feira Santa, Corpus Christi). Usado por
+ * addBrUtilDaysIso pra não contar dia útil em feriado.
+ */
+export function brNationalHolidaysForYear(year: number): Set<string> {
+  const cached = holidaysByYearCache.get(year);
+  if (cached) return cached;
+
+  const [easterMonth, easterDay] = easterSunday(year);
+  const [csY, csM, csD] = addUtcDaysToYmd(year, easterMonth, easterDay, -48); // Carnaval segunda
+  const [ctY, ctM, ctD] = addUtcDaysToYmd(year, easterMonth, easterDay, -47); // Carnaval terça
+  const [ssY, ssM, ssD] = addUtcDaysToYmd(year, easterMonth, easterDay, -2); // Sexta-feira Santa
+  const [ccY, ccM, ccD] = addUtcDaysToYmd(year, easterMonth, easterDay, 60); // Corpus Christi
+
+  const key = (y: number, m: number, d: number) => `${y}-${pad2(m)}-${pad2(d)}`;
+
+  const set = new Set<string>([
+    key(year, 1, 1), // Confraternização Universal
+    key(csY, csM, csD), // Carnaval (segunda)
+    key(ctY, ctM, ctD), // Carnaval (terça)
+    key(ssY, ssM, ssD), // Sexta-feira Santa
+    key(year, 4, 21), // Tiradentes
+    key(year, 5, 1), // Dia do Trabalho
+    key(ccY, ccM, ccD), // Corpus Christi
+    key(year, 9, 7), // Independência do Brasil
+    key(year, 10, 12), // Nossa Senhora Aparecida
+    key(year, 11, 2), // Finados
+    key(year, 11, 15), // Proclamação da República
+    key(year, 11, 20), // Dia Nacional de Zumbi e da Consciência Negra (Lei 14.759/2023)
+    key(year, 12, 25), // Natal
+  ]);
+  holidaysByYearCache.set(year, set);
+  return set;
+}
+
+/**
+ * Soma dias úteis (seg-sex, exclui feriados nacionais — calendário bancário/ANBIMA, ver
+ * brNationalHolidaysForYear) em BRT e fixa horário (default 18:00 BRT para prazos).
+ */
+export function addBrUtilDaysIso(
+  iso: string,
+  days: number,
+  options: { hour?: number; minute?: number } = {},
+): string {
+  const base = new Date(iso);
+  if (Number.isNaN(base.getTime())) return iso;
+  const dayKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(base);
+  const [y, m, d] = dayKey.split('-').map(Number);
+  const cursor = new Date(`${y}-${pad2(m)}-${pad2(d)}T12:00:00${BRT_OFFSET}`);
+  let remaining = days;
+  while (remaining > 0) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    // Meio-dia BRT com offset fixo -03:00 — getUTCDay() aqui reflete o dia da semana em BRT.
+    const weekday = cursor.getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    const cursorKey = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(cursor);
+    if (brNationalHolidaysForYear(Number(cursorKey.slice(0, 4))).has(cursorKey)) continue;
+    remaining -= 1;
+  }
+  const targetKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(cursor);
+  const hour = options.hour ?? 18;
+  const minute = options.minute ?? 0;
+  return new Date(`${targetKey}T${pad2(hour)}:${pad2(minute)}:00${BRT_OFFSET}`).toISOString();
+}
+
 /**
  * Timestamp de payload externo → Date.
  * Com offset/Z: instante real. Sem offset: horário civil BRT.
