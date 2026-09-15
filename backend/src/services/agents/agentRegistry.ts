@@ -1,15 +1,16 @@
 /**
- * agentRegistry v1.1.0 — mapa numerado e nomes oficiais dos agentes IA
- * VERSION: v1.1.0 | DATE: 2026-08-07
+ * agentRegistry v1.2.0 — Agente 5 (extração casos especiais) inserido; relacionados vira 6
+ * VERSION: v1.2.0 | DATE: 2026-09-15
  */
 
-export type AgentNumber = 1 | 2 | 3 | 4 | 5;
+export type AgentNumber = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type AgentCodigo =
   | 'agente_atendimento'
   | 'agente_auditoria'
   | 'agente_gestao'
   | 'agente_casos_especiais'
+  | 'agente_casos_especiais_extracao'
   | 'agente_casos_especiais_relacionados';
 
 export interface AgentRegistryEntry {
@@ -46,6 +47,12 @@ export const AGENT_REGISTRY: Record<AgentNumber, AgentRegistryEntry> = {
   },
   5: {
     numero: 5,
+    codigo: 'agente_casos_especiais_extracao',
+    nomeOficial: 'Agente de Casos Especiais — Extração de Campos',
+    serviceFile: 'casosEspeciaisExtracao.service.ts',
+  },
+  6: {
+    numero: 6,
     codigo: 'agente_casos_especiais_relacionados',
     nomeOficial: 'Agente de Casos Especiais — Tickets Relacionados',
     serviceFile: 'casosEspeciaisRelacionadosAgent.service.ts',

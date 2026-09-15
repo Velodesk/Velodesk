@@ -1,6 +1,6 @@
 /**
- * casosEspeciaisRelacionadosAgent.service v1.0.0 — Agente 5, correlação LLM de tickets relacionados
- * VERSION: v1.0.0 | DATE: 2026-09-09
+ * casosEspeciaisRelacionadosAgent.service v1.1.0 — Agente 6 (renumerado), correlação LLM de tickets relacionados
+ * VERSION: v1.1.0 | DATE: 2026-09-15
  */
 import { env } from '../../config/env';
 import {

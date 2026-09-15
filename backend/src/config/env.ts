@@ -248,9 +248,11 @@ export const env = {
   openaiModel: (process.env.OPENAI_MODEL || 'gpt-4.1-mini').trim(),
   agentsEnabled: process.env.AGENTS_ENABLED === 'true',
   agentsAutonomyEnabled: process.env.AGENTS_AUTONOMY_ENABLED === 'true',
-  /** Agente 4 — triagem silenciosa de casos especiais na entrada do ticket */
+  /** Agente 4 — triagem silenciosa de casos especiais na entrada do ticket (classificação só) */
   agentCasosEspeciaisEnabled: process.env.AGENT_CASOS_ESPECIAIS_ENABLED === 'true',
-  /** Agente 5 — correlação de tickets relacionados no histórico do CPF (Reclame Aqui) */
+  /** Agente 5 — extração de campos (Procon/Bacen/Consumidor.gov) após a classificação do Agente 4 */
+  agentCasosEspeciaisExtracaoEnabled: process.env.AGENT_CASOS_ESPECIAIS_EXTRACAO_ENABLED === 'true',
+  /** Agente 6 — correlação de tickets relacionados no histórico do CPF (Reclame Aqui) */
   agentCasosEspeciaisRelacionadosEnabled: process.env.AGENT_CASOS_ESPECIAIS_RELACIONADOS_ENABLED === 'true',
   agentAuditThresholdAuto: parseInt(process.env.AGENT_AUDIT_THRESHOLD_AUTO || '85', 10),
   agentAuditThresholdDesk: parseInt(process.env.AGENT_AUDIT_THRESHOLD_DESK || '70', 10),

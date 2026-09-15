@@ -1,6 +1,6 @@
 /**
- * AiUsageLog v1.0.1 — feature casos_especiais (Agente 4)
- * VERSION: v1.0.1 | DATE: 2026-08-07
+ * AiUsageLog v1.0.2 — feature casos_especiais_extracao (Agente 5)
+ * VERSION: v1.0.2 | DATE: 2026-09-15
  */
 import mongoose, { Schema, Document } from 'mongoose';
 
@@ -12,6 +12,7 @@ export type AiUsageFeature =
   | 'criticidade_triagem'
   | 'gestao_chamados'
   | 'casos_especiais'
+  | 'casos_especiais_extracao'
   | 'casos_especiais_relacionados'
   | 'ticket_suggest_legacy'
   | 'refinar_rascunho'

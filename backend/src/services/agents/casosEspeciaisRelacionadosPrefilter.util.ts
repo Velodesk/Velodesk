@@ -1,6 +1,6 @@
 /**
- * casosEspeciaisRelacionadosPrefilter.util v1.0.0 — Agente 5, pré-filtro mecânico
- * VERSION: v1.0.0 | DATE: 2026-09-09
+ * casosEspeciaisRelacionadosPrefilter.util v1.1.0 — Agente 6 (renumerado), pré-filtro mecânico
+ * VERSION: v1.1.0 | DATE: 2026-09-15
  *
  * Corta o histórico do CPF para um teto de candidatos antes de chamar o LLM: descarta tickets
  * sem conteúdo real (mensagem/anotação vazia) e pontua por sinais baratos (produto/categoria/

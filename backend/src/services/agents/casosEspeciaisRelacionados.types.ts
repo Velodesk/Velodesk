@@ -1,6 +1,6 @@
 /**
- * casosEspeciaisRelacionados.types v1.0.0 — Agente 5, correlação de tickets relacionados
- * VERSION: v1.0.0 | DATE: 2026-09-09
+ * casosEspeciaisRelacionados.types v1.1.0 — Agente 6 (renumerado), correlação de tickets relacionados
+ * VERSION: v1.1.0 | DATE: 2026-09-15
  */
 /**
  * Duplicado (não importado) de propósito: RA usa ReclamacaoReclameAqui.schema.ts e os demais
