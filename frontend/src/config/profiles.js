@@ -9,6 +9,7 @@ export const ESPECIAIS_NAV_IDS = [
   'especiais-consumidor-gov',
   'especiais-bacen',
   'especiais-processos',
+  'especiais-redes-sociais',
 ];
 
 const ESPECIAIS_NAV_SET = new Set(ESPECIAIS_NAV_IDS);
@@ -120,6 +121,13 @@ export const NAV_ITEMS = [
     label: 'Processos',
     icon: 'ti-briefcase',
     tooltip: 'Processos',
+  },
+  {
+    id: 'especiais-redes-sociais',
+    path: '/especiais/redes-sociais',
+    label: 'Redes Sociais',
+    icon: 'ti-device-desktop',
+    tooltip: 'Redes Sociais',
   },
   {
     id: 'preferencias',

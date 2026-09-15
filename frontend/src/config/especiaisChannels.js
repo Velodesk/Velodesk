@@ -39,6 +39,13 @@ export const ESPECIAIS_CHANNELS = [
     icon: 'ti-briefcase',
     color: '#B45309',
   },
+  {
+    id: 'redes-sociais',
+    label: 'Redes Sociais',
+    desc: 'Atendimento e monitoramento das redes sociais',
+    icon: 'ti-device-desktop',
+    color: '#0EA5E9',
+  },
 ];
 
 const LEGACY_CHANNEL_IDS = {

@@ -32,6 +32,7 @@ export const ACESSO_MODULO_IDS: string[] = [
   'especiais-consumidor-gov',
   'especiais-bacen',
   'especiais-processos',
+  'especiais-redes-sociais',
   'reports',
   'tickets-resolvidos',
 ];
