@@ -748,6 +748,10 @@ export function reclamacaoToPortalDto(doc: IReclamacao): Record<string, unknown>
     tipo: doc.tipo,
     motivo: doc.motivo,
     dataReclamacao: doc.dataReclamacao,
+    // Alias pro campo genérico acima — Procon/Consumidor.gov/Bacen exibem e editam essa data
+    // como "dataDemanda" no front (CgDadosFields/BcDadosFields); sem isto, o PATCH grava em
+    // dataReclamacao mas a tela nunca lê de volta, dando a impressão de que não salvou.
+    dataDemanda: doc.orgao !== 'reclame_aqui' ? doc.dataReclamacao : undefined,
     statusCanal: doc.statusCanal,
     ticketStatus: doc.ticketStatus,
     statusPc: meta.statusPc ?? (doc.orgao === 'procon' ? doc.statusCanal : undefined),
