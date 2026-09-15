@@ -366,6 +366,25 @@ export async function findReclamacaoByChamadoIdAnyOrgao(
   return null;
 }
 
+/**
+ * Apaga o(s) espelho(s) em `chamados_reclamacoes` ligados a um chamado excluído de
+ * `chamados_n1` — sem isto o registro fica órfão (chamadoId aponta pra um _id que não existe
+ * mais) e continua aparecendo pra sempre nas listas de Procon/RA/Bacen/Consumidor.gov, mesmo
+ * o ticket já não abrindo mais (404 em GET /tickets/:id).
+ */
+export async function deleteReclamacoesByChamadoId(
+  chamadoId: string | Types.ObjectId,
+): Promise<void> {
+  if (!isReclamacoesConnected()) return;
+  const id = new Types.ObjectId(String(chamadoId));
+  await Promise.all(
+    (['reclame_aqui', 'procon', 'bacen', 'consumidor_gov'] as const).map((orgao) => {
+      const Model = resolveReclamacaoModel(orgao);
+      return Model ? Model.deleteMany({ chamadoId: id }).exec() : Promise.resolve();
+    }),
+  );
+}
+
 export async function syncFromChamado(chamado: IChamadoN1): Promise<IReclamacao | null> {
   if (!chamado._id) return null;
 

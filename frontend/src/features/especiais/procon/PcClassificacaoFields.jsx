@@ -9,7 +9,6 @@ import { TABULACAO_OPCOES_CATEGORIAS } from '../../../services/tabulationConfig'
 import { PC_MOTIVOS } from '../../../services/especiais/proconData';
 
 export default function PcClassificacaoFields({ pcItem, onClassificacaoDraftChange }) {
-  const { showNotification } = useNotifications();
   const { getProdutoNames } = useTabulation();
   const [motivos, setMotivos] = useState(PC_MOTIVOS);
   const [produtoDraft, setProdutoDraft] = useState(pcItem?.produto || '');
