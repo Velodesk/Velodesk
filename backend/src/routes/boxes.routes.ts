@@ -23,6 +23,8 @@ import {
   shouldUseMeusChamadosFilter,
 } from '../services/permission.service';
 import { resolveWorkflowDefinitionIdsForFuncoes } from '../services/workflowDefinicao.service';
+import { listAgentQueueBoxes } from '../services/agentQueueBox.service';
+import { buildCustomBoxCountFilter } from '../services/customBoxCount.service';
 
 const router = Router();
 
@@ -146,6 +148,24 @@ async function loadBoxesWithListTickets(
   }));
 }
 
+/** Status ativos considerados em "Meus Tickets" — nunca inclui resolvido/fechado/cancelado. */
+const MEUS_TICKETS_ATIVOS_STATUSES = ['novo', 'em-aberto', 'em-andamento', 'pendente', 'em-espera'];
+
+/**
+ * Contagem real (countDocuments, sem limite) de "Meus Tickets" — responsável OU atribuído =
+ * usuário logado, em status ativo. Some por status porque buildChamadoQueryFilter já resolve
+ * a regra de "meu" diferente pra 'novo' (responsável ainda vazio) vs os demais.
+ */
+async function countMeusTicketsReal(responsavelCandidates: string[]): Promise<number> {
+  if (!responsavelCandidates.length) return 0;
+  const perStatus = await Promise.all(
+    MEUS_TICKETS_ATIVOS_STATUSES.map((status) =>
+      ChamadoN1.countDocuments(buildBoxCountFilter(status, 'meus-chamados', responsavelCandidates)),
+    ),
+  );
+  return perStatus.reduce((sum, n) => sum + n, 0);
+}
+
 router.get('/queue-counts', authMiddleware, async (req, res: Response) => {
   const queueParam = typeof req.query.fila === 'string' ? req.query.fila : undefined;
   const userId = req.user?.userId;
@@ -182,8 +202,29 @@ router.get('/queue-counts', authMiddleware, async (req, res: Response) => {
       counts = await loadQueueCounts(columns, queue, responsavelCandidates, extraFilter);
     }
 
+    counts['meus-tickets'] = await countMeusTicketsReal(responsavelCandidates);
+
+    const customBoxUnsupported: Record<string, string[]> = {};
+    const email = req.user?.email || '';
+    if (email) {
+      const customBoxes = await listAgentQueueBoxes(email);
+      await Promise.all(
+        customBoxes.map(async (box) => {
+          const { filter, unsupported } = buildCustomBoxCountFilter(
+            box.criterios || [],
+            responsavelCandidates,
+          );
+          counts[box.id] = await ChamadoN1.countDocuments(filter);
+          if (unsupported.length) customBoxUnsupported[box.id] = unsupported;
+        }),
+      );
+    }
+
     return res.json({
       counts,
+      // Critérios sem tradução exata pro servidor (hoje: 'sla') — contagem daquela caixa
+      // pode não bater 100% até isso ser implementado; frontend deve avisar, nunca fingir certeza.
+      unsupportedCriteria: customBoxUnsupported,
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {

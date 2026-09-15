@@ -1,11 +1,14 @@
 /**
- * queueCounts v1.2.0 — contador sidebar deriva da listagem; API só sincroniza cache
- * VERSION: v1.2.0 | DATE: 2026-08-20
+ * queueCounts v1.3.0 — contadores (Desk + Meus Tickets) sempre vêm de GET /boxes/queue-counts
+ * (countDocuments real, sem limite de lista) — nunca do tamanho da lista carregada em cache.
+ * VERSION: v1.3.0 | DATE: 2026-09-15
  */
 import { boxesApi } from '../../api/client';
 import { isBackendJwtUsable } from '../../utils/backendJwt';
 import { isApiMode } from '../ticketsCache';
-import { AGENT_DESK_QUEUE_IDS } from './constants';
+import { AGENT_DESK_QUEUE_IDS, MEUS_TICKETS_QUEUE_ID } from './constants';
+
+const REAL_COUNT_QUEUE_IDS = new Set([...AGENT_DESK_QUEUE_IDS, MEUS_TICKETS_QUEUE_ID]);
 import { readDeskProfileId, shouldUseMeusChamadosFila } from './responsavelSegmentation';
 import deskLog from '../../utils/deskDebugLog';
 
@@ -13,7 +16,7 @@ const STORAGE_KEY = 'velodesk_queue_counts_v1';
 const STORAGE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export const QUEUE_COUNTS_POLL_MS = 60000;
 
-const DESK_QUEUE_IDS = ['novos', 'em-andamento', 'pendente', 'resolvidos'];
+const DESK_QUEUE_IDS = ['novos', 'em-andamento', 'pendente', 'resolvidos', 'meus-tickets'];
 
 let cachedCounts = null;
 let optimisticDeltas = emptyDeltas();
@@ -25,6 +28,7 @@ function emptyDeltas() {
     'em-andamento': 0,
     pendente: 0,
     resolvidos: 0,
+    'meus-tickets': 0,
   };
 }
 
@@ -34,12 +38,15 @@ function emptyCounts() {
     'em-andamento': 0,
     pendente: 0,
     resolvidos: 0,
+    'meus-tickets': 0,
   };
 }
 
 function normalizeCounts(raw) {
   const base = emptyCounts();
-  DESK_QUEUE_IDS.forEach((id) => {
+  // Mantém também chaves extras (id de caixa personalizada) — não só as filas fixas do Desk —
+  // pra countByQueue() achar a contagem real de qualquer caixa, não só as 5 padrão.
+  Object.keys(raw || {}).forEach((id) => {
     const value = Number(raw?.[id]);
     if (Number.isFinite(value) && value >= 0) base[id] = value;
   });
@@ -93,11 +100,26 @@ export function fingerprintQueueCounts() {
 
 export function getDeskQueueDisplayCount(queueId) {
   const normalized = String(queueId || '').trim();
-  if (!AGENT_DESK_QUEUE_IDS.has(normalized)) return null;
+  if (!normalized) return null;
+  // Filas fixas do Desk + Meus Tickets sempre existem em cachedCounts quando a API já
+  // respondeu; caixas personalizadas também aparecem lá (uma chave por boxId) desde que
+  // GET /boxes/queue-counts as tenha computado — normalizeCounts não filtra mais por uma
+  // lista fixa, então qualquer chave real do servidor é aceita aqui.
+  if (!REAL_COUNT_QUEUE_IDS.has(normalized) && !(cachedCounts && normalized in cachedCounts)) {
+    return null;
+  }
   const base = Number(cachedCounts?.[normalized]);
   const delta = Number(optimisticDeltas[normalized] || 0);
   if (!Number.isFinite(base)) return null;
   return Math.max(0, base + delta);
+}
+
+let cachedUnsupportedCriteria = {};
+
+/** Ids de caixa personalizada cuja contagem NÃO é 100% real (hoje: critério tipo 'sla' sem
+ * tradução pro servidor ainda) — UI deve avisar, nunca apresentar como se fosse exata. */
+export function getUnsupportedCriteriaTypes(boxId) {
+  return cachedUnsupportedCriteria?.[boxId] || [];
 }
 
 /** Delta otimista entre pollings — somado ao countByQueue (mesma base da listagem). */
@@ -153,6 +175,7 @@ export async function refreshQueueCountsFromApi(userEmail = '') {
       const params = shouldUseMeusChamadosFila(profileId) ? { fila: 'meus-chamados' } : undefined;
       const data = await boxesApi.queueCounts(params);
       cachedCounts = normalizeCounts(data?.counts);
+      cachedUnsupportedCriteria = data?.unsupportedCriteria || {};
       optimisticDeltas = emptyDeltas();
       persistCountsToStorage(userEmail);
       dispatchCountsChanged();

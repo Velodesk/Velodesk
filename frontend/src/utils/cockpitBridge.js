@@ -16,6 +16,7 @@ const PAGE_ROUTES = {
   'especiais-consumidor-gov': '/especiais/consumidor-gov',
   'especiais-bacen': '/especiais/bacen',
   'especiais-processos': '/especiais/processos',
+  'especiais-redes-sociais': '/especiais/redes-sociais',
   'workflow-inbox': '/workflow',
   'workflow-finalizados': '/workflow?view=finalizados',
   reports: '/reports',
@@ -29,6 +30,7 @@ const ESPECIAIS_PAGE_IDS = new Set([
   'especiais-consumidor-gov',
   'especiais-bacen',
   'especiais-processos',
+  'especiais-redes-sociais',
 ]);
 
 function isEspeciaisPageId(page) {
