@@ -183,7 +183,7 @@ function buildReclamacaoPayload(
   orgao: CasoEspecialOrgao,
   triagem: CasoEspecialTriagemPersisted,
   ctx: ReclamacaoPersistContext,
-): Partial<IReclamacao> {
+): Partial<IReclamacao> & { idOrigem?: string } {
   const tab = readTabulacaoSnapshot(
     chamado.tabulacao?.[chamado.tabulacao.length - 1] ?? chamado.tabulacao?.[0],
   );
@@ -266,6 +266,11 @@ function buildReclamacaoPayload(
     uf: String(meta.uf ?? '').trim() || undefined,
     protocoloExterno: protocoloExterno || undefined,
     idDemandaExterna: idDemandaExterna || undefined,
+    // idOrigem é campo próprio (e único, não-sparse) só do schema Reclame Aqui — sem isto o
+    // insert de uma reclamação nova (upsertFromChamado, ex.: import Hugme) grava idOrigem
+    // ausente/null, e a 2ª reclamação nova em diante colide no índice único
+    // (E11000 dup key: { idOrigem: null }), porque só um doc pode ter esse campo nulo.
+    ...(orgao === 'reclame_aqui' ? { idOrigem: idDemandaExterna || undefined } : {}),
     atendente: String(tab.responsavel ?? '').trim() || undefined,
     responsavel: String(tab.responsavel ?? '').trim() || undefined,
     workflowId: chamado.workflow?.workflowId ?? undefined,
@@ -322,7 +327,9 @@ export async function upsertFromChamado(
   const doc = await Model.findOneAndUpdate(
     { chamadoId: chamado._id },
     { $set: payload },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
+    // runValidators: se um campo required (ex.: idOrigem no schema RA) vier ausente do
+    // payload, falha aqui com erro claro em vez de um E11000 críptico do índice único.
+    { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true },
   ).exec();
 
   return doc;

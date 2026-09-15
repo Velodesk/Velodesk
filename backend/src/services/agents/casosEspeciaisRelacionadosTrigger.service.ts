@@ -1,6 +1,6 @@
 /**
- * casosEspeciaisRelacionadosTrigger.service v1.0.0 — Agente 5, orquestração fire-and-forget
- * VERSION: v1.0.0 | DATE: 2026-09-09
+ * casosEspeciaisRelacionadosTrigger.service v1.1.0 — Agente 6 (renumerado), orquestração fire-and-forget
+ * VERSION: v1.1.0 | DATE: 2026-09-15
  */
 import { ChamadoN1 } from '../../models/ChamadoN1';
 import type { IReclamacao } from '../../models/reclamacoes/reclamacaoModels';
@@ -79,7 +79,7 @@ async function createInternalNoteForResumo(
   ].filter(Boolean).join('\n\n');
 
   appendRegistroEntry(chamado, {
-    autor: getAgentNomeOficial(5),
+    autor: getAgentNomeOficial(6),
     anotacaoInterna: nota,
     metadados: { agentCasosEspeciaisRelacionados: { tickets } },
   });

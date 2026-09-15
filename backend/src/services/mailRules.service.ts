@@ -1,6 +1,6 @@
 /** mailRules.service v1.0.1 — CRUD + snapshot inbound mail_ignorado/spam/priority */
 import type { Model } from 'mongoose';
-import type { IMailRule, MailRuleType } from '../models/mailRule.shared';
+import type { IMailRule, MailRuleType, MailRuleOrgao } from '../models/mailRule.shared';
 import { getMailIgnoradoModel } from '../models/MailIgnorado';
 import { getMailSpamModel } from '../models/MailSpam';
 import { getMailPriorityModel } from '../models/MailPriority';
@@ -15,6 +15,7 @@ export interface MailRuleDto {
   id: string;
   type: MailRuleType;
   value: string;
+  orgao: MailRuleOrgao;
   note: string;
   active: boolean;
   createdBy: string;
@@ -26,6 +27,8 @@ export interface MailRuleDto {
 interface RuleSnapshot {
   emails: Set<string>;
   domains: Set<string>;
+  orgaoByEmail: Map<string, MailRuleOrgao>;
+  orgaoByDomain: Map<string, MailRuleOrgao>;
 }
 
 interface MailRulesSnapshot {
@@ -36,17 +39,21 @@ interface MailRulesSnapshot {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function emptyRuleSnapshot(): RuleSnapshot {
+  return { emails: new Set(), domains: new Set(), orgaoByEmail: new Map(), orgaoByDomain: new Map() };
+}
+
 let snapshot: MailRulesSnapshot = {
-  ignorado: { emails: new Set(), domains: new Set() },
-  spam: { emails: new Set(), domains: new Set() },
-  priority: { emails: new Set(), domains: new Set() },
+  ignorado: emptyRuleSnapshot(),
+  spam: emptyRuleSnapshot(),
+  priority: emptyRuleSnapshot(),
 };
 
 function emptySnapshot(): MailRulesSnapshot {
   return {
-    ignorado: { emails: new Set(), domains: new Set() },
-    spam: { emails: new Set(), domains: new Set() },
-    priority: { emails: new Set(), domains: new Set() },
+    ignorado: emptyRuleSnapshot(),
+    spam: emptyRuleSnapshot(),
+    priority: emptyRuleSnapshot(),
   };
 }
 
@@ -88,6 +95,7 @@ function toDto(doc: IMailRule): MailRuleDto {
     id: doc._id.toString(),
     type: doc.type,
     value: doc.value,
+    orgao: doc.orgao || '',
     note: String(doc.note ?? ''),
     active: doc.active !== false,
     createdBy: doc.createdBy,
@@ -100,6 +108,7 @@ function toDto(doc: IMailRule): MailRuleDto {
 interface MailRuleSnapshotDoc {
   type: MailRuleType;
   value: string;
+  orgao?: MailRuleOrgao;
   active?: boolean;
 }
 
@@ -107,10 +116,17 @@ function applyDocsToSnapshot(list: MailRulesListKey, docs: MailRuleSnapshotDoc[]
   const bucket = target[list];
   bucket.emails.clear();
   bucket.domains.clear();
+  bucket.orgaoByEmail.clear();
+  bucket.orgaoByDomain.clear();
   docs.forEach((doc) => {
     if (doc.active === false) return;
-    if (doc.type === 'email') bucket.emails.add(doc.value);
-    else bucket.domains.add(doc.value);
+    if (doc.type === 'email') {
+      bucket.emails.add(doc.value);
+      if (doc.orgao) bucket.orgaoByEmail.set(doc.value, doc.orgao);
+    } else {
+      bucket.domains.add(doc.value);
+      if (doc.orgao) bucket.orgaoByDomain.set(doc.value, doc.orgao);
+    }
   });
 }
 
@@ -145,6 +161,26 @@ export function isPriorityEmail(email: string): boolean {
   return matchesBucket(normalized, domain, snapshot.priority);
 }
 
+export interface PriorityEmailMatch {
+  matched: boolean;
+  orgao: MailRuleOrgao;
+}
+
+/** Mesma checagem de isPriorityEmail, mas devolvendo o órgão cadastrado na regra (se houver). */
+export function matchPriorityEmailRule(email: string): PriorityEmailMatch {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return { matched: false, orgao: '' };
+  const domain = normalized.includes('@') ? normalized.split('@')[1] : '';
+  const bucket = snapshot.priority;
+  if (bucket.emails.has(normalized)) {
+    return { matched: true, orgao: bucket.orgaoByEmail.get(normalized) || '' };
+  }
+  if (domain && bucket.domains.has(domain)) {
+    return { matched: true, orgao: bucket.orgaoByDomain.get(domain) || '' };
+  }
+  return { matched: false, orgao: '' };
+}
+
 export function matchMailRule(payload: InboundEmailPayload): MailRuleMatch | null {
   const email = normalizeEmail(payload.from.email);
   if (!email) return null;
@@ -162,9 +198,11 @@ export async function listMailRules(list: MailRulesListKey): Promise<MailRuleDto
   return docs.map(toDto);
 }
 
+const VALID_ORGAOS = new Set<MailRuleOrgao>(['reclame_aqui', 'procon', 'bacen', 'consumidor_gov', '']);
+
 export async function createMailRule(
   list: MailRulesListKey,
-  input: { type: MailRuleType; value: string; note?: string },
+  input: { type: MailRuleType; value: string; note?: string; orgao?: string },
   actor: string,
 ): Promise<MailRuleDto> {
   const type = input.type;
@@ -172,6 +210,8 @@ export async function createMailRule(
     throw new Error('Tipo de regra inválido');
   }
   const value = validateMailRuleInput(type, input.value);
+  const orgaoRaw = String(input.orgao ?? '').trim() as MailRuleOrgao;
+  if (!VALID_ORGAOS.has(orgaoRaw)) throw new Error('Órgão inválido');
   const Model = listKeyToModel(list);
 
   const exists = await Model.findOne({ type, value }).exec();
@@ -180,6 +220,7 @@ export async function createMailRule(
   const doc = await Model.create({
     type,
     value,
+    orgao: list === 'priority' ? orgaoRaw : '',
     note: String(input.note ?? '').trim(),
     active: true,
     createdBy: actor,

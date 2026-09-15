@@ -394,6 +394,13 @@ export const mailRulesApi = {
     api.delete(`/mail-rules/${encodeURIComponent(list)}/${encodeURIComponent(id)}`).then((r) => r.data),
 };
 
+export const mailPrioritySubjectsApi = {
+  list: () => api.get('/mail-priority-subjects').then((r) => r.data),
+  create: (data) => api.post('/mail-priority-subjects', data).then((r) => r.data),
+  patch: (id, data) => api.patch(`/mail-priority-subjects/${encodeURIComponent(id)}`, data).then((r) => r.data),
+  remove: (id) => api.delete(`/mail-priority-subjects/${encodeURIComponent(id)}`).then((r) => r.data),
+};
+
 export const emailOutboundApi = {
   opcoes: () => api.get('/email-outbound/opcoes').then((r) => r.data),
   layout: () => api.get('/email-outbound/layout').then((r) => r.data),

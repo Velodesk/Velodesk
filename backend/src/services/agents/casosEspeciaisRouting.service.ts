@@ -1,6 +1,6 @@
 /**
- * casosEspeciaisRouting.service v1.3.0 — RA sem workflow; upsert RA não é fail-soft
- * VERSION: v1.3.0 | DATE: 2026-08-19
+ * casosEspeciaisRouting.service v1.4.0 — Agente 5 (extração) roda após o upsert, antes do Agente 6
+ * VERSION: v1.4.0 | DATE: 2026-09-15
  */
 import { Types } from 'mongoose';
 import type { IChamadoN1, ITabulacao } from '../../models/ChamadoN1';
@@ -25,6 +25,11 @@ import {
   readInboxDedicadaHint,
   upsertFromChamado,
 } from '../reclamacoes/reclamacao.service';
+import { extractCasosEspeciaisFields, type CasoEspecialExtracaoOrgao } from './casosEspeciaisExtracao.service';
+
+function isExtracaoOrgao(orgao: CasoEspecialOrgao): orgao is CasoEspecialExtracaoOrgao {
+  return orgao === 'procon' || orgao === 'bacen' || orgao === 'consumidor_gov';
+}
 
 export const CASO_ESPECIAL_ORGAO_CONFIG: Record<
   Exclude<CasoEspecialOrgao, 'indefinido'>,
@@ -250,6 +255,26 @@ export async function routeCasoEspecialFormal(
         error: 'Falha ao persistir reclamação Reclame Aqui',
         workflowActivated,
       };
+    }
+
+    // Agente 5 (extração de campos) só existe pra Procon/Bacen/Consumidor.gov — o Reclame Aqui já
+    // tem seu próprio caminho determinístico (planilha Hugme/cadastro manual), sem precisar de LLM.
+    // Roda ANTES do Agente 6 (relacionados, disparado por quem chama routeCasoEspecialFormal
+    // depois que essa função retorna) — o registro da reclamação já está com os campos possíveis
+    // preenchidos antes de qualquer correlação rodar em cima dele.
+    if (reclamacaoDoc?._id && isExtracaoOrgao(config.orgao)) {
+      const extraction = await extractCasosEspeciaisFields({
+        chamado,
+        orgao: config.orgao,
+        reclamacaoId: reclamacaoDoc._id as Types.ObjectId,
+      });
+      if (extraction.ran && !extraction.error) {
+        console.info('[casos-especiais-routing] extração (Agente 5)', {
+          protocolo: chamado.chamadoProtocolo,
+          orgao: config.orgao,
+          filledFields: extraction.filledFields,
+        });
+      }
     }
 
     const notificacoes = await notifyTeam({

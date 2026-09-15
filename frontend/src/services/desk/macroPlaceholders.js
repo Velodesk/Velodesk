@@ -26,7 +26,9 @@ function resolveClientName(ticket) {
 /** Resolve os valores reais dos placeholders a partir do ticket aberto e do agente logado. */
 export function buildMacroPlaceholderValues(ticket, agentName) {
   return {
-    nomeCliente: resolveClientName(ticket) || 'Cliente',
+    // Sem nome real, vira string vazia — nunca o artifício "Cliente" (mesma regra do backend
+    // em placeholders.util.ts).
+    nomeCliente: resolveClientName(ticket),
     nomeAgente: String(agentName || '').trim() || 'Atendimento Velotax',
     numeroTicket: getTicketProtocolLabel(ticket) || '',
     produtoTicket: String(ticket?.lateralForm?.produto || '').trim(),

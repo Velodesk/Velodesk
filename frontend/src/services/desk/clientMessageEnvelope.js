@@ -13,9 +13,9 @@ function resolveClientFirstName(fullName) {
   return name.split(/\s+/)[0] || name;
 }
 
+/** Sem nome real, retorna string vazia — nunca o artifício "cliente"/"Cliente" genérico. */
 function resolveClientGreetingName(clientName) {
-  const first = resolveClientFirstName(clientName);
-  return first || 'cliente';
+  return resolveClientFirstName(clientName);
 }
 
 function resolveAgentDisplayName(agentName) {
@@ -64,13 +64,15 @@ export function wrapComposerOpening(params) {
 
   if (modo === 'continuacao') {
     // Sem se apresentar de novo — mas continua cordial: só a saudação curta.
-    return [`Oi, ${clientGreeting}, tudo bem?`, '', nucleo].join('\n');
+    const saudacaoCurta = clientGreeting ? `Oi, ${clientGreeting}, tudo bem?` : 'Oi, tudo bem?';
+    return [saudacaoCurta, '', nucleo].join('\n');
   }
 
   const agentDisplay = resolveAgentDisplayName(params?.agentName);
+  const saudacaoLonga = clientGreeting ? `Olá, ${clientGreeting}, tudo bem?` : 'Olá, tudo bem?';
 
   return [
-    `Olá, ${clientGreeting}, tudo bem?`,
+    saudacaoLonga,
     '',
     `Eu sou ${agentDisplay}, do time de atendimento Velotax.`,
     '',
@@ -100,10 +102,11 @@ export function detectEnvelopeModoFromTicket(ticket) {
  * @param {string} params.agentName
  */
 export function wrapComposerOpeningForTicket({ nucleo, ticket, agentName }) {
+  // Nunca ticket?.titulo — título do ticket já causou nome errado grudando como se fosse
+  // nome de cliente (ex.: "Central" saindo de "Central de Atendimento (Tel ...)").
   const clientName = ticket?.clientName
     || ticket?.client?.name
     || ticket?.lateralForm?.clienteNome
-    || ticket?.titulo
     || '';
   const modo = detectEnvelopeModoFromTicket(ticket);
   return wrapComposerOpening({
@@ -140,12 +143,14 @@ export function wrapComposerOpeningHtml(params) {
   const clientGreeting = resolveClientGreetingName(params?.clientName);
 
   if (modo === 'continuacao') {
-    return `${escapeHtmlText(`Oi, ${clientGreeting}, tudo bem?`)}<br /><br />${nucleoHtml}`;
+    const saudacaoCurta = clientGreeting ? `Oi, ${clientGreeting}, tudo bem?` : 'Oi, tudo bem?';
+    return `${escapeHtmlText(saudacaoCurta)}<br /><br />${nucleoHtml}`;
   }
 
   const agentDisplay = resolveAgentDisplayName(params?.agentName);
+  const saudacaoLonga = clientGreeting ? `Olá, ${clientGreeting}, tudo bem?` : 'Olá, tudo bem?';
   const greetingLines = [
-    escapeHtmlText(`Olá, ${clientGreeting}, tudo bem?`),
+    escapeHtmlText(saudacaoLonga),
     escapeHtmlText(`Eu sou ${agentDisplay}, do time de atendimento Velotax.`),
   ];
   return `${greetingLines.join('<br /><br />')}<br /><br />${nucleoHtml}`;
@@ -161,7 +166,6 @@ export function wrapComposerOpeningForTicketHtml({ nucleoHtml, ticket, agentName
   const clientName = ticket?.clientName
     || ticket?.client?.name
     || ticket?.lateralForm?.clienteNome
-    || ticket?.titulo
     || '';
   const modo = detectEnvelopeModoFromTicket(ticket);
   return wrapComposerOpeningHtml({
