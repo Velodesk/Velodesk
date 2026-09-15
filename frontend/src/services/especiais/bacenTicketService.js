@@ -315,17 +315,17 @@ export function getBcThreadMessages(ticket, bcItem) {
   });
 }
 
+/** Mostra a data-limite em si (só data, sem hora — diferente de "Data da demanda"). */
 export function formatBcDeadlineLabel(iso) {
   if (!iso) return '—';
-  const diff = new Date(iso).getTime() - Date.now();
-  if (diff <= 0) return 'Prazo vencido';
-  const totalHours = Math.floor(diff / (1000 * 60 * 60));
-  const days = Math.floor(totalHours / 24);
-  const hours = totalHours % 24;
-  if (days > 0) {
-    return `${days} dia${days > 1 ? 's' : ''} e ${hours} hora${hours !== 1 ? 's' : ''}`;
-  }
-  return `${hours} hora${hours !== 1 ? 's' : ''}`;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const formatted = d.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  return d.getTime() <= Date.now() ? `${formatted} (vencido)` : formatted;
 }
 
 function normalizeCanal(value) {

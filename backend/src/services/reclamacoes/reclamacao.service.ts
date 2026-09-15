@@ -26,6 +26,7 @@ import type {
   CasoEspecialTriagemPersisted,
 } from '../agents/casosEspeciais.types';
 import { isMongoConnected, isReclamacoesConnected } from '../../config/database';
+import { addBrCivilDaysIso, addBrUtilDaysIso } from '../dates/brDateTime.util';
 
 const AGENTE_VERSAO = 'casosEspeciaisAgent v1.0.0';
 
@@ -849,6 +850,21 @@ export async function patchReclamacao(
   for (const key of scalarFields) {
     if (patch[key] !== undefined) {
       (allowed as Record<string, unknown>)[key] = patch[key];
+    }
+  }
+
+  // Prazo de resposta recalcula sozinho quando a Data da demanda/reclamação é editada
+  // manualmente (Bacen: 10 dias úteis; Consumidor.gov: 10 dias corridos) — a menos que o
+  // próprio patch já traga um prazoLegal explícito, que sempre prevalece.
+  if (patch.dataReclamacao !== undefined && patch.prazoLegal === undefined) {
+    const novaData = patch.dataReclamacao ? new Date(String(patch.dataReclamacao)) : null;
+    if (novaData && !Number.isNaN(novaData.getTime())) {
+      const novaDataIso = novaData.toISOString();
+      if (orgao === 'bacen') {
+        allowed.prazoLegal = new Date(addBrUtilDaysIso(novaDataIso, 10));
+      } else if (orgao === 'consumidor_gov') {
+        allowed.prazoLegal = new Date(addBrCivilDaysIso(novaDataIso, 10));
+      }
     }
   }
 
