@@ -15520,6 +15520,263 @@ input:checked + .slider:before {
     align-self: flex-start;
 }
 
+#config .config-whatsapp-templates {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+#config .config-whatsapp-templates__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+#config .config-whatsapp-templates__head .config-placeholder-msg {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+}
+
+#config .config-whatsapp-templates__head .config-action-btn {
+    flex: 0 0 auto;
+    width: auto;
+    align-self: flex-start;
+}
+
+#config .config-whatsapp-templates__search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    max-width: 320px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--config-border);
+    border-radius: 8px;
+    background: var(--config-surface);
+}
+
+#config .config-whatsapp-templates__search i {
+    color: var(--config-muted);
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+#config .config-whatsapp-templates__search input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: inherit;
+    width: 100%;
+}
+
+#config .config-whatsapp-templates__list {
+    border: 1px solid var(--config-border);
+    border-radius: var(--config-radius);
+    background: var(--config-surface);
+    padding: 2rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 160px;
+}
+
+#config .config-whatsapp-template-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    max-width: 640px;
+}
+
+#config .config-whatsapp-template-editor__head h3 {
+    margin: 0 0 0.25rem;
+    color: var(--primary-blue);
+}
+
+#config .config-whatsapp-template-editor__head .config-placeholder-msg {
+    margin: 0;
+}
+
+#config .config-whatsapp-template-editor__section {
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--config-border, rgba(0, 0, 0, 0.08));
+}
+
+#config .config-whatsapp-template-editor__head + .config-whatsapp-template-editor__section {
+    padding-top: 0;
+    border-top: none;
+}
+
+#config .config-whatsapp-template-editor__section h4 {
+    margin: 0 0 0.25rem;
+}
+
+#config .config-whatsapp-template-editor__section > .config-placeholder-msg {
+    margin: 0 0 0.75rem;
+}
+
+#config .config-whatsapp-template-editor__categorias {
+    display: flex;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+#config .config-whatsapp-template-editor__categoria-tab {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.65rem 0.85rem;
+    border: 1.5px solid var(--config-border);
+    border-radius: 8px;
+    background: var(--config-surface);
+    color: var(--config-muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+#config .config-whatsapp-template-editor__categoria-tab:hover {
+    border-color: rgba(0, 0, 88, 0.25);
+}
+
+#config .config-whatsapp-template-editor__categoria-tab.is-active {
+    border-color: var(--primary-blue);
+    color: var(--primary-blue);
+    background: var(--config-accent-soft);
+}
+
+#config .config-whatsapp-template-editor__field-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+#config .config-whatsapp-template-editor__counter {
+    font-size: 0.72rem;
+    color: var(--config-muted);
+    flex-shrink: 0;
+}
+
+#config .config-whatsapp-template-editor__add-select {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--config-border, rgba(0, 0, 0, 0.12));
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    background: var(--white, #fff);
+    color: var(--primary-blue);
+    max-width: 280px;
+}
+
+#config .config-whatsapp-template-editor__format-toolbar {
+    display: flex;
+    gap: 0.3rem;
+    margin-top: 0.35rem;
+}
+
+#config .config-whatsapp-template-editor__format-toolbar button {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--config-border);
+    border-radius: 6px;
+    background: var(--config-surface);
+    color: var(--config-muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+#config .config-whatsapp-template-editor__format-toolbar button:hover {
+    border-color: rgba(0, 0, 88, 0.25);
+    color: var(--primary-blue);
+}
+
+#config .config-whatsapp-template-editor__variable-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.5rem;
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--primary-blue);
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    align-self: flex-end;
+}
+
+#config .config-whatsapp-template-editor__variable-btn:hover {
+    text-decoration: underline;
+}
+
+#config .config-whatsapp-template-editor__botoes {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--config-border, rgba(0, 0, 0, 0.08));
+}
+
+#config .config-whatsapp-template-editor__botoes-head h4 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+#config .config-whatsapp-template-editor__badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--config-muted);
+    background: var(--config-accent-soft);
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+}
+
+#config .config-whatsapp-template-editor__botoes-list {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+#config .config-whatsapp-template-editor__botoes-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+#config .config-whatsapp-template-editor__botoes-list input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--config-border, rgba(0, 0, 0, 0.12));
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    background: var(--white, #fff);
+    color: var(--primary-blue);
+}
+
+#config .config-whatsapp-template-editor__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--config-border, rgba(0, 0, 0, 0.08));
+}
+
 #config .config-email-outbound-editor,
 #config .config-email-assinatura {
     display: grid;

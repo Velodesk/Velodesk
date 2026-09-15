@@ -465,6 +465,10 @@ export function buildCgovStructuredTicketBody(
   const assunto = String(parsed.assunto || '').trim() || 'Demanda Consumidor.Gov';
   const descricao = String(parsed.descricao || '').trim();
   const telefone = parsed.telefone ? [parsed.telefone] : [];
+  const dataDemanda = parsed.dataAberturaIso || new Date().toISOString();
+  // Prazo real vem do e-mail (assunto ou corpo, ex.: "Prazo: 10/08") — só cai no cálculo de
+  // +10 dias corridos quando o e-mail não trouxer essa informação (mesma regra do Bacen).
+  const prazoLegal = parsed.prazoIso || addDaysIso(dataDemanda, 10);
 
   return {
     title: assunto,
@@ -502,8 +506,8 @@ export function buildCgovStructuredTicketBody(
         orgaoGov: 'Consumidor.gov.br',
         cidade: parsed.cidade,
         uf: parsed.uf,
-        prazoLegal: parsed.prazoIso,
-        dataDemanda: parsed.dataAberturaIso,
+        prazoLegal,
+        dataDemanda,
         statusGov: 'nao-respondida',
       },
     },

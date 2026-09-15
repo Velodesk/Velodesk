@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import EmailRemetentesSection from './EmailRemetentesSection';
 import EmailOutboundSection from './EmailOutboundSection';
 import EmailAssinaturaSection from './EmailAssinaturaSection';
+import WhatsappMensagensSection from './WhatsappMensagensSection';
 
 const EMAIL_AREAS = [
   {
@@ -25,6 +26,12 @@ const EMAIL_AREAS = [
     label: 'Layout de assinatura',
     desc: 'Texto formatado e imagens da assinatura',
     icon: 'ti-writing',
+  },
+  {
+    id: 'whatsapp-mensagens',
+    label: 'Mensagens Whatsapp',
+    desc: 'Modelos aprovados pra iniciar ou reativar conversa',
+    icon: 'ti-brand-whatsapp',
   },
 ];
 
@@ -73,6 +80,8 @@ export default function EmailConfigSection() {
         <EmailRemetentesSection />
       ) : area === 'saida' ? (
         <EmailOutboundSection onNestedViewChange={setHideHubBack} />
+      ) : area === 'whatsapp-mensagens' ? (
+        <WhatsappMensagensSection onNestedViewChange={setHideHubBack} />
       ) : (
         <EmailAssinaturaSection />
       )}
