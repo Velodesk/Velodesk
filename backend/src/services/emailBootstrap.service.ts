@@ -4,6 +4,7 @@ import { isAllMongoReady, isDeskConfigConnected } from '../config/database';
 import { ensureGmailInboundMessageIndexes } from '../models/GmailInboundMessage';
 import { loadEmailTransport, isEmailTransportReady } from './emailTransport.service';
 import { loadMailRules } from './mailRules.service';
+import { loadMailPrioritySubjectRules } from './mailPrioritySubjectRules.service';
 import {
   ensureGmailWatchFresh,
   setupGmailWatch,
@@ -83,6 +84,11 @@ export async function bootstrapEmailServices(): Promise<void> {
       await loadMailRules();
     } catch (err) {
       console.warn('[emailBootstrap] mail rules não carregadas:', (err as Error).message);
+    }
+    try {
+      await loadMailPrioritySubjectRules();
+    } catch (err) {
+      console.warn('[emailBootstrap] assuntos prioritários não carregados:', (err as Error).message);
     }
     try {
       await ensureGmailInboundMessageIndexes();

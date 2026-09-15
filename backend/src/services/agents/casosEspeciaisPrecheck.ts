@@ -5,7 +5,8 @@
 import type { IChamadoN1 } from '../../models/ChamadoN1';
 import { resolveFormalCaseSource } from '../ticketIaAdapter.service';
 import { detectCriticalKeywords } from './criticalKeywords.service';
-import { isPriorityEmail } from '../mailRules.service';
+import { matchPriorityEmailRule } from '../mailRules.service';
+import { detectPrioritySubjectMatch } from '../mailPrioritySubjectRules.service';
 import type { CasoEspecialOrgao, CasoEspecialSignalResult } from './casosEspeciais.types';
 
 const REGULATORY_KEYWORD_LABELS = new Set([
@@ -62,6 +63,13 @@ function collectTicketTexts(chamado: IChamadoN1): string[] {
   return parts;
 }
 
+function extractCorpo(chamado: IChamadoN1): string {
+  return (chamado.registro ?? [])
+    .map((reg) => String(reg.mensagemPublica ?? ''))
+    .filter(Boolean)
+    .join('\n');
+}
+
 function extractEmailFrom(chamado: IChamadoN1): string {
   for (const reg of chamado.registro ?? []) {
     const meta = reg.metadados && typeof reg.metadados === 'object' ? reg.metadados : {};
@@ -113,10 +121,24 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
 
   // Remetente cadastrado na lista de prioritários (Config > E-mail > Prioritários):
   // tratado como sinal institucional confirmado, mesmo sem bater com os domínios fixos
-  // acima — a curadoria manual da lista já atesta a origem oficial do remetente.
-  const prioritySender = isPriorityEmail(emailFrom);
-  if (prioritySender) {
+  // acima — a curadoria manual da lista já atesta a origem oficial do remetente. Se a
+  // regra tiver órgão definido, o Agente 4 pula direto pro fast-path (caso_formal_real);
+  // sem órgão, ainda dispara o Agente 4, mas a classificação (LLM) decide o órgão.
+  const priorityRule = matchPriorityEmailRule(emailFrom);
+  const prioritySenderWithOrgao = priorityRule.matched && Boolean(priorityRule.orgao);
+  if (priorityRule.matched) {
     signals.push(`remetente_prioritario:${emailFrom}`);
+    if (priorityRule.orgao) origemProvavel = origemProvavel || (priorityRule.orgao as CasoEspecialOrgao);
+  }
+
+  // Assunto/corpo cadastrado em Config > E-mail > Assuntos Prioritários (igual a / contém):
+  // mesmo tratamento do remetente prioritário — sinal confirmado, dispara o Agente 4 direto;
+  // fast-path só quando a regra também tiver órgão definido.
+  const subjectMatch = detectPrioritySubjectMatch(String(chamado.chamadoTitulo ?? ''), extractCorpo(chamado));
+  const subjectMatchWithOrgao = Boolean(subjectMatch.matched && subjectMatch.rule?.orgao);
+  if (subjectMatch.matched && subjectMatch.rule) {
+    signals.push(`assunto_prioritario:${subjectMatch.rule.area}:${subjectMatch.rule.value}`);
+    if (subjectMatch.rule.orgao) origemProvavel = origemProvavel || (subjectMatch.rule.orgao as CasoEspecialOrgao);
   }
 
   const tab = chamado.tabulacao?.[chamado.tabulacao.length - 1] ?? chamado.tabulacao?.[0];
@@ -141,7 +163,8 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
 
   const triggered = signals.length > 0;
   const fastPathReal = Boolean(
-    prioritySender
+    prioritySenderWithOrgao
+    || subjectMatchWithOrgao
     || (formalSource
       && (institutional.matched || signals.some((s) => s.startsWith('canal_formal:')))),
   );
@@ -151,6 +174,6 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
     signals: [...new Set(signals)],
     origemProvavel,
     fastPathReal,
-    institutionalSender: institutional.matched || prioritySender,
+    institutionalSender: institutional.matched || prioritySenderWithOrgao || subjectMatchWithOrgao,
   };
 }
