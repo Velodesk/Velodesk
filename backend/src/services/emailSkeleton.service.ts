@@ -209,9 +209,16 @@ export async function assembleClientEmail(params: {
   corpo: string;
   corpoAlreadyHtml?: boolean;
   showTicketBox?: boolean;
+  /**
+   * Sobrepõe o rótulo do cabeçalho ("• PROTOCOLO · <STATUS>") — usado pelo CSAT, que dispara
+   * com o ticket já "resolvido" mas não deve estampar "RESOLVIDO" e sim identificar o e-mail
+   * como pesquisa de satisfação (ver csatEmail.service.ts).
+   */
+  statusLabelOverride?: string;
 }): Promise<EmailSkeletonParts> {
   const logo = loadVelotaxHeaderLogoInline();
-  const headerHtml = buildStandardEmailHeaderHtml(emailHeaderStatusLabel(currentStatus(params.chamado)), Boolean(logo));
+  const statusLabel = params.statusLabelOverride ?? emailHeaderStatusLabel(currentStatus(params.chamado));
+  const headerHtml = buildStandardEmailHeaderHtml(statusLabel, Boolean(logo));
   const ticket = ticketFromChamado(params.chamado);
   const saudacaoHtml = params.mode === 'template' ? plainTextToEmailHtml(params.saudacao || '') : '';
   const corpoHtml = params.corpoAlreadyHtml
