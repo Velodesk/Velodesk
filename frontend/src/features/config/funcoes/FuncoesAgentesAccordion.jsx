@@ -1,6 +1,6 @@
 /**
- * FuncoesAgentesAccordion v1.2.0 — lista read-only; atualização via GET ao abrir a seção
- * VERSION: v1.2.0 | DATE: 2026-07-24
+ * FuncoesAgentesAccordion v1.3.0 — coluna "Recebe ticket?" (override da roleta por pessoa)
+ * VERSION: v1.3.0 | DATE: 2026-09-16
  */
 import React, { useMemo, useState } from 'react';
 import { formatAtuacaoLabels } from '../../../services/desk/atuacaoVision';
@@ -9,6 +9,9 @@ export default function FuncoesAgentesAccordion({
   open,
   onToggle,
   agentes,
+  canEditRoleta = false,
+  onToggleRoleta,
+  togglingEmail,
 }) {
   const [search, setSearch] = useState('');
 
@@ -68,6 +71,7 @@ export default function FuncoesAgentesAccordion({
                       <th>Atuação (cargo)</th>
                       <th>Função</th>
                       <th>Nível</th>
+                      <th>Recebe ticket?</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -88,6 +92,30 @@ export default function FuncoesAgentesAccordion({
                           ) : (
                             '—'
                           )}
+                        </td>
+                        <td>
+                          <label
+                            className="wf-config-toggle"
+                            aria-label={`Recebe ticket automaticamente: ${a.colaboradorNome || a.email}`}
+                            title={
+                              a.override != null
+                                ? `Override manual (${a.override ? 'ativo' : 'inativo'})${a.motivo ? ` — ${a.motivo}` : ''}`
+                                : 'Sem override — segue a atuação do cadastro'
+                            }
+                          >
+                            <input
+                              type="checkbox"
+                              checked={Boolean(a.elegivelFinal)}
+                              disabled={!canEditRoleta || togglingEmail === a.email}
+                              onChange={(e) => onToggleRoleta?.(a, e.target.checked)}
+                            />
+                            <span className="wf-config-toggle__track" aria-hidden="true">
+                              <span className="wf-config-toggle__thumb" />
+                            </span>
+                          </label>
+                          {a.override != null ? (
+                            <span className="fp-agentes-badge">manual</span>
+                          ) : null}
                         </td>
                       </tr>
                     ))}

@@ -79,6 +79,15 @@ export const agentesDeskApi = {
   list: () => api.get('/agentes-desk').then((r) => r.data),
 };
 
+export const roletaParticipantesApi = {
+  /** Todo agente com acesso Desk + estado final da roleta (override manual, quando existe). */
+  list: () => api.get('/agents/roleta/participantes').then((r) => r.data?.participantes ?? []),
+  setAtivo: (email, ativo, motivo) =>
+    api.put(`/agents/roleta/participantes/${encodeURIComponent(email)}`, { ativo, motivo }).then((r) => r.data),
+  remove: (email) =>
+    api.delete(`/agents/roleta/participantes/${encodeURIComponent(email)}`).then((r) => r.data),
+};
+
 export const authApi = {
   login: (email, password) =>
     api.post('/login', { email, password }).then((r) => r.data),
