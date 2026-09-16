@@ -1067,6 +1067,39 @@ export function assertChamadoModifiable(chamado: IChamadoN1): void {
   }
 }
 
+export interface PendingWebhookEvent {
+  event: 'message.created' | 'ticket.resolved' | 'ticket.updated';
+  entry: IRegistro;
+}
+
+/**
+ * Empurra uma entrada de registro e, se for uma mensagem pública de agente/sistema ou
+ * mudança de status, enfileira um evento pendente em chamado.$locals para o hook
+ * post('save') de ChamadoN1 disparar o webhook outbound (velodeskWebhook.service.ts) —
+ * só depois que a mudança realmente persistir. Único ponto de mutação de `registro` do
+ * arquivo: cobre qualquer origem (inbound, Desk manual, cron, workflow, Agente IA) sem
+ * precisar instrumentar cada chamador.
+ */
+function pushRegistroEntry(chamado: IChamadoN1, entry: IRegistro): void {
+  const prevStatus = currentStatus(chamado);
+  if (!chamado.registro) chamado.registro = [];
+  chamado.registro.push(entry);
+
+  const isAgentOrSystemMessage = Boolean(entry.mensagemPublica) && entry.origin !== 'cliente';
+  const statusChanged = entry.status !== prevStatus;
+  if (!isAgentOrSystemMessage && !statusChanged) return;
+
+  const event: PendingWebhookEvent['event'] = statusChanged && entry.status === 'resolvido'
+    ? 'ticket.resolved'
+    : isAgentOrSystemMessage
+      ? 'message.created'
+      : 'ticket.updated';
+
+  const locals = chamado.$locals as { pendingWebhookEvents?: PendingWebhookEvent[] };
+  locals.pendingWebhookEvents = locals.pendingWebhookEvents ?? [];
+  locals.pendingWebhookEvents.push({ event, entry });
+}
+
 export function appendStatusTransition(
   chamado: IChamadoN1,
   nextStatus: string,
@@ -1078,8 +1111,7 @@ export function appendStatusTransition(
   } = {},
 ): void {
   const status = normalizeStatusValue(nextStatus) || 'em-andamento';
-  if (!chamado.registro) chamado.registro = [];
-  chamado.registro.push({
+  pushRegistroEntry(chamado, {
     data: new Date(),
     origin: params.origin ?? 'agente',
     autor: params.autor ?? 'sistema',
@@ -1625,7 +1657,7 @@ export async function commitChamadoFromAgent(
       throw new ChamadoCommitValidationError('Texto da mensagem ou anotação é obrigatório.');
     }
   } else if (Object.keys(pendingChanges).length) {
-    chamado.registro.push({
+    pushRegistroEntry(chamado, {
       data: new Date(),
       origin: 'agente',
       autor: resolveRegistroAutor('agente', { authUser, authorHint }),
@@ -1667,7 +1699,7 @@ export async function applyBodyToChamado(
 
   if (Object.keys(pendingChanges).length) {
     const { alteracoes, workflowMeta } = buildAlteracoesFromPending(pendingChanges);
-    chamado.registro.push({
+    pushRegistroEntry(chamado, {
       data: new Date(),
       origin: 'agente',
       autor: resolveRegistroAutor('agente', {
@@ -1739,7 +1771,7 @@ export function appendRegistroEntry(
     metadados: payload.metadados ?? {},
     status,
   };
-  chamado.registro.push(entry);
+  pushRegistroEntry(chamado, entry);
   const index = chamado.registro.length - 1;
 
   const result: AppendRegistroResult = {};
