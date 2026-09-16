@@ -36,7 +36,10 @@ export interface ICliente extends Document {
 
 const ClienteDadosSchema = new Schema<IClienteDados>(
   {
-    clienteCpf: { type: String, default: '' },
+    // Sem default: cadastros criados só com e-mail (sem CPF) precisam deixar o campo
+    // genuinamente ausente — o índice único abaixo é sparse, e um default '' faria
+    // o segundo cadastro sem CPF colidir com o primeiro (chave duplicada).
+    clienteCpf: { type: String },
     clienteNome: { type: String, default: '' },
     clienteEmail: {
       lista: { type: [String], default: [] },

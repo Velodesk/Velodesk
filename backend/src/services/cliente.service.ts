@@ -342,6 +342,11 @@ export async function findClienteByEmail(emailRaw: unknown): Promise<ICliente | 
   });
 }
 
+/**
+ * Resolve o cadastro pelo e-mail do remetente e, se não existir nenhum, cria um cadastro
+ * mínimo (só e-mail, sem CPF) — canal de e-mail não pode ficar sem identificação do cliente
+ * no painel só porque ainda não sabemos o CPF dele.
+ */
 export async function resolveClienteRefFromEmail(
   emailRaw: unknown,
   displayName?: string
@@ -351,14 +356,27 @@ export async function resolveClienteRefFromEmail(
   if (!email) return null;
 
   const cliente = await findClienteByEmail(email);
-  if (!cliente) return null;
+  if (cliente) {
+    const dados = getPrimaryDados(cliente);
+    const cpf = normalizeCpf(dados?.clienteCpf);
+    return {
+      clienteCpf: cpf,
+      clienteId: cliente._id as mongoose.Types.ObjectId,
+    };
+  }
 
-  const dados = getPrimaryDados(cliente);
-  const cpf = normalizeCpf(dados?.clienteCpf);
-  return {
-    clienteCpf: cpf,
-    clienteId: cliente._id as mongoose.Types.ObjectId,
-  };
+  const nome = String(displayName ?? parsed.name ?? '').trim();
+  const Cliente = getClienteModel();
+  const created = await Cliente.create({
+    clienteDados: [{
+      clienteNome: nome,
+      clienteEmail: { lista: [email], resposta: email },
+      clienteTelefone: { lista: [] },
+    }],
+    atendimentoHistorico: [],
+  });
+
+  return { clienteCpf: '', clienteId: created._id as mongoose.Types.ObjectId };
 }
 
 export async function findClienteById(id: unknown): Promise<ICliente | null> {

@@ -97,8 +97,8 @@ function extractField(text: string, labels: string[]): string {
   for (const label of labels) {
     const escaped = escapeRegex(label);
     const patterns = [
-      new RegExp(`^${escaped}\\s*[:\\t]\\s*(.+)$`, 'im'),
-      new RegExp(`^${escaped}\\s+(.+)$`, 'im'),
+      new RegExp(`^\\s*#{0,6}\\s*${escaped}\\s*[:\\t]\\s*(.+)$`, 'im'),
+      new RegExp(`^\\s*#{0,6}\\s*${escaped}\\s+(.+)$`, 'im'),
     ];
     for (const pattern of patterns) {
       const match = text.match(pattern);
@@ -108,15 +108,24 @@ function extractField(text: string, labels: string[]): string {
   return '';
 }
 
+/**
+ * Cabeçalho de seção tolerante a variações reais de template: prefixo markdown ("## "),
+ * maiúsculas/minúsculas (repasses de parceiro, ex. Ouvidoria Celcoin, não seguem o
+ * padrão oficial do órgão) e dois-pontos opcional no fim da linha.
+ */
+function sectionHeaderPattern(header: string): RegExp {
+  return new RegExp(`^\\s*#{0,6}\\s*${escapeRegex(header)}\\s*:?\\s*$`, 'im');
+}
+
 function extractSection(text: string, header: string, nextHeaders: string[]): string {
-  const startPattern = new RegExp(`^\\s*${escapeRegex(header)}\\s*$`, 'im');
+  const startPattern = sectionHeaderPattern(header);
   const startMatch = text.match(startPattern);
   if (!startMatch || startMatch.index == null) return '';
 
   const start = startMatch.index + startMatch[0].length;
   let end = text.length;
   for (const next of nextHeaders) {
-    const nextPattern = new RegExp(`^\\s*${escapeRegex(next)}\\s*$`, 'im');
+    const nextPattern = sectionHeaderPattern(next);
     const nextMatch = text.slice(start).match(nextPattern);
     if (nextMatch?.index != null) {
       end = Math.min(end, start + nextMatch.index);
@@ -146,8 +155,8 @@ function extractDescricao(text: string): string {
 }
 
 function hasCgovBodyStructure(text: string): boolean {
-  const body = String(text ?? '');
-  return body.includes('Dados do Reclamante') && body.includes('Dados da Reclamação');
+  const body = String(text ?? '').toLowerCase();
+  return body.includes('dados do reclamante') && body.includes('dados da reclama');
 }
 
 export function isCgovPrioritySubject(subject: string): boolean {
