@@ -92,6 +92,47 @@ em produção** (Cloud Run → Variables), senão a trava do item 2 bloqueia tod
 e-mail de ticket de QA — que é o comportamento seguro, mas deixa os casos de
 e-mail sempre com ressalva.
 
+## Rodar como Cloud Run Job (alternativa ao GitHub Actions)
+
+`Dockerfile` + `deploy-cloud-run-job.sh` empacotam o agente pra rodar direto no
+GCP, como um Cloud Run Job disparado por Cloud Scheduler (mesmos dois horários,
+07h/17h BRT) — em vez de depender do GitHub Actions como motor de execução.
+**A lógica de teste não muda em nada**; só troca onde a rodada executa.
+
+Por que considerar essa alternativa: o GitHub Actions é externo ao backend do
+Velodesk (mora no mesmo repositório, mas não faz parte do deploy dele), e o
+`schedule` do GitHub pode atrasar horas sob carga alta — já aconteceu numa
+rodada real. Um Cloud Run Job com Cloud Scheduler é mais previsível.
+
+A imagem usa a base oficial do Playwright (`mcr.microsoft.com/playwright`),
+que já vem com Chromium instalado — sem repetir o `npx playwright install
+--with-deps` que o workflow do GitHub Actions faz a cada rodada.
+
+Ver o cabeçalho de `deploy-cloud-run-job.sh` para os pré-requisitos (criar os
+secrets no Secret Manager, um por um) e o passo a passo completo. Resumo dos
+secrets — mesmos valores dos secrets do GitHub Actions acima, só com nome
+diferente (convenção do Secret Manager):
+
+| Secret (GitHub Actions) | Secret (Secret Manager) |
+|---|---|
+| `QA_EMAIL_ALLOWLIST` | `qa-email-allowlist` |
+| `QA_LOGIN_EMAIL` | `qa-login-email` |
+| `QA_LOGIN_PASSWORD` | `qa-login-password` |
+| `QA_RESPONSAVEL` | `qa-responsavel` |
+| `QA_INBOUND_QA_TESTE_SECRET` | `qa-inbound-secret` |
+| `QA_CLIENT_CPF` | `qa-client-cpf` |
+| `QA_MONGODB_URI` | `qa-mongodb-uri` |
+| `QA_OPENAI_API_KEY` | `qa-openai-key` |
+| `QA_GEMINI_API_KEY` | `qa-gemini-key` |
+| `TELEGRAM_BOT_TOKEN` | `qa-telegram-token` |
+| `TELEGRAM_CHAT_ID` | `qa-telegram-chat-id` |
+
+**Importante:** até esse caminho estar confirmado rodando de ponta a ponta, o
+`.github/workflows/qa-velodesk.yml` continua sendo o motor ativo — os dois não
+devem rodar ao mesmo tempo (rodada duplicada = ticket de teste duplicado).
+Quando o Cloud Run Job estiver validado, desative o `schedule` do workflow do
+GitHub Actions (mantendo só `workflow_dispatch` como reserva manual).
+
 ## A planilha
 
 `qa/relatorios/Consolidado_QA_Velodesk.xlsx`, com três abas:
