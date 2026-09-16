@@ -1,5 +1,6 @@
 /** workspace360.service v1.5.1 — reprovação workflow → seção action-now do agente */
 import mongoose from 'mongoose';
+import { env } from '../config/env';
 import { ChamadoN1, IChamadoN1 } from '../models/ChamadoN1';
 import { User } from '../models/User';
 import type { AuthPayload } from '../middleware/auth';
@@ -14,12 +15,18 @@ import {
 } from './chamado.mapper';
 import { resolvePeriodRange } from './gestaoInsights.service';
 
+// pendente/em-espera: 48h até a resolução automática (resolvePendenteTickets.service.ts) —
+// mesmo critério de chamado.mapper.ts, pra não voltar a divergir do que a fila do Desk mostra.
+const PENDENTE_LIMIT_HOURS = env.pendenteResolveAfterMs / (60 * 60 * 1000);
+
 const SLA_LIMIT_HOURS: Record<string, number> = {
   'em-aberto': 4,
   'em-andamento': 8,
+  pendente: PENDENTE_LIMIT_HOURS,
+  'em-espera': PENDENTE_LIMIT_HOURS,
 };
 
-const SLA_TRACKED = new Set(['em-aberto', 'em-andamento']);
+const SLA_TRACKED = new Set(['em-aberto', 'em-andamento', 'pendente', 'em-espera']);
 const ACTIVE_STATUSES = new Set(['novo', 'em-aberto', 'em-andamento', 'pendente', 'em-espera']);
 const ACTIVE_STATUS_LIST = [...ACTIVE_STATUSES];
 
