@@ -18,13 +18,10 @@ on:
         type: boolean
         default: false
 
-# Nunca deixa duas rodadas ao mesmo tempo mexendo na mesma planilha.
+# Nunca deixa duas rodadas ao mesmo tempo testando produção e criando tickets.
 concurrency:
   group: qa-velodesk
   cancel-in-progress: false
-
-permissions:
-  contents: write
 
 jobs:
   rodada:
@@ -80,31 +77,6 @@ jobs:
             qa/relatorios/prints/**
           if-no-files-found: warn
           retention-days: 90
-
-      - name: Guardar a planilha no repositório
-        if: always()
-        working-directory: .
-        run: |
-          # O estado da rodada pro Sentinela vai direto pro Mongo agora (ver
-          # estadoSentinela.ts) — não depende mais de commit/push. Essa etapa
-          # cuida só da planilha consolidada (.xlsx), best-effort: se o branch
-          # atual for protegido, o anexo da execução (passo anterior) continua
-          # sendo a fonte de consulta.
-          if [ -z "$(git status --porcelain qa/relatorios)" ]; then
-            echo "Nada mudou na planilha."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add qa/relatorios
-          git commit -m "chore(qa): rodada de QA ${{ github.run_number }} [skip ci]"
-          for tentativa in 1 2 3; do
-            git pull --rebase --autostash origin "${{ github.ref_name }}" && git push origin HEAD:"${{ github.ref_name }}" && exit 0
-            echo "Tentativa $tentativa falhou, repetindo..."
-            sleep 5
-          done
-          echo "Não foi possível guardar a planilha no repositório — ela continua anexada à execução."
-          exit 0
 
       - name: Falhar a execução quando houver falha nova
         if: steps.qa.outcome == 'failure'

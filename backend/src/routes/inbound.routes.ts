@@ -28,6 +28,8 @@ import {
   processInboundTelephonyCall,
 } from '../services/telephony-inbound/telephonyInbound.service';
 import { parseTelecom55B2cPayload } from '../services/telephony-inbound/adapters/telecom55B2c.adapter';
+import { getQaSentinelaEstadoModel } from '../models/QaSentinelaEstado';
+import { getQaSentinelaRunModel } from '../models/QaSentinelaRun';
 import {
   createTicketFromTelecom55B2cCall,
   shouldCreateTicketFromTelecom55B2cEvent,
@@ -424,6 +426,43 @@ router.get('/tickets/:chamadoProtocolo', inboundTicketAuthMiddleware, async (req
   } catch (err) {
     console.error('[inbound/tickets/:chamadoProtocolo]', err);
     return res.status(500).json({ message: 'Falha ao buscar chamado' });
+  }
+});
+
+/**
+ * Leitura do retrato do agente de QA (Claudio Q.A.) pro dashboard Sentinela Velodesk —
+ * exclusiva da origem qa-teste, mesmo segredo que já cria os tickets de teste. Sem isso,
+ * a única forma de alimentar o dashboard seria expor uma connection string do Mongo pra
+ * fora do backend.
+ */
+router.get('/qa-sentinela/estado', inboundTicketAuthMiddleware, async (req, res: Response) => {
+  if (req.inboundTicketOrigin !== 'qa-teste') {
+    return res.status(403).json({ message: 'Leitura do Sentinela é exclusiva da origem qa-teste' });
+  }
+  try {
+    const estado = await getQaSentinelaEstadoModel().findById('atual').lean();
+    if (!estado) {
+      return res.status(404).json({ message: 'Nenhuma rodada do Sentinela gravada ainda' });
+    }
+    return res.json({ estado });
+  } catch (err) {
+    console.error('[inbound/qa-sentinela/estado]', err);
+    return res.status(500).json({ message: 'Falha ao ler estado do Sentinela' });
+  }
+});
+
+router.get('/qa-sentinela/runs', inboundTicketAuthMiddleware, async (req, res: Response) => {
+  if (req.inboundTicketOrigin !== 'qa-teste') {
+    return res.status(403).json({ message: 'Leitura do Sentinela é exclusiva da origem qa-teste' });
+  }
+  try {
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 50) : 14;
+    const runs = await getQaSentinelaRunModel().find({}).sort({ iniciadoEm: -1 }).limit(limit).lean();
+    return res.json({ runs });
+  } catch (err) {
+    console.error('[inbound/qa-sentinela/runs]', err);
+    return res.status(500).json({ message: 'Falha ao ler histórico do Sentinela' });
   }
 });
 

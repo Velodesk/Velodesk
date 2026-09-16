@@ -13,6 +13,7 @@ import {
   buildResponsavelCandidates,
   chamadoToTicketListItem,
   MEUS_CHAMADOS_COLUMNS,
+  meusChamadosAgentScopeFilter,
   statusFromBoxName,
   workflowActorQueueFilter,
 } from '../services/chamado.mapper';
@@ -152,16 +153,21 @@ async function loadBoxesWithListTickets(
 const MEUS_TICKETS_ATIVOS_STATUSES = ['novo', 'em-aberto', 'em-andamento', 'pendente', 'em-espera'];
 
 /**
- * Contagem real (countDocuments, sem limite) de "Meus Tickets" — responsável OU atribuído =
- * usuário logado, em status ativo. Some por status porque buildChamadoQueryFilter já resolve
- * a regra de "meu" diferente pra 'novo' (responsável ainda vazio) vs os demais.
+ * Contagem real (countDocuments, sem limite) de "Meus Tickets" — SOMENTE responsável OU
+ * atribuído = usuário logado, em status ativo. Regra estrita: NÃO usar
+ * buildBoxCountFilter(status, 'meus-chamados', ...) aqui — aquela variante inclui de propósito
+ * 'novo' sem responsável (fila compartilhada de não reivindicados, pro board de Meus Chamados),
+ * o que infla essa contagem com ticket que ainda não é de ninguém. "Meus Tickets" é sempre
+ * escopo estrito (mesma regra que o frontend já impõe em filterMyTicketsEntries).
  */
 async function countMeusTicketsReal(responsavelCandidates: string[]): Promise<number> {
   if (!responsavelCandidates.length) return 0;
+  const scopeFilter = meusChamadosAgentScopeFilter(responsavelCandidates);
   const perStatus = await Promise.all(
-    MEUS_TICKETS_ATIVOS_STATUSES.map((status) =>
-      ChamadoN1.countDocuments(buildBoxCountFilter(status, 'meus-chamados', responsavelCandidates)),
-    ),
+    MEUS_TICKETS_ATIVOS_STATUSES.map((status) => {
+      const baseFilter = buildBoxCountFilter(status, undefined, responsavelCandidates);
+      return ChamadoN1.countDocuments({ $and: [baseFilter, scopeFilter] });
+    }),
   );
   return perStatus.reduce((sum, n) => sum + n, 0);
 }

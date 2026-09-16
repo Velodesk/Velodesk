@@ -1,11 +1,15 @@
 /**
- * estadoSentinela v1.0.0 — retrato da rodada para o dashboard Sentinela Velodesk
+ * estadoSentinela v1.1.0 — retrato da rodada para o dashboard Sentinela Velodesk
  *
  * O agente roda no GitHub Actions e não tem como escrever direto no banco do
  * dashboard (isso só uma sessão do Claude ou alguém abrindo a página faz).
- * Por isso a rodada deixa aqui um retrato compacto (JSON), versionado no
- * próprio repositório em qa/data/ — o workflow comita esse arquivo, e uma
- * rotina agendada à parte lê dali e atualiza o Sentinela publicado.
+ * Por isso a rodada grava esse retrato em dois lugares:
+ *  - qa/data/*.json local ao runner, só como registro/depuração daquela
+ *    execução — não é mais comitado de volta no repositório (o workflow não
+ *    escreve mais no git; ver histórico do qa-velodesk.yml).
+ *  - qa_sentinela_estado / qa_sentinela_runs no MongoDB (ver
+ *    gravarEstadoSentinelaMongo abaixo) — é dali que uma rotina agendada à
+ *    parte lê e atualiza o Sentinela publicado.
  */
 import fs from 'fs';
 import path from 'path';
