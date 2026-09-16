@@ -25,6 +25,9 @@ const STATUS_OPTIONS = [
   { value: 'cancelado', label: 'Cancelado' },
 ];
 
+const POPOVER_WIDTH = 280;
+const VIEWPORT_MARGIN = 12;
+
 function useAnchoredPosition(open, anchorRef) {
   const [style, setStyle] = useState(null);
 
@@ -37,10 +40,14 @@ function useAnchoredPosition(open, anchorRef) {
       const el = anchorRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
+      // Ancorar pelo left do botão deixa o popover vazar pra fora da tela quando o botão
+      // está perto da borda direita — trava entre a margem e o espaço que realmente sobra.
+      const maxLeft = window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN;
+      const left = Math.max(VIEWPORT_MARGIN, Math.min(rect.left, maxLeft));
       setStyle({
         position: 'fixed',
         top: `${rect.bottom + 6}px`,
-        left: `${rect.left}px`,
+        left: `${left}px`,
       });
     };
     update();
