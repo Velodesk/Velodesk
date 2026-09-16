@@ -4,17 +4,13 @@
  */
 import type { IChamadoN1 } from '../../models/ChamadoN1';
 import { resolveFormalCaseSource } from '../ticketIaAdapter.service';
-import { detectCriticalKeywords } from './criticalKeywords.service';
 import { matchPriorityEmailRule } from '../mailRules.service';
 import { detectPrioritySubjectMatch } from '../mailPrioritySubjectRules.service';
 import type { CasoEspecialOrgao, CasoEspecialSignalResult } from './casosEspeciais.types';
 
-const REGULATORY_KEYWORD_LABELS = new Set([
-  'bacen',
-  'procon',
-  'consumidor.gov',
-  'reclame aqui',
-]);
+// Gatilho do Agente 4 por palavra-chave vive inteiramente em Config > E-mail > Assuntos
+// Prioritários (área=corpo, "contém") — a aba já escaneia o mesmo texto (assunto + corpo
+// completo do ticket) e é editável sem deploy, então não duplicamos uma lista aqui.
 
 const INSTITUTIONAL_DOMAIN_PATTERNS: Array<{ orgao: CasoEspecialOrgao; pattern: RegExp }> = [
   { orgao: 'reclame_aqui', pattern: /@([a-z0-9-]+\.)*reclameaqui\.com\.br$/i },
@@ -49,18 +45,6 @@ function orgaoFromCanalLabel(canal: string): CasoEspecialOrgao | null {
   if (normalized.includes('bacen') || normalized.includes('banco central')) return 'bacen';
   if (normalized.includes('consumidor')) return 'consumidor_gov';
   return null;
-}
-
-function collectTicketTexts(chamado: IChamadoN1): string[] {
-  const parts: string[] = [String(chamado.chamadoTitulo ?? '')];
-  for (const reg of chamado.registro ?? []) {
-    parts.push(String(reg.mensagemPublica ?? ''));
-    parts.push(String(reg.anotacaoInterna ?? ''));
-  }
-  const tab = chamado.tabulacao?.[chamado.tabulacao.length - 1] ?? chamado.tabulacao?.[0];
-  parts.push(String(tab?.motivo ?? ''));
-  parts.push(String(tab?.detalhe ?? ''));
-  return parts;
 }
 
 function extractCorpo(chamado: IChamadoN1): string {
@@ -147,18 +131,6 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
   if (canalOrgao || canalFromMeta) {
     signals.push('tabulacao_canal_especial');
     origemProvavel = origemProvavel || canalOrgao || canalFromMeta;
-  }
-
-  const keywords = detectCriticalKeywords(...collectTicketTexts(chamado))
-    .filter((label) => REGULATORY_KEYWORD_LABELS.has(label));
-  if (keywords.length) {
-    signals.push(...keywords.map((k) => `keyword:${k}`));
-    if (!origemProvavel) {
-      if (keywords.includes('reclame aqui')) origemProvavel = 'reclame_aqui';
-      else if (keywords.includes('procon')) origemProvavel = 'procon';
-      else if (keywords.includes('bacen')) origemProvavel = 'bacen';
-      else if (keywords.includes('consumidor.gov')) origemProvavel = 'consumidor_gov';
-    }
   }
 
   const triggered = signals.length > 0;

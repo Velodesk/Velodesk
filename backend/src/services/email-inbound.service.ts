@@ -16,7 +16,13 @@ import {
   shouldSpawnNewTicketOnInbound,
 } from './chamado.mapper';
 import { publishTicketEvent } from './presence/ticketEventsBroadcast.service';
-import { normalizeEmail, resolveClienteRefFromEmail } from './cliente.service';
+import {
+  findOrCreateClienteFromCpfLookup,
+  normalizeCpf,
+  normalizeEmail,
+  resolveClienteRefFromEmail,
+} from './cliente.service';
+import type { IClienteRef } from '../models/ChamadoN1';
 import { notifyTicketOpenedAsync } from './emailNotification.service';
 import { runInboundPostCreateHooks } from './agents/inboundAgentPipeline.service';
 import { runCasosEspeciaisTriagem } from './agents/casosEspeciaisTrigger.service';
@@ -497,7 +503,8 @@ export function buildCgovStructuredTicketBody(
       clienteCpf: parsed.cpf,
       cpf: parsed.cpf,
       clienteNome: parsed.nome,
-      clienteEmail: parsed.email ? [parsed.email] : [],
+      clienteEmail: Array.from(new Set([parsed.email, payload.from.email].filter(Boolean))),
+      clienteEmailResposta: payload.from.email,
       clienteTelefone: telefone,
       consumidorGov: {
         protocoloGov: parsed.protocolo,
@@ -560,7 +567,8 @@ export function buildBacenStructuredTicketBody(
       clienteCpf: parsed.cpf,
       cpf: parsed.cpf,
       clienteNome: parsed.nome,
-      clienteEmail: parsed.email ? [parsed.email] : [],
+      clienteEmail: Array.from(new Set([parsed.email, payload.from.email].filter(Boolean))),
+      clienteEmailResposta: payload.from.email,
       clienteTelefone: telefone,
       bacen: {
         protocoloBacen: parsed.protocoloBacen,
@@ -624,6 +632,7 @@ function buildInboundEspeciaisTicketBody(
 ): Record<string, unknown> {
   const lateralBase = {
     clienteEmail: [payload.from.email],
+    clienteEmailResposta: payload.from.email,
     clienteNome: displayName,
     classificacaoTipo: 'Reclamação',
     motivo: subject,
@@ -703,6 +712,29 @@ function buildInboundEspeciaisTicketBody(
       },
     },
   };
+}
+
+/**
+ * Bacen/Consumidor.gov estruturado: o e-mail chega de um remetente institucional/parceiro
+ * (ex.: ouvidoria de parceiro), não do cliente — o remetente do e-mail não deve virar o
+ * cadastro do cliente. O CPF extraído do corpo é a fonte confiável; quando ele resolve um
+ * cadastro (local ou via Customer Data API), usamos esse. Sem CPF ou sem match, caímos pro
+ * e-mail do próprio demandante (extraído do corpo), nunca pro e-mail do remetente do e-mail.
+ */
+async function resolveClienteRefForStructuredEmail(
+  parsed: { cpf?: string; email?: string; nome?: string },
+): Promise<IClienteRef | null> {
+  const cpf = normalizeCpf(parsed.cpf);
+  if (cpf) {
+    const { cliente } = await findOrCreateClienteFromCpfLookup(cpf);
+    if (cliente) {
+      return { clienteCpf: cpf, clienteId: cliente._id as import('mongoose').Types.ObjectId };
+    }
+  }
+  if (parsed.email) {
+    return resolveClienteRefFromEmail(parsed.email, parsed.nome);
+  }
+  return null;
 }
 
 async function runInboundEmailFlow(
@@ -798,9 +830,11 @@ async function runInboundEmailFlow(
     };
   }
 
-  const clienteRef = (cgovStructured || bacenStructured)
-    ? null
-    : await resolveClienteRefFromEmail(payload.from.email, payload.from.name);
+  const clienteRef = bacenStructured && bacenParsed
+    ? await resolveClienteRefForStructuredEmail(bacenParsed)
+    : cgovStructured && cgovParsed
+      ? await resolveClienteRefForStructuredEmail(cgovParsed)
+      : await resolveClienteRefFromEmail(payload.from.email, payload.from.name);
   const subject = payload.subject.trim() || 'Atendimento por e-mail';
   const displayName = payload.from.name || payload.from.email.split('@')[0];
   const inboundRootId = normalizeMessageId(payload.messageId);
@@ -845,9 +879,10 @@ async function runInboundEmailFlow(
         },
       };
 
-  if (!cgovStructured && !bacenStructured) {
-    if (clienteRef?.clienteId) ticketBody.clienteId = clienteRef.clienteId.toString();
-    if (clienteRef?.clienteCpf) ticketBody.clientCPF = clienteRef.clienteCpf;
+  if (clienteRef?.clienteId) ticketBody.clienteId = clienteRef.clienteId.toString();
+  if (!cgovStructured && !bacenStructured && clienteRef?.clienteCpf) {
+    // Cgov/Bacen estruturado já traz clientCPF do próprio corpo (parsed.cpf) — não sobrescrever.
+    ticketBody.clientCPF = clienteRef.clienteCpf;
   }
 
   const partial = await createChamadoFromBody(ticketBody, 'novo');
@@ -887,7 +922,7 @@ async function runInboundEmailFlow(
     }
   }
 
-  if (!cgovStructured && !bacenStructured && clienteRef && (!partial.cliente || partial.cliente.length === 0)) {
+  if (clienteRef && (!partial.cliente || partial.cliente.length === 0)) {
     partial.cliente = [clienteRef];
   }
 
