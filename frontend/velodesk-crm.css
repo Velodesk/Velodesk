@@ -1204,6 +1204,15 @@
     color: var(--crm-ticket-active-text);
 }
 
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-ticket-card__agent {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-ticket-card__channel {
     flex-shrink: 0;
     display: inline-flex;

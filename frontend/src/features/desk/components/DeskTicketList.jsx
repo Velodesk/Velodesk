@@ -10,6 +10,7 @@ import {
   getSlaClass,
   getTicketProtocolLabel,
   getTicketQueueEntryAt,
+  getTicketResponsible,
   getTicketTitle,
   isClienteRespondeuRead,
   isClienteRespondeuTicket,
@@ -329,6 +330,9 @@ export default function DeskTicketList({
                       </span>
                     ) : null}
                   </div>
+                  <span className="crm-ticket-card__agent">
+                    Responsável: {getTicketResponsible(t)}
+                  </span>
                 </div>
               </li>
             );
