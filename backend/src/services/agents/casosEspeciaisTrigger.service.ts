@@ -6,7 +6,6 @@ import { ChamadoN1 } from '../../models/ChamadoN1';
 import type { IChamadoN1 } from '../../models/ChamadoN1';
 import { env } from '../../config/env';
 import { assertChamadoModifiable } from '../chamado.mapper';
-import { executeGestaoHandoff } from './gestaoChamadosHandoff.service';
 import {
   buildFastPathTriagem,
   classifyCasosEspeciais,
@@ -78,28 +77,9 @@ async function applyTriagemOutcome(
     return { ran: true, action: 'routed' };
   }
 
-  if (triagem.classificacao === 'ameaca_vazia') {
-    const saved = await saveChamadoWithFreshMutation(chamado, (doc) => {
-      persistCasosEspeciaisTriagemOnly(doc, {
-        ...triagem,
-        handoffGestao: true,
-        skipAgentPipeline: true,
-      });
-    });
-
-    if (saved._id && saved.chamadoProtocolo) {
-      await executeGestaoHandoff({
-        ticketId: saved._id.toString(),
-        protocolo: saved.chamadoProtocolo,
-        nivelCriticidade: 'alta',
-        palavrasCriticas: signals.filter((s) => s.startsWith('keyword:')).map((s) => s.replace('keyword:', '')),
-        categoriaAtendimento: 'Ameaça regulatória (sem registro formal)',
-        origem: 'agente_casos_especiais',
-      });
-    }
-    return { ran: true, action: 'handoff_gestao' };
-  }
-
+  // ameaca_vazia não tem substância real (é isso que "vazia" quer dizer) — não escala pra
+  // gestão como se fosse crítico. Só registra a classificação, igual falso_positivo; segue o
+  // atendimento normal.
   await saveChamadoWithFreshMutation(chamado, (doc) => {
     persistCasosEspeciaisTriagemOnly(doc, triagem, { skipAgentPipeline: false });
   });

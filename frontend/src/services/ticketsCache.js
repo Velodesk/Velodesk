@@ -663,6 +663,18 @@ function assertApiReady(action = 'salvar ticket') {
   }
 }
 
+// Ticket com aba aberta/em carga não pode ser expulso do cache por ser "especial" — mesmo
+// critério de proteção usado em pruneTicketsAbsentFromApi/shouldPreserveTicketDetail. Sem
+// isso, o próximo poll de /boxes reaplica o filtro, o ticket some de `columns`, e o efeito de
+// sincronização de abas em TicketsContext derruba a aba sozinho (ticket "abre e fecha" na
+// hora — a classificação errada como Reclame Aqui/Bacen/etc. é bug à parte, mas mesmo uma
+// classificação correta não deveria fechar uma aba que o agente já tem aberta).
+function isEspeciaisExcludedAndUnprotected(ticket, profileId) {
+  if (!isEspeciaisDeskExcludedTicket(ticket, profileId)) return false;
+  const id = ticketIdKey(ticket);
+  return !(id && mergeProtectedTicketIds.has(id));
+}
+
 function filterColumnsForAgent(columns) {
   const profileId = readDeskProfileId();
   // CE nunca entra no módulo Tickets (exclusão absoluta; ver_todos não libera) — precisa
@@ -671,13 +683,13 @@ function filterColumnsForAgent(columns) {
   if (!shouldUseMeusChamadosFila()) {
     return (columns || []).map((box) => ({
       ...box,
-      tickets: (box.tickets || []).filter((ticket) => !isEspeciaisDeskExcludedTicket(ticket, profileId)),
+      tickets: (box.tickets || []).filter((ticket) => !isEspeciaisExcludedAndUnprotected(ticket, profileId)),
     }));
   }
   return (columns || []).map((box) => ({
     ...box,
     tickets: (box.tickets || []).filter((ticket) => {
-      if (isEspeciaisDeskExcludedTicket(ticket, profileId)) return false;
+      if (isEspeciaisExcludedAndUnprotected(ticket, profileId)) return false;
       if (box.id === 'resolvidos') return true;
       // Novos: responsável do agente + órfãos
       if (box.id === 'novos') return ticketBelongsInAgentNovosQueue(ticket);
