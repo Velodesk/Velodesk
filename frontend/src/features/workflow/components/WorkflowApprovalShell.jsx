@@ -1,6 +1,6 @@
 /**
- * WorkflowApprovalShell v1.12.0 — modal de motivo obrigatório (nota interna) ao reprovar
- * VERSION: v1.12.0 | DATE: 2026-09-16
+ * WorkflowApprovalShell v1.13.0 — remove trava de "comunicação antes de reprovar" (nota interna já cobre)
+ * VERSION: v1.13.0 | DATE: 2026-09-16
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -25,13 +25,11 @@ import {
   ticketMatchesWorkflowTeam,
   resolveWorkflowTeamForTicket,
   isWorkflowTicketCompleted,
-  isTicketClosedByAgent,
 } from '../../../services/workflow/workflowTeamQueues';
 import {
   approveWorkflowDecision,
   rejectWorkflowDecision,
   requestWorkflowInfo,
-  resolveComunicacaoResumo,
 } from '../../../services/workflow/workflowDecisionHandlers';
 import { isTicketWorkflowActive, getDeskSearchNotFoundMessage, getDeskSearchSuccessMessage, getAgentName } from '../../../services/desk/utils';
 import WorkflowApprovalQueue from './WorkflowApprovalQueue';
@@ -400,19 +398,8 @@ export default function WorkflowApprovalShell() {
   }, [runAction, setSearchParams]);
 
   const handleReject = useCallback(() => {
-    const ticket = selectedId ? findTicketEntry(selectedId)?.ticket : null;
-    if (!isTicketClosedByAgent(ticket)) {
-      const ultimaOrigem = resolveComunicacaoResumo(ticket)?.ultimaOrigem;
-      if (ultimaOrigem !== 'workflow') {
-        showNotification(
-          'Envie uma comunicação ao responsável do ticket antes de reprovar.',
-          'warning',
-        );
-        return;
-      }
-    }
     setRejectModalOpen(true);
-  }, [selectedId, showNotification]);
+  }, []);
 
   const rejectWithNote = useCallback(async (ticketId, motivo) => {
     await sendInternalNote(ticketId, motivo, getAgentName());

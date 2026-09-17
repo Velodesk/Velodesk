@@ -1,6 +1,6 @@
 /**
- * WorkflowRejectReasonModal v1.0.0 — motivo obrigatório (mín. 10 caracteres) ao reprovar
- * VERSION: v1.0.0 | DATE: 2026-09-16
+ * WorkflowRejectReasonModal v1.1.0 — remove subtítulo explicativo e contador de caracteres
+ * VERSION: v1.1.0 | DATE: 2026-09-16
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -62,7 +62,6 @@ export default function WorkflowRejectReasonModal({
         <header className="wf-comunicacao-modal__head">
           <div>
             <h2 id="wf-reject-reason-title">Motivo da reprovação</h2>
-            <p>O texto abaixo será gravado como nota interna no ticket antes de reprovar.</p>
           </div>
           <button
             type="button"
@@ -86,11 +85,6 @@ export default function WorkflowRejectReasonModal({
             placeholder="Explique por que esta solicitação está sendo reprovada…"
             onChange={(e) => setMotivo(e.target.value)}
           />
-          <p className="wf-comunicacao-modal__empty">
-            {trimmed.length < MIN_CHARS
-              ? `Mínimo de ${MIN_CHARS} caracteres (${trimmed.length}/${MIN_CHARS})`
-              : `${trimmed.length} caracteres`}
-          </p>
           <div className="wf-comunicacao-modal__actions">
             <button type="button" className="wf-comunicacao-modal__btn wf-comunicacao-modal__btn--ghost" disabled={locked} onClick={onClose}>
               Cancelar

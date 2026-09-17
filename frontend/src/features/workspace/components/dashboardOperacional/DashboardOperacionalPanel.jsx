@@ -1,5 +1,6 @@
 /**
- * DashboardOperacionalPanel v1.1.0 — Fase 1 com filtro de período + layout redistribuído.
+ * DashboardOperacionalPanel v1.2.0 — card de workflow abre no painel de aprovações quando
+ * o clicante pode decidir a etapa e tem acesso ao portal Workflow.
  *
  * Layout (top-down):
  *  1. Header: título + filtro de período à direita + ações
@@ -15,6 +16,10 @@
 import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTickets } from '../../../../context/TicketsContext';
+import { usePermissionsOptional } from '../../../../context/PermissionContext';
+import { hasWorkflowPortalAccess, agentCanDecideTicket } from '../../../../services/permissions/permissionService';
+import { buildWorkflowNavigationUrl } from '../../../../services/workflow/workflowTeamQueues';
+import { findTicketEntry, loadTicketDetailFromApi } from '../../../../services/ticketsStorage';
 import { useDashboardOperacional } from '../../../../hooks/useDashboardOperacional';
 import { useDashboardTrend } from '../../../../hooks/useDashboardTrend';
 import GestaoPeriodFilter from '../gestaoInsights/GestaoPeriodFilter';
@@ -39,6 +44,7 @@ function fmtUpdatedAt(iso) {
 export default function DashboardOperacionalPanel() {
   const navigate = useNavigate();
   const { openTicket } = useTickets();
+  const permsCtx = usePermissionsOptional();
   const [period, setPeriod] = useState({ period: 'hoje' });
   const [trendPeriod, setTrendPeriod] = useState({ period: '7d' });
   const { data, loading, error, refresh } = useDashboardOperacional(period);
@@ -56,6 +62,26 @@ export default function DashboardOperacionalPanel() {
     },
     [navigate, openTicket],
   );
+
+  const handleOpenWorkflowTicket = useCallback(async (ticketId) => {
+    if (!ticketId) return;
+    const perm = permsCtx?.permissions;
+    if (hasWorkflowPortalAccess(perm)) {
+      let ticket = findTicketEntry(ticketId)?.ticket;
+      if (!ticket) {
+        try {
+          ticket = await loadTicketDetailFromApi(ticketId);
+        } catch {
+          ticket = null;
+        }
+      }
+      if (ticket && agentCanDecideTicket(ticket, perm)) {
+        navigate(buildWorkflowNavigationUrl({ ticketId }));
+        return;
+      }
+    }
+    handleOpenTicket(ticketId);
+  }, [permsCtx?.permissions, navigate, handleOpenTicket]);
 
   const showFirstLoad = loading && !data;
 
@@ -190,7 +216,7 @@ export default function DashboardOperacionalPanel() {
 
           <DashboardWorkflowCard
             workflow={data.workflow}
-            onOpenTicket={handleOpenTicket}
+            onOpenTicket={handleOpenWorkflowTicket}
           />
 
           <DashboardEtapasTable

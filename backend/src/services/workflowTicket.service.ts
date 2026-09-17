@@ -45,6 +45,7 @@ import {
 } from './permission.service';
 import { executeSistemaStep, isDevolutivaPasso } from './workflowSistemaExecutor.service';
 import { notifyWorkflowRejectToResponsavel } from './workflowNotificacao.service';
+import { notifyWorkflowStepAssignmentAsync } from './workflowAssignmentNotification.service';
 import { buildLateralWorkflowDto } from './workflowDto.util';
 import {
   applyRequisicaoToChamado,
@@ -335,6 +336,7 @@ async function advanceToPath(
   setWorkflowPath(wf, newPath);
   wf.pendingDecision = null;
   applyAtribuidoForPasso(chamado, node);
+  void notifyWorkflowStepAssignmentAsync(chamado, definicao, node);
 
   appendWorkflowRegistro(chamado, {
     autor,
@@ -386,6 +388,7 @@ export async function activateWorkflowForChamado(
   }
 
   applyAtribuidoForPasso(chamado, resolved.node);
+  void notifyWorkflowStepAssignmentAsync(chamado, definicao, resolved.node);
 
   appendWorkflowRegistro(chamado, {
     autor,
@@ -719,16 +722,9 @@ async function advanceWorkflowProdutosQueueDecision(
   if (decision === 'reject') {
     const ticketJaEncerrado = (MERGE_TERMINAL_STATUSES as readonly string[]).includes(currentStatus(chamado));
 
-    if (!ticketJaEncerrado) {
-      const ultimaOrigem = chamado.workflow?.requisicao?.comunicacaoResumo?.ultimaOrigem;
-      if (ultimaOrigem !== 'workflow') {
-        throw new WorkflowAdvanceError(
-          'Envie uma comunicação ao responsável do ticket antes de reprovar.',
-          400,
-        );
-      }
-    }
-
+    // Exigir comunicação prévia ao responsável antes de reprovar foi removido: a nota
+    // interna obrigatória capturada no modal de reprovação (frontend) já cumpre esse
+    // papel de registrar o motivo da negativa.
     appendWorkflowRegistro(chamado, {
       autor,
       alteracoes: [{ workflowDecision: 'reject' }],
