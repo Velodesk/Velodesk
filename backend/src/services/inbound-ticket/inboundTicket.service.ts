@@ -14,6 +14,7 @@ import {
   shouldSpawnNewTicketOnInbound,
 } from '../chamado.mapper';
 import { findClienteByPhone, resolveClienteRefFromBody } from '../cliente.service';
+import { fetchAndPersistInboundAttachmentFromUrl } from '../inboundAttachmentStorage.service';
 import { notifyTicketOpenedAsync } from '../emailNotification.service';
 import { runInboundPostCreateHooks } from '../agents/inboundAgentPipeline.service';
 import { publishTicketEvent } from '../presence/ticketEventsBroadcast.service';
@@ -236,6 +237,24 @@ async function appendInboundReply(
   };
 }
 
+/**
+ * Baixa e re-hospeda cada URL de anexo externa (ex.: attachments[] do App) na pipeline de
+ * storage/scan do próprio Desk — em vez de guardar a URL crua, que pode expirar, exigir auth
+ * própria do remetente, ou só existir no ambiente/bucket de origem. Em caso de falha no
+ * download, mantém a URL original como fallback (melhor ter uma referência quebrada do que
+ * perder o anexo por completo).
+ */
+async function resolveInboundAttachments(attachments: string[], messageId: string): Promise<string[]> {
+  if (!attachments.length) return attachments;
+  const resolved = await Promise.all(
+    attachments.map(async (url) => {
+      const stored = await fetchAndPersistInboundAttachmentFromUrl(url, messageId);
+      return stored?.url ?? url;
+    }),
+  );
+  return resolved;
+}
+
 export async function processInboundTicket(
   origin: InboundTicketOrigin,
   rawBody: Record<string, unknown>,
@@ -253,6 +272,8 @@ export async function processInboundTicket(
       canal: config.canal,
     };
   }
+
+  payload.attachments = await resolveInboundAttachments(payload.attachments ?? [], payload.externalId);
 
   let derivedFromProtocolo: string | undefined;
   if (payload.chamadoProtocolo) {
