@@ -64,10 +64,13 @@ export function inboundTicketAuthMiddleware(req: Request, res: Response, next: N
 
   const origins = detectOriginsFromHeaders(req);
   if (origins.length === 0) {
+    console.warn('[inbound-ticket-auth] nenhum header de origem reconhecido — headers recebidos:',
+      Object.keys(req.headers));
     res.status(401).json({ message: 'Header de autenticação inbound ticket ausente' });
     return;
   }
   if (origins.length > 1) {
+    console.warn('[inbound-ticket-auth] múltiplos headers de origem na mesma requisição:', origins);
     res.status(400).json({ message: 'Informe apenas um header de autenticação por requisição' });
     return;
   }
@@ -88,11 +91,13 @@ export function inboundTicketAuthMiddleware(req: Request, res: Response, next: N
   }
 
   if (!INBOUND_TICKET_SECRET_PATTERN.test(received)) {
+    console.warn(`[inbound-ticket-auth] chave fora do padrão [a-z0-9]{35} para origin=${origin} (length=${received.length})`);
     res.status(401).json({ message: 'Chave inbound ticket inválida — use 35 caracteres [a-z0-9]' });
     return;
   }
 
   if (!secretsMatch(received, expected)) {
+    console.warn(`[inbound-ticket-auth] chave incorreta para origin=${origin}`);
     res.status(401).json({ message: 'Chave inbound ticket incorreta' });
     return;
   }
