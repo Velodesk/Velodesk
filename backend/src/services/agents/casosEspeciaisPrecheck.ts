@@ -47,8 +47,10 @@ function orgaoFromCanalLabel(canal: string): CasoEspecialOrgao | null {
   return null;
 }
 
+/** Só mensagem do CLIENTE — palavra-chave dita pelo agente (macro, orientação) não pode disparar o gatilho. */
 function extractCorpo(chamado: IChamadoN1): string {
   return (chamado.registro ?? [])
+    .filter((reg) => String(reg.origin ?? '').toLowerCase() === 'cliente')
     .map((reg) => String(reg.mensagemPublica ?? ''))
     .filter(Boolean)
     .join('\n');
