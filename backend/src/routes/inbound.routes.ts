@@ -401,13 +401,9 @@ router.get('/tickets/client', inboundTicketAuthMiddleware, async (req, res: Resp
   }
 });
 
-/** Lista de produtos (tabulação Desk) — origem app, pra provisionar o app com o mesmo vocabulário do Desk. */
+/** Lista de produtos (tabulação Desk) — qualquer origem inbound autenticada, mesmo vocabulário pra todo mundo. */
 router.get('/produtos', inboundTicketAuthMiddleware, async (req, res: Response) => {
   try {
-    if (req.inboundTicketOrigin !== 'app') {
-      return res.status(403).json({ message: 'Leitura de produtos é exclusiva da origem app' });
-    }
-
     const produtos = await listProdutos(false);
     return res.json({
       produtos: produtos.map(({ produto, ordem }) => ({ produto, ordem })),
