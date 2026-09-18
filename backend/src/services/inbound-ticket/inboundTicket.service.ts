@@ -196,8 +196,8 @@ async function appendInboundReply(
   payload: InboundTicketPayload,
   config: InboundTicketOriginConfig,
 ): Promise<InboundTicketResult> {
-  // Nota interna só é suportada na origem chat — demais origens sempre respondem em público.
-  const internal = origin === 'chat' && payload.internal === true;
+  // Nota interna só é suportada nas origens chat e agente-ia — demais origens sempre respondem em público.
+  const internal = (origin === 'chat' || origin === 'agente-ia') && payload.internal === true;
   const statusOverride = internal ? undefined : resolveInboundClientReplyStatus(chamado);
   const metadados: Record<string, unknown> = {
     source: config.source,
