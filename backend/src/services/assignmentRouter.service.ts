@@ -424,15 +424,13 @@ export async function applyAssignmentIfNeeded(
 function agentMatchesFuncaoSlug(
   agent: RoletaPoolAgent,
   funcaoSlug: string,
-  overrides: Map<string, boolean>,
 ): boolean {
-  // override=false tira de QUALQUER pool da roleta, inclusive as filas de função especial —
-  // não faz sentido alguém marcado como "não deve receber ticket" continuar elegível aqui.
-  // override=true não inventa participação numa fila que a pessoa não tem função para: só
-  // dispensa a checagem de afastado, igual ao pool genérico.
-  const override = overrides.get(String(agent.email ?? '').trim().toLowerCase());
-  if (override === false) return false;
-  if (agent.afastado && override !== true) return false;
+  // Escopo do override manual (desk_roleta_participantes) é só o pool genérico — ver
+  // agentEligibleForRoletaPool. Fila de função especial (Procon/RA/Bacen/Consumidor.gov)
+  // continua decidindo só por função/atuação, de propósito: alguém pode estar fora do
+  // atendimento geral (ex.: QA/produto) e mesmo assim ser exatamente quem deve receber
+  // ticket daquela fila específica — as duas coisas não têm por que andar juntas.
+  if (agent.afastado) return false;
   const slug = String(funcaoSlug ?? '').trim().toLowerCase();
   if (!slug) return false;
   const funcoes = extractFuncoes(agent.atuacao);
@@ -440,15 +438,14 @@ function agentMatchesFuncaoSlug(
 }
 
 async function resolveFuncaoEspecialAgent(funcaoSlug: string): Promise<AssignmentResult | null> {
-  const [onlineKeys, agentes, countByResponsavel, overrides] = await Promise.all([
+  const [onlineKeys, agentes, countByResponsavel] = await Promise.all([
     listOnlineEligiblePresenceKeys(),
     loadRoletaPoolAgents(),
     aggregateRoletaOpenCounts(),
-    loadParticipanteOverrides(),
   ]);
 
   const slug = String(funcaoSlug ?? '').trim().toLowerCase();
-  const eligible = agentes.filter((agente) => agentMatchesFuncaoSlug(agente, slug, overrides));
+  const eligible = agentes.filter((agente) => agentMatchesFuncaoSlug(agente, slug));
   if (eligible.length === 0) return null;
 
   const onlineSet = new Set(onlineKeys.map((key) => key.toLowerCase()));

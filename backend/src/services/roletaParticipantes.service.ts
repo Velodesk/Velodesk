@@ -1,9 +1,9 @@
 /**
- * roletaParticipantes.service v1.0.0 — override manual de quem participa da roleta
+ * roletaParticipantes.service v1.1.0 — override manual de quem participa da roleta GERAL
  *
- * Enquanto não existe tela no front para isso, este serviço é a única forma de
- * corrigir quem a roleta considera elegível sem depender só do campo `atuacao`
- * do cadastro (console_funcionarios) — ver RoletaParticipante.ts para o porquê.
+ * Escopo só o atendimento comum — não afeta filas de função especial (Reclame Aqui,
+ * Procon, Bacen, Consumidor.gov), que continuam só por função/atuação. Ver
+ * RoletaParticipante.ts para o porquê disso e do override em si.
  */
 import { getRoletaParticipanteModel } from '../models/RoletaParticipante';
 import { listAgentesDeskLive } from './agenteDesk.service';
