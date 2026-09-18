@@ -57,14 +57,14 @@ export default function BcTicketMain({
       return;
     }
     try {
-      const updated = await sendBcWaMessage(bcItem.ticketId, text);
+      const updated = await sendBcWaMessage(bcItem.ticketId, text, ticket);
       onWaComposeTextChange?.('');
       onTicketUpdated?.(updated);
       showNotification('Mensagem enviada.', 'success');
     } catch {
       showNotification('Não foi possível enviar a mensagem.', 'error');
     }
-  }, [waComposeText, bcItem?.ticketId, onWaComposeTextChange, onTicketUpdated, showNotification]);
+  }, [waComposeText, bcItem?.ticketId, ticket, onWaComposeTextChange, onTicketUpdated, showNotification]);
 
   const handleSelectHistoryTicket = useCallback((ticketId) => {
     if (typeof window.openTicket === 'function') {

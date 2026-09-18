@@ -79,6 +79,8 @@ Scripts npm na raiz: `docker:build`, `docker:up`, `docker:up:detached`, `docker:
 | `JWT_SECRET` | Segredo JWT |
 | `GOOGLE_CLIENT_ID` | OAuth Google (login Desk) |
 | `VITE_VELOHUB_API_URL` | API VeloHub (VeloNews) |
+| `VELODESK_WEBHOOK_URL` | Webhook outbound → backend do App Velotax (mensagem/status de chamado). Mesma variável nos dois ambientes, valor diferente: **dev** → `https://velotax-server.ngrok.io/api/tickets/webhook`; **prod** → URL definitiva do App |
+| `VELODESK_WEBHOOK_SECRET` | Secret compartilhado enviado no header `X-Velodesk-Webhook-Secret` — combinado com o time do App |
 
 Atlas → **Network Access** deve permitir Cloud Run (`0.0.0.0/0` ou VPC).
 

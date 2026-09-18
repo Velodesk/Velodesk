@@ -1,4 +1,4 @@
-/** assignmentRouter.service v1.4.3 — responsável gravado só como nome/alias (nunca login/e-mail) */
+/** assignmentRouter.service v1.5.0 — responsável gravado só como nome/alias (nunca login/e-mail) */
 import { env } from '../config/env';
 import type { AuthPayload } from '../middleware/auth';
 import { ChamadoN1 } from '../models/ChamadoN1';
@@ -6,6 +6,7 @@ import type { IChamadoN1 } from '../models/ChamadoN1';
 import { listOnlineEligiblePresenceKeys } from './agentPresence.service';
 import { listAgentesDeskLive } from './agenteDesk.service';
 import { listColaboradoresDesk } from './colaboradoresCadastro.service';
+import { loadParticipanteOverrides } from './roletaParticipantes.service';
 import { extractFuncoes } from '../utils/normalizeFuncao';
 import { currentStatus, isConsumidorGovChamado, isProconChamado } from './chamado.mapper';
 import {
@@ -142,10 +143,11 @@ export function shouldAutoAssign(partial: Partial<IChamadoN1>): boolean {
   if (!env.assignmentRouterEnabled) return false;
   const chamado = partial as IChamadoN1;
   if (isProconChamado(chamado) || isConsumidorGovChamado(chamado)) return false;
-  // Ticket de canal telefone (ex.: webhook 55PBX) sem responsável resolvido fica sem dono
-  // de propósito — não pode cair na roleta genérica, precisa do agente real do atendimento.
+  // Tickets de canal telefone ou agente-ia chegam com o responsável já identificado no
+  // próprio atendimento (ramal/operador humano por trás da IA) — não podem cair na roleta
+  // genérica; se o responsável não veio preenchido, o chamado fica sem dono de propósito.
   const canal = String(partial.tabulacao?.[0]?.canal ?? '').trim().toLowerCase();
-  if (canal === 'telefone') return false;
+  if (canal === 'telefone' || canal === 'agente ia') return false;
   return !isRealResponsavel(partial.tabulacao?.[0]?.responsavel);
 }
 
@@ -301,11 +303,21 @@ async function aggregateRoletaOpenCounts(): Promise<Map<string, number>> {
   return map;
 }
 
-function agentEligibleForRoletaPool(agent: {
-  funcaoSlug: string | null;
-  atuacao: unknown;
-  afastado: boolean;
-}): boolean {
+function agentEligibleForRoletaPool(
+  agent: {
+    email: string;
+    funcaoSlug: string | null;
+    atuacao: unknown;
+    afastado: boolean;
+  },
+  overrides: Map<string, boolean>,
+): boolean {
+  // Override manual (desk_roleta_participantes) decide sozinho, sem outras condições — é assim
+  // que se tira alguém que a atuacao do cadastro erroneamente marca como "Atendimento"/"N2" (ex.:
+  // QA/produto que loga no Desk mas não atende ticket), ou se inclui alguém fora do padrão.
+  const override = overrides.get(String(agent.email ?? '').trim().toLowerCase());
+  if (override !== undefined) return override;
+
   if (agent.afastado) return false;
   const funcoes = extractFuncoes(agent.atuacao);
   if (funcoes.includes('atendimento') || funcoes.includes('n2')) return true;
@@ -336,16 +348,17 @@ async function loadRoletaPoolAgents(): Promise<RoletaPoolAgent[]> {
 }
 
 async function loadOnlineEligibleAgents(): Promise<Array<{ responsavel: string; candidates: string[] }>> {
-  const [onlineKeys, agentes] = await Promise.all([
+  const [onlineKeys, agentes, overrides] = await Promise.all([
     listOnlineEligiblePresenceKeys(),
     loadRoletaPoolAgents(),
+    loadParticipanteOverrides(),
   ]);
 
   const onlineSet = new Set(onlineKeys.map((key) => key.toLowerCase()));
   const agents: Array<{ responsavel: string; candidates: string[] }> = [];
 
   for (const agente of agentes) {
-    if (!agentEligibleForRoletaPool(agente)) continue;
+    if (!agentEligibleForRoletaPool(agente, overrides)) continue;
 
     const responsavel = provisionalResponsavelFromUser({
       name: agente.colaboradorNome,
@@ -411,8 +424,15 @@ export async function applyAssignmentIfNeeded(
 function agentMatchesFuncaoSlug(
   agent: RoletaPoolAgent,
   funcaoSlug: string,
+  overrides: Map<string, boolean>,
 ): boolean {
-  if (agent.afastado) return false;
+  // override=false tira de QUALQUER pool da roleta, inclusive as filas de função especial —
+  // não faz sentido alguém marcado como "não deve receber ticket" continuar elegível aqui.
+  // override=true não inventa participação numa fila que a pessoa não tem função para: só
+  // dispensa a checagem de afastado, igual ao pool genérico.
+  const override = overrides.get(String(agent.email ?? '').trim().toLowerCase());
+  if (override === false) return false;
+  if (agent.afastado && override !== true) return false;
   const slug = String(funcaoSlug ?? '').trim().toLowerCase();
   if (!slug) return false;
   const funcoes = extractFuncoes(agent.atuacao);
@@ -420,14 +440,15 @@ function agentMatchesFuncaoSlug(
 }
 
 async function resolveFuncaoEspecialAgent(funcaoSlug: string): Promise<AssignmentResult | null> {
-  const [onlineKeys, agentes, countByResponsavel] = await Promise.all([
+  const [onlineKeys, agentes, countByResponsavel, overrides] = await Promise.all([
     listOnlineEligiblePresenceKeys(),
     loadRoletaPoolAgents(),
     aggregateRoletaOpenCounts(),
+    loadParticipanteOverrides(),
   ]);
 
   const slug = String(funcaoSlug ?? '').trim().toLowerCase();
-  const eligible = agentes.filter((agente) => agentMatchesFuncaoSlug(agente, slug));
+  const eligible = agentes.filter((agente) => agentMatchesFuncaoSlug(agente, slug, overrides));
   if (eligible.length === 0) return null;
 
   const onlineSet = new Set(onlineKeys.map((key) => key.toLowerCase()));
@@ -554,6 +575,17 @@ export async function rebalanceAgentToCap(responsavelKey: string): Promise<numbe
 
   const key = String(responsavelKey ?? '').trim().toLowerCase();
   if (!key) return 0;
+
+  // Backfill roda pra QUALQUER autenticado que volte a ficar online (é a rota de heartbeat quem
+  // chama, sem filtro nenhum) — sem esta checagem, alguém sem função de atendimento (QA, produto,
+  // gestão que só usa o Desk pra acompanhar) herda ticket órfão só por ter feito login depois de
+  // um tempo offline. Mesma regra de elegibilidade do pool genérico, incl. override manual.
+  const [agentes, overrides] = await Promise.all([loadRoletaPoolAgents(), loadParticipanteOverrides()]);
+  const agente = agentes.find((a) => {
+    const responsavel = provisionalResponsavelFromUser({ name: a.colaboradorNome, email: a.email });
+    return responsavel && responsavel.toLowerCase() === key;
+  });
+  if (!agente || !agentEligibleForRoletaPool(agente, overrides)) return 0;
 
   const counts = await aggregateRoletaOpenCounts();
   const current = counts.get(key) ?? 0;

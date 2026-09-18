@@ -35,6 +35,12 @@ function hasTesteMarker(chamado: IChamadoN1): boolean {
   return registros.some((reg) => TESTE_MARKER_PATTERN.test(String(reg.anotacaoInterna ?? '')));
 }
 
+// CSAT dispara com o ticket já "resolvido", mas o selo do cabeçalho não deve dizer
+// "RESOLVIDO" — precisa deixar claro que este e-mail é a pesquisa de satisfação, não o
+// aviso de encerramento em si. Mesmo formato "• PROTOCOLO · <RÓTULO>" dos demais status
+// (ver emailBrand.util.ts), só que fixo, independente do status real do ticket.
+const CSAT_HEADER_STATUS_LABEL = '• PROTOCOLO · PESQUISA DE SATISFAÇÃO';
+
 const CSAT_STAR_FILENAME = 'csat-star.png';
 
 function resolveCsatStarPath(): string | null {
@@ -111,7 +117,7 @@ export function buildCsatStarsHtml(protocolo: string): string {
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
   <tr><td colspan="5" style="text-align:center;padding:0 0 10px 0;">
     <p style="margin:0;font-size:19px;font-weight:700;color:#272A30;font-family:Arial,sans-serif;">Como foi o seu atendimento?</p>
-    <p style="margin:6px 0 16px 0;font-size:16px;color:#9AA0AE;font-family:Arial,sans-serif;">Clique nas estrelas para dar sua nota — de 1 a 5.</p>
+    <p style="margin:6px 0 16px 0;font-size:16px;color:#9AA0AE;font-family:Arial,sans-serif;">Clique nas estrelas para dar sua nota, de 1 a 5.</p>
   </td></tr>
   <tr>${stars}</tr>
 </table>`;
@@ -169,12 +175,13 @@ async function composeAndSendCsatEmail(
     // `corpo`, via buildCsatProtocoloLineHtml) no lugar do card grande "Atendimento"
     // que os demais e-mails de saída usam — evita duplicar a referência ao protocolo.
     showTicketBox: false,
+    statusLabelOverride: CSAT_HEADER_STATUS_LABEL,
   });
 
   const messageId = buildOutboundMessageId(protocolo);
   // CSAT chega como thread NOVA — sem In-Reply-To/References e sem "Re:" no assunto,
   // senão o cliente do e-mail agrupa a pesquisa dentro da conversa do atendimento.
-  const subject = `Pesquisa de satisfação — Atendimento Velotax Nº ${protocolo}`;
+  const subject = `Protocolo ${protocolo} - Pesquisa de Satisfação`;
 
   // Trava de QA: ticket de teste nunca envia e-mail para fora da lista segura.
   const bloqueioQa = blockQaOutboundEmail(chamado, to);

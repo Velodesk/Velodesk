@@ -35,6 +35,12 @@ import type { RevisaoOrigem, TicketAiTabulationResult } from '../services/agents
 import { recordAgentHeartbeat, recordAgentOffline } from '../services/agentPresence.service';
 import { isTicketPresenceConfigured, mintTicketPresenceToken } from '../services/presence/ticketPresenceToken.service';
 import { rebalanceAgentToCap, provisionalResponsavelFromAuth } from '../services/assignmentRouter.service';
+import { requireGestaoOrPermission } from '../middleware/permission';
+import {
+  listParticipantesRoleta,
+  setParticipanteRoleta,
+  removeParticipanteRoleta,
+} from '../services/roletaParticipantes.service';
 
 const router = Router();
 
@@ -60,6 +66,48 @@ router.post('/presence/offline', authMiddleware, async (req: Request, res: Respo
   await recordAgentOffline(req.user);
   return res.json({ success: true, online: false, source: 'agents_presence_offline' });
 });
+
+/**
+ * Gestão manual de quem participa da roleta — ainda sem tela no front (ver
+ * roletaParticipantes.service.ts). Só Gestão ou quem tiver config.roleta_editar.
+ */
+router.get(
+  '/roleta/participantes',
+  authMiddleware,
+  requireGestaoOrPermission('config', 'visualizar'),
+  async (_req: Request, res: Response) => {
+    const lista = await listParticipantesRoleta();
+    return res.json({ success: true, participantes: lista });
+  },
+);
+
+router.put(
+  '/roleta/participantes/:email',
+  authMiddleware,
+  requireGestaoOrPermission('config', 'roleta_editar'),
+  async (req: Request, res: Response) => {
+    const { email } = req.params;
+    const { ativo, motivo } = req.body ?? {};
+    if (typeof ativo !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'Campo "ativo" (boolean) é obrigatório.' });
+    }
+    await setParticipanteRoleta(email, ativo, {
+      motivo: typeof motivo === 'string' ? motivo : '',
+      atualizadoPor: req.user?.email ?? '',
+    });
+    return res.json({ success: true });
+  },
+);
+
+router.delete(
+  '/roleta/participantes/:email',
+  authMiddleware,
+  requireGestaoOrPermission('config', 'roleta_editar'),
+  async (req: Request, res: Response) => {
+    const removido = await removeParticipanteRoleta(req.params.email);
+    return res.json({ success: true, removido });
+  },
+);
 
 router.get('/presence/realtime-token', authMiddleware, (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ success: false, error: 'Não autenticado' });

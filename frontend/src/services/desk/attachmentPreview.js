@@ -22,6 +22,9 @@ const OFFICE_MIME = new Set([
 export function attachmentHref(url) {
   const raw = String(url || '').trim();
   if (!raw) return '';
+  // URL absoluta (ex.: anexo externo que ainda não passou pela re-hospedagem do Desk) —
+  // não é um path do próprio backend, então não prefixa com /api.
+  if (/^https?:\/\//i.test(raw)) return raw;
   return raw.startsWith('/api/') ? raw : `/api${raw.startsWith('/') ? raw : `/${raw}`}`;
 }
 
@@ -93,7 +96,10 @@ export function attachmentKindIcon(kind) {
 
 export async function fetchAuthenticatedAttachment(url) {
   const href = attachmentHref(url);
-  const token = localStorage.getItem('velodesk_token');
+  // Só manda o Bearer do Desk pro próprio backend — nunca pra uma URL externa (anexo ainda
+  // não re-hospedado), pra não vazar o token de sessão pra outro domínio.
+  const isOwnBackend = href.startsWith('/');
+  const token = isOwnBackend ? localStorage.getItem('velodesk_token') : null;
   const response = await fetch(href, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });

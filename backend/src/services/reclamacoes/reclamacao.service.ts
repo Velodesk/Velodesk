@@ -405,6 +405,11 @@ export async function syncFromChamado(chamado: IChamadoN1): Promise<IReclamacao 
   const patch: Partial<IReclamacao> = {
     responsavel: String(tab.responsavel ?? existing.responsavel ?? '').trim() || undefined,
     atendente: String(tab.responsavel ?? existing.atendente ?? '').trim() || undefined,
+    // Produto/motivo são editados na tabulação do ticket (tab), não em reclamacoes_* — sem
+    // sincronizar aqui, a classificação "salva" no ticket nunca aparecia de volta ao reabrir
+    // o item na fila (a tela lê de reclamacoes_*, que ficava com o valor antigo/vazio).
+    produto: String(tab.produto ?? existing.produto ?? '').trim() || undefined,
+    motivo: String(tab.motivo ?? existing.motivo ?? '').trim() || undefined,
     workflowAtivo: Boolean(chamado.workflow?.active),
     workflowId: chamado.workflow?.workflowId ?? existing.workflowId,
     workflow: buildReclamacaoWorkflowSnapshot(chamado) ?? existing.workflow,

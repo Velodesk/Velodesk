@@ -5,6 +5,7 @@ import { clientsApi, ticketsApi, boxesApi, reclamacoesApi } from '../../api/clie
 import { mapClienteDocToContact } from '../../api/adapters/clienteAdapter';
 import { apiTicketToCockpit, adaptColumnsFromApi } from '../../api/adapters/ticketAdapter';
 import { getAgentName } from '../clientDb';
+import { toWhatsAppChatIdDigits } from '../desk/utils';
 import { createWorkflowState, getWorkflowTemplateById } from '../desk/workflowEngine';
 import { PC_STATUS } from './proconData';
 import { applyTicketStatusToEspeciaisItem } from './especiaisGroupKey';
@@ -269,13 +270,22 @@ export async function fetchPcTicketView(pcId) {
   };
 }
 
-export async function sendPcWaMessage(ticketId, text) {
+function resolvePcWhatsAppChatId(ticket) {
+  return toWhatsAppChatIdDigits(
+    ticket?.lateralForm?.clienteTelefoneWhatsapp
+    || (Array.isArray(ticket?.lateralForm?.clienteTelefone) ? ticket.lateralForm.clienteTelefone[0] : '')
+    || ticket?.clientPhone
+    || '',
+  );
+}
+
+export async function sendPcWaMessage(ticketId, text, ticket) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return null;
-  await ticketsApi.addMessage(ticketId, {
+  const waChatId = resolvePcWhatsAppChatId(ticket);
+  await ticketsApi.sendWhatsAppMessage(ticketId, {
     text: trimmed,
-    author: getAgentName(),
-    sender: 'me',
+    waChatId: waChatId || undefined,
   });
   const raw = await ticketsApi.get(ticketId);
   return apiTicketToCockpit(raw);

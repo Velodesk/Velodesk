@@ -449,6 +449,13 @@ function mergePreservedDetails(prevCols, nextCols) {
         clienteId: prev.clienteId || ticket.clienteId,
         responsibleAgent: ticket.responsibleAgent ?? prev.responsibleAgent,
         slaBreached: ticket.slaBreached ?? prev.slaBreached,
+        // `null` é um valor válido pra slaTone/slaRemainingMinutes (status não rastreado) —
+        // por isso não usa `??` aqui: cairia pro valor antigo do cache até num ticket que
+        // acabou de sair de "em-andamento" e legitimamente não tem mais SLA ativo.
+        slaTone: ticket.slaTone !== undefined ? ticket.slaTone : prev.slaTone,
+        slaRemainingMinutes: ticket.slaRemainingMinutes !== undefined
+          ? ticket.slaRemainingMinutes
+          : prev.slaRemainingMinutes,
         messages: (prev.messages?.length || 0) >= (ticket.messages?.length || 0)
           ? prev.messages
           : (ticket.messages?.length ? ticket.messages : prev.messages),

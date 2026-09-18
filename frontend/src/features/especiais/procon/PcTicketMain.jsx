@@ -57,14 +57,14 @@ export default function PcTicketMain({
       return;
     }
     try {
-      const updated = await sendPcWaMessage(pcItem.ticketId, text);
+      const updated = await sendPcWaMessage(pcItem.ticketId, text, ticket);
       onWaComposeTextChange?.('');
       onTicketUpdated?.(updated);
       showNotification('Mensagem enviada.', 'success');
     } catch {
       showNotification('Não foi possível enviar a mensagem.', 'error');
     }
-  }, [waComposeText, pcItem?.ticketId, onWaComposeTextChange, onTicketUpdated, showNotification]);
+  }, [waComposeText, pcItem?.ticketId, ticket, onWaComposeTextChange, onTicketUpdated, showNotification]);
 
   const handleSelectHistoryTicket = useCallback((ticketId) => {
     if (typeof window.openTicket === 'function') {

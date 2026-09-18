@@ -294,6 +294,11 @@ export const env = {
   inboundTicketAgenteIaSecret: (process.env.INBOUND_TICKET_AGENTE_IA_SECRET || '').trim(),
   inboundTicketChatSecret: (process.env.INBOUND_TICKET_CHAT_SECRET || '').trim(),
   inboundTicketQaTesteSecret: (process.env.INBOUND_TICKET_QA_TESTE_SECRET || '').trim(),
+  /** Webhook outbound Velodesk → App Velotax (mensagem pública nova / mudança de status).
+   * Mesma env var em todos os ambientes — só o VALOR muda entre prod e homolog (Cloud Run). */
+  velodeskWebhookUrl: (process.env.VELODESK_WEBHOOK_URL || '').trim().replace(/\/+$/, ''),
+  velodeskWebhookSecret: (process.env.VELODESK_WEBHOOK_SECRET || '').trim(),
+  velodeskWebhookTimeoutMs: parseInt(process.env.VELODESK_WEBHOOK_TIMEOUT_MS || '10000', 10),
   /** Intervalo do job que fecha tickets resolvidos (default 1h) */
   resolvedCloseIntervalMs: parseInt(process.env.RESOLVED_CLOSE_INTERVAL_MS || '3600000', 10),
   /** Idade mínima em Resolvido antes de virar Fechado (default 48h) */

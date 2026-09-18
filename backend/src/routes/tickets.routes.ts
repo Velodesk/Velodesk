@@ -94,7 +94,7 @@ import {
   notifyWorkflowMensagemToResponsavel,
 } from '../services/workflowNotificacao.service';
 import { isDraftTicketId } from '../utils/persistedTicketId';
-import { deleteReclamacoesByChamadoId } from '../services/reclamacoes/reclamacao.service';
+import { deleteReclamacoesByChamadoId, syncFromChamado } from '../services/reclamacoes/reclamacao.service';
 
 const router = Router();
 
@@ -405,6 +405,14 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
       }
     }
     await chamado.save();
+
+    // Reflete tabulação/status atuais em reclamacoes_* (Procon/Bacen/Consumidor.gov/Reclame Aqui)
+    // sempre que o ticket é salvo — sem isto, produto/motivo editados na tabulação "somem" ao
+    // reabrir o item na fila do canal especial (a tela lê de reclamacoes_*, não do ticket).
+    // No-op fail-soft para tickets sem reclamação vinculada (imensa maioria).
+    syncFromChamado(chamado).catch((err: Error) => {
+      console.warn('[tickets.routes] syncFromChamado (commit) fail-soft:', err.message);
+    });
 
     // Gatilhos de e-mail por status "imediato" (ex.: Encerramento s/CSAT) só avaliam na
     // abertura do ticket ou no job de SLA (que ignora "imediato" de propósito) — sem isso,

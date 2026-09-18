@@ -1,10 +1,22 @@
 # DEPLOY LOG — Velodesk React
 
-<!-- VERSION: v1.92.0 | DATE: 2026-08-21 | AUTHOR: VeloHub Development Team -->
+<!-- VERSION: v1.93.0 | DATE: 2026-09-17 | AUTHOR: VeloHub Development Team -->
 
 ---
 
 ## Deploys e pushes realizados
+
+### GitHub Push — webhook outbound Velodesk → App Velotax + histórico de mensagens (origem app)
+
+- **Data/Hora**: 2026-09-17
+- **Tipo**: GitHub Push
+- **Repositório**: https://github.com/admVeloHub/velodesk
+- **Branch**: dev
+- **Backend**: chamado.mapper (pushRegistroEntry — ponto único de mutação de `registro`), ChamadoN1 (hook `post('save')`), velodeskWebhook.service (novo), inboundTicketRead.service, inbound.routes
+- **O que mudou**:
+  - Webhook outbound (`POST` com `X-Velodesk-Webhook-Secret`) disparado para qualquer origem/canal de chamado — mensagem pública de agente/sistema ou mudança de status (inclui reabertura).
+  - `GET /api/inbound/tickets/client/:chamadoProtocolo/messages` (origem app) — histórico completo de mensagens públicas.
+- **Requer no Cloud Run** (novos, ver tabela em `README.md`): `VELODESK_WEBHOOK_URL` (dev → `https://velotax-server.ngrok.io/api/tickets/webhook`) e `VELODESK_WEBHOOK_SECRET`.
 
 ### GitHub Push — planilha QA Workflow/E-mail/Painel 360 (25 apontamentos)
 

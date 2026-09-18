@@ -96,6 +96,10 @@ async function main(): Promise<void> {
     iaSaved?.registro?.[0]?.metadados?.inboundTicketMetadata?.telephonyCallId === 'call-test-001',
     'metadata telephonyCallId persistido',
   );
+  assert(
+    !String(iaSaved?.tabulacao?.[0]?.responsavel ?? '').trim(),
+    'agente-ia sem responsavel explícito não deve ser atribuído pela roleta genérica',
+  );
 
   console.log('OK test:inbound-tickets', {
     app: appCreated.chamadoProtocolo,

@@ -1,6 +1,6 @@
 /**
- * WorkflowApprovalShell v1.11.0 — busca WK mantém ticket aberto (sem fallback que troca)
- * VERSION: v1.11.0 | DATE: 2026-08-21
+ * WorkflowApprovalShell v1.13.0 — remove trava de "comunicação antes de reprovar" (nota interna já cobre)
+ * VERSION: v1.13.0 | DATE: 2026-09-16
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -10,7 +10,7 @@ import { useWorkflowConfig } from '../../../context/WorkflowConfigContext';
 import { usePermissionsOptional } from '../../../context/PermissionContext';
 import deskLog from '../../../utils/deskDebugLog';
 import { subscribeToTicketEvents } from '../../../services/desk/ticketEventsRealtime';
-import { findTicketEntry, loadTicketDetailFromApi } from '../../../services/ticketsStorage';
+import { findTicketEntry, loadTicketDetailFromApi, sendInternalNote } from '../../../services/ticketsStorage';
 import {
   hasWorkflowPortalAccess,
   resolveWorkflowTeamQueueForUser,
@@ -25,17 +25,16 @@ import {
   ticketMatchesWorkflowTeam,
   resolveWorkflowTeamForTicket,
   isWorkflowTicketCompleted,
-  isTicketClosedByAgent,
 } from '../../../services/workflow/workflowTeamQueues';
 import {
   approveWorkflowDecision,
   rejectWorkflowDecision,
   requestWorkflowInfo,
-  resolveComunicacaoResumo,
 } from '../../../services/workflow/workflowDecisionHandlers';
-import { isTicketWorkflowActive, getDeskSearchNotFoundMessage, getDeskSearchSuccessMessage } from '../../../services/desk/utils';
+import { isTicketWorkflowActive, getDeskSearchNotFoundMessage, getDeskSearchSuccessMessage, getAgentName } from '../../../services/desk/utils';
 import WorkflowApprovalQueue from './WorkflowApprovalQueue';
 import WorkflowApprovalDetail from './WorkflowApprovalDetail';
+import WorkflowRejectReasonModal from './WorkflowRejectReasonModal';
 import {
   filterWorkflowQueueBySearch,
   resolveOpenTarget,
@@ -61,6 +60,7 @@ export default function WorkflowApprovalShell() {
   const permsCtx = usePermissionsOptional();
   const [selectedId, setSelectedId] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [demoRevision, setDemoRevision] = useState(0);
   const [detailRevision, setDetailRevision] = useState(0);
   const [searchDraft, setSearchDraft] = useState('');
@@ -397,21 +397,19 @@ export default function WorkflowApprovalShell() {
     }, { replace: true });
   }, [runAction, setSearchParams]);
 
-  const handleReject = useCallback(async () => {
-    const ticket = selectedId ? findTicketEntry(selectedId)?.ticket : null;
-    if (!isTicketClosedByAgent(ticket)) {
-      const ultimaOrigem = resolveComunicacaoResumo(ticket)?.ultimaOrigem;
-      if (ultimaOrigem !== 'workflow') {
-        showNotification(
-          'Envie uma comunicação ao responsável do ticket antes de reprovar.',
-          'warning',
-        );
-        return;
-      }
-    }
+  const handleReject = useCallback(() => {
+    setRejectModalOpen(true);
+  }, []);
 
-    const { ok, result } = await runAction(rejectWorkflowDecision, 'Solicitação reprovada.');
+  const rejectWithNote = useCallback(async (ticketId, motivo) => {
+    await sendInternalNote(ticketId, motivo, getAgentName());
+    return rejectWorkflowDecision(ticketId);
+  }, []);
+
+  const handleConfirmReject = useCallback(async (motivo) => {
+    const { ok, result } = await runAction(rejectWithNote, 'Solicitação reprovada.', [motivo]);
     if (!ok) return;
+    setRejectModalOpen(false);
     const finalized = isWorkflowTicketCompleted(result);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -421,7 +419,7 @@ export default function WorkflowApprovalShell() {
       next.delete('ticket');
       return next;
     }, { replace: true });
-  }, [runAction, setSearchParams, selectedId, showNotification]);
+  }, [rejectWithNote, runAction, setSearchParams]);
 
   const handleRequestInfoSubmit = useCallback(async (message) => {
     if (!selectedId || busy) return null;
@@ -478,6 +476,12 @@ export default function WorkflowApprovalShell() {
         onFeito={handleFeito}
         onReject={handleReject}
         onRequestInfoSubmit={handleRequestInfoSubmit}
+      />
+      <WorkflowRejectReasonModal
+        open={rejectModalOpen}
+        busy={busy}
+        onClose={() => setRejectModalOpen(false)}
+        onConfirm={handleConfirmReject}
       />
     </div>
   );

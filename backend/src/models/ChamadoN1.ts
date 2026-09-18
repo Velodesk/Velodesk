@@ -4,6 +4,8 @@
  */
 import mongoose, { Schema, Document, Types } from 'mongoose';
 import type { IChamadoWorkflowRequisicao } from '../config/workflowRequisicaoDefaults';
+import type { PendingWebhookEvent } from '../services/chamado.mapper';
+import { dispatchVelodeskWebhook } from '../services/velodeskWebhook.service';
 import {
   CHAMADO_STATUS_VALUES,
   RegistroSchema,
@@ -292,5 +294,22 @@ ChamadoN1Schema.index({ 'registro.data': 1 }, { name: 'registro_data_1' });
 // Acelera as agregações de CSAT (gestaoInsights/workspace360) que filtram por respostas
 // dentro de um período.
 ChamadoN1Schema.index({ 'csat.respondido': 1, 'csat.respondidoEm': 1 }, { name: 'csat_respondido_1' });
+
+/**
+ * Dispara o webhook outbound Velodesk → App Velotax só depois que a mudança persistir.
+ * Os eventos pendentes são enfileirados em doc.$locals por pushRegistroEntry (chamado.mapper.ts) —
+ * único ponto de mutação de `registro`, então isso cobre qualquer origem/fluxo (inbound, Desk
+ * manual, cron, workflow, Agente IA), não só rotas HTTP.
+ */
+ChamadoN1Schema.post('save', function postSaveDispatchWebhook(doc) {
+  const locals = doc.$locals as { pendingWebhookEvents?: PendingWebhookEvent[] };
+  const events = locals.pendingWebhookEvents;
+  if (!events?.length) return;
+  locals.pendingWebhookEvents = [];
+
+  for (const { event, entry } of events) {
+    dispatchVelodeskWebhook(doc as IChamadoN1, event, entry);
+  }
+});
 
 export const ChamadoN1 = mongoose.model<IChamadoN1>('ChamadoN1', ChamadoN1Schema);

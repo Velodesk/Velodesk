@@ -400,6 +400,40 @@ router.get('/tickets/client', inboundTicketAuthMiddleware, async (req, res: Resp
   }
 });
 
+/** Leitura de um chamado + histórico de mensagens públicas — origem app, validado por CPF/telefone/e-mail do cliente. */
+router.get('/tickets/client/:chamadoProtocolo/messages', inboundTicketAuthMiddleware, async (req, res: Response) => {
+  try {
+    if (req.inboundTicketOrigin !== 'app') {
+      return res.status(403).json({ message: 'Leitura de histórico de mensagens é exclusiva da origem app' });
+    }
+
+    const clientCPF = String(req.query.clientCPF ?? '').trim();
+    const clientPhone = String(req.query.clientPhone ?? '').trim();
+    const clientEmail = String(req.query.clientEmail ?? '').trim();
+    if (!clientCPF && !clientPhone && !clientEmail) {
+      return res.status(400).json({ message: 'Informe clientCPF, clientPhone ou clientEmail' });
+    }
+
+    const ticket = await getClientTicketHistory(req.params.chamadoProtocolo, {
+      clientCPF,
+      clientPhone,
+      clientEmail,
+    });
+    if (!ticket) {
+      return res.status(404).json({ message: 'Chamado não encontrado para este cliente' });
+    }
+    const { mensagens, ...rest } = ticket;
+    const messages = mensagens.map(({ attachments, ...msg }) => ({
+      ...msg,
+      attachments: attachments.map((url) => ({ url })),
+    }));
+    return res.json({ ...rest, messages });
+  } catch (err) {
+    console.error('[inbound/tickets/client/:chamadoProtocolo/messages]', err);
+    return res.status(500).json({ message: 'Falha ao buscar histórico do chamado' });
+  }
+});
+
 /** Leitura de um chamado + histórico de mensagens públicas — origem chat, validado por CPF/telefone/e-mail do cliente. */
 router.get('/tickets/:chamadoProtocolo', inboundTicketAuthMiddleware, async (req, res: Response) => {
   try {

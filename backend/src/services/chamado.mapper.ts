@@ -1,5 +1,6 @@
-/** chamado.mapper v2.16.2 — buildResponsavelCandidates inclui alias/nome resolvido do colaborador */
+/** chamado.mapper v2.17.0 — SLA passa a rastrear pendente/em-espera (48h até resolução automática) */
 import mongoose from 'mongoose';
+import { env } from '../config/env';
 import type { AuthPayload } from '../middleware/auth';
 import type { IChamadoN1, IRegistro, ITabulacao, IClienteRef } from '../models/ChamadoN1';
 import {
@@ -761,6 +762,10 @@ export interface TicketDto {
   openedBy?: string;
   isDemo?: boolean;
   slaBreached?: boolean;
+  /** Minutos restantes de SLA, status-aware — null quando o status atual não é rastreado. */
+  slaRemainingMinutes?: number | null;
+  /** Tom pronto pra exibir — substitui cálculo local no frontend (createdAt ignorava mudança de status). */
+  slaTone?: 'critical' | 'warning' | 'ok' | null;
   createdAt?: Date;
   updatedAt?: Date;
   listOnly?: boolean;
@@ -916,12 +921,20 @@ export const MEUS_CHAMADOS_COLUMNS = [
   { id: 'meus-resolvidos', name: 'Resolvidos', status: 'resolvido', order: 4 },
 ] as const;
 
+// pendente/em-espera não ficam sem SLA — têm o próprio prazo: 48h aguardando resposta do
+// cliente, e depois disso o ticket é resolvido automaticamente (ver
+// resolvePendenteTickets.service.ts, mesma env PENDENTE_RESOLVE_AFTER_MS). O "SLA" desses
+// status é literalmente a contagem regressiva pra essa resolução automática.
+const PENDENTE_LIMIT_HOURS = env.pendenteResolveAfterMs / (60 * 60 * 1000);
+
 const SLA_LIMIT_HOURS: Record<string, number> = {
   'em-aberto': 4,
   'em-andamento': 8,
+  pendente: PENDENTE_LIMIT_HOURS,
+  'em-espera': PENDENTE_LIMIT_HOURS,
 };
 
-const SLA_TRACKED_STATUSES = new Set(['em-aberto', 'em-andamento']);
+const SLA_TRACKED_STATUSES = new Set(['em-aberto', 'em-andamento', 'pendente', 'em-espera']);
 
 const STATUS_VARIANTS: Record<string, string[]> = {
   novo: ['novo'],
@@ -1067,6 +1080,39 @@ export function assertChamadoModifiable(chamado: IChamadoN1): void {
   }
 }
 
+export interface PendingWebhookEvent {
+  event: 'message.created' | 'ticket.resolved' | 'ticket.updated';
+  entry: IRegistro;
+}
+
+/**
+ * Empurra uma entrada de registro e, se for uma mensagem pública de agente/sistema ou
+ * mudança de status, enfileira um evento pendente em chamado.$locals para o hook
+ * post('save') de ChamadoN1 disparar o webhook outbound (velodeskWebhook.service.ts) —
+ * só depois que a mudança realmente persistir. Único ponto de mutação de `registro` do
+ * arquivo: cobre qualquer origem (inbound, Desk manual, cron, workflow, Agente IA) sem
+ * precisar instrumentar cada chamador.
+ */
+function pushRegistroEntry(chamado: IChamadoN1, entry: IRegistro): void {
+  const prevStatus = currentStatus(chamado);
+  if (!chamado.registro) chamado.registro = [];
+  chamado.registro.push(entry);
+
+  const isAgentOrSystemMessage = Boolean(entry.mensagemPublica) && entry.origin !== 'cliente';
+  const statusChanged = entry.status !== prevStatus;
+  if (!isAgentOrSystemMessage && !statusChanged) return;
+
+  const event: PendingWebhookEvent['event'] = statusChanged && entry.status === 'resolvido'
+    ? 'ticket.resolved'
+    : isAgentOrSystemMessage
+      ? 'message.created'
+      : 'ticket.updated';
+
+  const locals = chamado.$locals as { pendingWebhookEvents?: PendingWebhookEvent[] };
+  locals.pendingWebhookEvents = locals.pendingWebhookEvents ?? [];
+  locals.pendingWebhookEvents.push({ event, entry });
+}
+
 export function appendStatusTransition(
   chamado: IChamadoN1,
   nextStatus: string,
@@ -1078,8 +1124,7 @@ export function appendStatusTransition(
   } = {},
 ): void {
   const status = normalizeStatusValue(nextStatus) || 'em-andamento';
-  if (!chamado.registro) chamado.registro = [];
-  chamado.registro.push({
+  pushRegistroEntry(chamado, {
     data: new Date(),
     origin: params.origin ?? 'agente',
     autor: params.autor ?? 'sistema',
@@ -1174,6 +1219,45 @@ export function isSlaBreached(chamado: IChamadoN1): boolean {
 
   const elapsedMs = Date.now() - new Date(statusSince).getTime();
   return elapsedMs > limitHours * 60 * 60 * 1000;
+}
+
+/**
+ * Minutos restantes de SLA (negativo = estourado há X minutos) — sempre ancorado na data do
+ * ÚLTIMO registro de status (reinicia a cada mudança), nunca em createdAt sozinho. `null`
+ * quando o status atual não é rastreado (novo/pendente/em-espera/resolvido/...) — ver
+ * SLA_TRACKED_STATUSES. Mesma fórmula usada por workspace360.service.ts (slaRemainingMinutes).
+ */
+export function slaRemainingMinutes(chamado: IChamadoN1): number | null {
+  const status = currentStatus(chamado);
+  if (!SLA_TRACKED_STATUSES.has(status)) return null;
+  const limitHours = SLA_LIMIT_HOURS[status];
+  if (!limitHours) return null;
+
+  const registros = chamado.registro ?? [];
+  const statusSince = registros[registros.length - 1]?.data ?? chamado.createdAt;
+  if (!statusSince) return null;
+
+  const elapsedMin = Math.floor((Date.now() - new Date(statusSince).getTime()) / 60000);
+  return limitHours * 60 - elapsedMin;
+}
+
+/**
+ * Tom pronto pra exibir (fila do Desk, Meus Tickets, Workspace) — substitui o cálculo que
+ * essas telas faziam sozinhas no frontend a partir de createdAt + prioridade, que nunca
+ * considerava mudança/pausa de status. `null` = status não rastreado, frontend trata como
+ * neutro (sem selo de SLA), não como "ok".
+ */
+export function slaTone(chamado: IChamadoN1): 'critical' | 'warning' | 'ok' | null {
+  const status = currentStatus(chamado);
+  if (!SLA_TRACKED_STATUSES.has(status)) return null;
+  if (isSlaBreached(chamado)) return 'critical';
+
+  const remaining = slaRemainingMinutes(chamado);
+  const limitHours = SLA_LIMIT_HOURS[status];
+  if (remaining == null || !limitHours) return 'ok';
+
+  const warningThreshold = Math.max(30, Math.floor(limitHours * 60 * 0.2));
+  return remaining <= warningThreshold ? 'warning' : 'ok';
 }
 
 export async function generateProtocolo(): Promise<string> {
@@ -1625,7 +1709,7 @@ export async function commitChamadoFromAgent(
       throw new ChamadoCommitValidationError('Texto da mensagem ou anotação é obrigatório.');
     }
   } else if (Object.keys(pendingChanges).length) {
-    chamado.registro.push({
+    pushRegistroEntry(chamado, {
       data: new Date(),
       origin: 'agente',
       autor: resolveRegistroAutor('agente', { authUser, authorHint }),
@@ -1667,7 +1751,7 @@ export async function applyBodyToChamado(
 
   if (Object.keys(pendingChanges).length) {
     const { alteracoes, workflowMeta } = buildAlteracoesFromPending(pendingChanges);
-    chamado.registro.push({
+    pushRegistroEntry(chamado, {
       data: new Date(),
       origin: 'agente',
       autor: resolveRegistroAutor('agente', {
@@ -1739,7 +1823,7 @@ export function appendRegistroEntry(
     metadados: payload.metadados ?? {},
     status,
   };
-  chamado.registro.push(entry);
+  pushRegistroEntry(chamado, entry);
   const index = chamado.registro.length - 1;
 
   const result: AppendRegistroResult = {};
@@ -2164,6 +2248,8 @@ function buildTicketDtoCore(
     internalNotes: listOnly ? [] : internalNotes,
     registroHistorico: listOnly ? [] : registroHistorico,
     slaBreached: isSlaBreached(chamado),
+    slaRemainingMinutes: slaRemainingMinutes(chamado),
+    slaTone: slaTone(chamado),
     createdAt: chamado.createdAt,
     updatedAt: chamado.updatedAt,
     listOnly: listOnly || undefined,

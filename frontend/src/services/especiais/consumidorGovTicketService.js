@@ -5,6 +5,7 @@ import { clientsApi, ticketsApi, boxesApi, reclamacoesApi } from '../../api/clie
 import { mapClienteDocToContact } from '../../api/adapters/clienteAdapter';
 import { apiTicketToCockpit, adaptColumnsFromApi } from '../../api/adapters/ticketAdapter';
 import { getAgentName } from '../clientDb';
+import { toWhatsAppChatIdDigits } from '../desk/utils';
 import { createWorkflowState, getWorkflowTemplateById } from '../desk/workflowEngine';
 import { CG_STATUS } from './consumidorGovData';
 import { applyTicketStatusToEspeciaisItem } from './especiaisGroupKey';
@@ -270,13 +271,22 @@ export async function fetchCgTicketView(cgId) {
   };
 }
 
-export async function sendCgWaMessage(ticketId, text) {
+function resolveCgWhatsAppChatId(ticket) {
+  return toWhatsAppChatIdDigits(
+    ticket?.lateralForm?.clienteTelefoneWhatsapp
+    || (Array.isArray(ticket?.lateralForm?.clienteTelefone) ? ticket.lateralForm.clienteTelefone[0] : '')
+    || ticket?.clientPhone
+    || '',
+  );
+}
+
+export async function sendCgWaMessage(ticketId, text, ticket) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return null;
-  await ticketsApi.addMessage(ticketId, {
+  const waChatId = resolveCgWhatsAppChatId(ticket);
+  await ticketsApi.sendWhatsAppMessage(ticketId, {
     text: trimmed,
-    author: getAgentName(),
-    sender: 'me',
+    waChatId: waChatId || undefined,
   });
   const raw = await ticketsApi.get(ticketId);
   return apiTicketToCockpit(raw);

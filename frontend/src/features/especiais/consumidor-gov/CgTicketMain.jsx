@@ -58,14 +58,14 @@ export default function CgTicketMain({
       return;
     }
     try {
-      const updated = await sendCgWaMessage(cgItem.ticketId, text);
+      const updated = await sendCgWaMessage(cgItem.ticketId, text, ticket);
       onWaComposeTextChange?.('');
       onTicketUpdated?.(updated);
       showNotification('Mensagem enviada.', 'success');
     } catch {
       showNotification('Não foi possível enviar a mensagem.', 'error');
     }
-  }, [waComposeText, cgItem?.ticketId, onWaComposeTextChange, onTicketUpdated, showNotification]);
+  }, [waComposeText, cgItem?.ticketId, ticket, onWaComposeTextChange, onTicketUpdated, showNotification]);
 
   const handleSelectHistoryTicket = useCallback((ticketId) => {
     if (typeof window.openTicket === 'function') {

@@ -971,6 +971,21 @@ export function getCascadeActionLabel(id) {
 
 function ensureTicketSlaFields(ticket) {
   if (ticket.slaRemaining != null && ticket.slaStatus) return;
+
+  // Preferência: SLA já calculado pelo backend (chamado.mapper.ts — slaTone/
+  // slaRemainingMinutes), status-aware: reinicia a cada mudança de status e não conta
+  // contra ticket parado em novo/pendente/em-espera/resolvido. `slaTone` pode vir `null`
+  // de propósito (status não rastreado) — o `!== undefined` distingue isso de um ticket
+  // que ainda não passou pelo backend nesta forma (objeto local, cache antigo).
+  if (ticket.slaTone !== undefined) {
+    ticket.slaStatus = ticket.slaTone ?? 'ok';
+    ticket.slaRemaining = ticket.slaRemainingMinutes ?? null;
+    return;
+  }
+
+  // Fallback (rede de segurança): só createdAt + prioridade, sem reset por status — o bug
+  // que fazia o SLA ficar "estourado" pra sempre depois que o ticket avançava de status.
+  // Mantido apenas para tickets que por algum motivo ainda não trazem os campos acima.
   const priority = String(ticket.priority || '').toLowerCase();
   const limitHours = priority === 'critica' || priority === 'critical' ? 4
     : priority === 'alta' || priority === 'high' ? 8 : 24;

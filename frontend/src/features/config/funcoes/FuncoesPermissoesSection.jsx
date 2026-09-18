@@ -4,7 +4,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../../api/client';
-import { agentesDeskApi } from '../../../api/client';
+import { roletaParticipantesApi } from '../../../api/client';
 import { usePermissions } from '../../../context/PermissionContext';
 import { useNotifications } from '../../../context/NotificationContext';
 import FuncoesDeskAccordion from './FuncoesDeskAccordion';
@@ -15,7 +15,7 @@ import { buildDraftFromFuncao, listFuncoesPendentes, syncDraftPortalVisivel } fr
 import './funcoes-permissoes.css';
 
 export default function FuncoesPermissoesSection() {
-  const { reload: reloadSessionPerms } = usePermissions();
+  const { reload: reloadSessionPerms, can, funcaoSlug } = usePermissions();
   const { showNotification } = useNotifications();
   const [funcoes, setFuncoes] = useState([]);
   const [agentes, setAgentes] = useState([]);
@@ -31,17 +31,21 @@ export default function FuncoesPermissoesSection() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
+  const [togglingEmail, setTogglingEmail] = useState(null);
   const [error, setError] = useState(null);
+
+  const canEditRoleta = funcaoSlug === 'gestao' || can('config', 'roleta_editar');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // GET /agentes-desk lê VeloHub ao vivo e atualiza o espelho
+      // GET /agentes-desk (via roletaParticipantesApi) lê VeloHub ao vivo e já traz o
+      // estado da roleta (override manual, quando existe) junto com cada agente.
       const [listRes, catalogRes, agentesRes] = await Promise.all([
         api.get('/funcoes-permissoes'),
         api.get('/funcoes-permissoes/catalog'),
-        agentesDeskApi.list(),
+        roletaParticipantesApi.list(),
       ]);
       setFuncoes(listRes.data || []);
       setCatalog(catalogRes.data?.catalog || {});
@@ -55,6 +59,27 @@ export default function FuncoesPermissoesSection() {
       setLoading(false);
     }
   }, []);
+
+  const handleToggleRoleta = useCallback(async (agente, ativo) => {
+    setTogglingEmail(agente.email);
+    try {
+      await roletaParticipantesApi.setAtivo(agente.email, ativo);
+      setAgentes((prev) => prev.map((a) => (
+        a.email === agente.email ? { ...a, override: ativo, elegivelFinal: ativo } : a
+      )));
+      showNotification(
+        ativo
+          ? `${agente.colaboradorNome || agente.email} volta a receber ticket pela roleta.`
+          : `${agente.colaboradorNome || agente.email} foi retirado(a) da roleta.`,
+        'success',
+      );
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Erro ao alterar a roleta';
+      showNotification(msg, 'error');
+    } finally {
+      setTogglingEmail(null);
+    }
+  }, [showNotification]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -187,6 +212,9 @@ export default function FuncoesPermissoesSection() {
           open={accordionAgentesOpen}
           onToggle={() => setAccordionAgentesOpen((v) => !v)}
           agentes={agentes}
+          canEditRoleta={canEditRoleta}
+          onToggleRoleta={handleToggleRoleta}
+          togglingEmail={togglingEmail}
         />
       </div>
 

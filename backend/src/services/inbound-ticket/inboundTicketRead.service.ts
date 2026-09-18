@@ -22,6 +22,7 @@ export interface ClientTicketMessageSummary {
   texto: string;
   remetente: 'cliente' | 'agente' | 'sistema';
   data: Date;
+  attachments: string[];
 }
 
 export interface ClientTicketSummary {
@@ -62,6 +63,7 @@ function resolveUltimaMensagem(chamado: IChamadoN1): ClientTicketMessageSummary 
       texto,
       remetente: remetenteFromOrigin(entry?.origin),
       data: entry?.data ? new Date(entry.data) : new Date(chamado.updatedAt ?? Date.now()),
+      attachments: entry?.anexosMensagemPublica ?? [],
     };
   }
   return null;
@@ -136,6 +138,7 @@ function resolveMensagensPublicas(chamado: IChamadoN1): ClientTicketMessageSumma
       texto,
       remetente: remetenteFromOrigin(entry?.origin),
       data: entry?.data ? new Date(entry.data) : new Date(chamado.updatedAt ?? Date.now()),
+      attachments: entry?.anexosMensagemPublica ?? [],
     });
   }
   return mensagens;
