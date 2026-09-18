@@ -71,7 +71,7 @@ export default function FuncoesAgentesAccordion({
                       <th>Atuação (cargo)</th>
                       <th>Função</th>
                       <th>Nível</th>
-                      <th>Recebe ticket?</th>
+                      <th>Recebe ticket? (atendimento geral)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -96,11 +96,12 @@ export default function FuncoesAgentesAccordion({
                         <td>
                           <label
                             className="wf-config-toggle"
-                            aria-label={`Recebe ticket automaticamente: ${a.colaboradorNome || a.email}`}
+                            aria-label={`Recebe ticket do atendimento geral automaticamente: ${a.colaboradorNome || a.email}`}
                             title={
-                              a.override != null
+                              (a.override != null
                                 ? `Override manual (${a.override ? 'ativo' : 'inativo'})${a.motivo ? ` — ${a.motivo}` : ''}`
-                                : 'Sem override — segue a atuação do cadastro'
+                                : 'Sem override — segue a atuação do cadastro')
+                              + ' · Só afeta a roleta do atendimento geral — Reclame Aqui/Procon/Bacen/Consumidor.gov continuam pela função de cada um.'
                             }
                           >
                             <input

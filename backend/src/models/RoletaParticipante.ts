@@ -1,15 +1,21 @@
 /**
  * RoletaParticipante v1.0.0 — desk_config.desk_roleta_participantes
  *
- * Override manual e explícito de quem participa da roleta de distribuição
- * automática de tickets — independente do campo `atuacao` do cadastro
+ * Override manual e explícito de quem participa da roleta GERAL (atendimento comum) de
+ * distribuição automática de tickets — independente do campo `atuacao` do cadastro
  * (console_funcionarios), que hoje decide sozinho e às vezes erra (ex.:
  * alguém com atuação "Atendimento" no cadastro mas que não atende ticket
  * na prática, como QA/produto).
  *
+ * Escopo: só a roleta genérica (loadOnlineEligibleAgents/rebalanceAgentToCap em
+ * assignmentRouter.service.ts). NÃO afeta as filas de função especial (Reclame Aqui,
+ * Procon, Bacen, Consumidor.gov — agentMatchesFuncaoSlug) — de propósito: alguém pode
+ * estar desligado do atendimento geral e continuar elegível pra uma fila específica
+ * (ex.: Camila atende Reclame Aqui mas não deve entrar na roleta comum).
+ *
  * Sem documento para o e-mail → sem override, vale a regra padrão
  * (atuacao/afastado) em assignmentRouter.service.ts.
- * Com documento → `ativo` decide sozinho, sem outras condições.
+ * Com documento → `ativo` decide sozinho, sem outras condições, só pro pool genérico.
  *
  * Ainda sem tela no front — gestão por enquanto via API (ver agents.routes.ts,
  * rotas /agents/roleta/participantes) ou direto no banco.

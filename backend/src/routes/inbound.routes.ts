@@ -45,7 +45,11 @@ import { processInboundTicket } from '../services/inbound-ticket/inboundTicket.s
 import { getClientTicketHistory, listClientTicketsForApp } from '../services/inbound-ticket/inboundTicketRead.service';
 import { listProdutos } from '../services/tabulation.service';
 import { ORIGIN_CANAL_CONFIG } from '../services/inbound-ticket/types';
-import { verifyWhatsAppOutboundMediaToken } from '../services/twilio/whatsappOutboundMedia.util';
+import {
+  buildWhatsAppOutboundMediaPublicUrlFromApiUrl,
+  TOKEN_TTL_MS as SIGNED_ATTACHMENT_TOKEN_TTL_MS,
+  verifyWhatsAppOutboundMediaToken,
+} from '../services/twilio/whatsappOutboundMedia.util';
 import { openSentAttachment } from '../services/sentAttachmentStorage.service';
 const router = Router();
 const upload = multer({
@@ -411,6 +415,40 @@ router.get('/produtos', inboundTicketAuthMiddleware, async (req, res: Response) 
   } catch (err) {
     console.error('[inbound/produtos]', err);
     return res.status(500).json({ message: 'Falha ao listar produtos' });
+  }
+});
+
+/**
+ * Gera uma URL assinada temporária (15min) para um anexo ENVIADO pelo agente ao cliente
+ * (`/api/uploads/sent/:storageKey`) — origem app, pra baixar o arquivo sem precisar da
+ * sessão/token do Desk. Mesmo mecanismo de token HMAC já usado pro outbound-media do
+ * WhatsApp (whatsappOutboundMedia.util.ts) — não é um signed URL nativo do GCS, mas dá o
+ * mesmo resultado prático: link temporário que qualquer um pode baixar, sem autenticação
+ * própria do Desk.
+ */
+router.get('/attachments/signed-url', inboundTicketAuthMiddleware, async (req, res: Response) => {
+  try {
+    if (req.inboundTicketOrigin !== 'app') {
+      return res.status(403).json({ message: 'Geração de URL assinada é exclusiva da origem app' });
+    }
+
+    const attachmentPath = String(req.query.path ?? req.query.url ?? '').trim();
+    if (!attachmentPath) {
+      return res.status(400).json({ message: 'Informe path (ou url) do anexo' });
+    }
+
+    const url = buildWhatsAppOutboundMediaPublicUrlFromApiUrl(attachmentPath);
+    if (!url) {
+      return res.status(400).json({ message: 'Path de anexo inválido — esperado /api/uploads/sent/:storageKey' });
+    }
+
+    return res.json({
+      url,
+      expiresAt: new Date(Date.now() + SIGNED_ATTACHMENT_TOKEN_TTL_MS).toISOString(),
+    });
+  } catch (err) {
+    console.error('[inbound/attachments/signed-url]', err);
+    return res.status(500).json({ message: 'Falha ao gerar URL assinada' });
   }
 });
 
