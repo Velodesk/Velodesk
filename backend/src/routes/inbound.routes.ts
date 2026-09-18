@@ -43,7 +43,7 @@ import {
 import { isRealtimeSupabaseConfigured } from '../config/supabaseRealtime';
 import { processInboundTicket } from '../services/inbound-ticket/inboundTicket.service';
 import { getClientTicketHistory, listClientTicketsForApp } from '../services/inbound-ticket/inboundTicketRead.service';
-import { listProdutos } from '../services/tabulation.service';
+import { listProdutosPublicos } from '../services/tabulation.service';
 import { ORIGIN_CANAL_CONFIG } from '../services/inbound-ticket/types';
 import {
   buildWhatsAppOutboundMediaPublicUrlFromApiUrl,
@@ -408,7 +408,7 @@ router.get('/tickets/client', inboundTicketAuthMiddleware, async (req, res: Resp
 /** Lista de produtos (tabulação Desk) — qualquer origem inbound autenticada, mesmo vocabulário pra todo mundo. */
 router.get('/produtos', inboundTicketAuthMiddleware, async (req, res: Response) => {
   try {
-    const produtos = await listProdutos(false);
+    const produtos = await listProdutosPublicos();
     return res.json({
       produtos: produtos.map(({ produto, ordem }) => ({ produto, ordem })),
     });

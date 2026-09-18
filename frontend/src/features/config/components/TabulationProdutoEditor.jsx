@@ -15,6 +15,7 @@ export default function TabulationProdutoEditor({ produtoId, onClose, onSaved })
   const { showNotification } = useNotifications();
   const [produto, setProduto] = useState('');
   const [ativo, setAtivo] = useState(true);
+  const [apenasInterno, setApenasInterno] = useState(false);
   const [motivos, setMotivos] = useState([emptyMotivo()]);
   const [loading, setLoading] = useState(Boolean(produtoId));
   const [saving, setSaving] = useState(false);
@@ -26,6 +27,7 @@ export default function TabulationProdutoEditor({ produtoId, onClose, onSaved })
       .then((data) => {
         setProduto(data.produto || '');
         setAtivo(data.ativo !== false);
+        setApenasInterno(data.apenasInterno === true);
         setMotivos((data.motivos && data.motivos.length) ? data.motivos : [emptyMotivo()]);
       })
       .catch(() => showNotification('Erro ao carregar produto.', 'error'))
@@ -59,6 +61,7 @@ export default function TabulationProdutoEditor({ produtoId, onClose, onSaved })
     const payload = {
       produto: produto.trim(),
       ativo,
+      apenasInterno,
       motivos: motivos
         .filter((m) => m.motivo.trim())
         .map((m, mi) => ({
@@ -123,6 +126,14 @@ export default function TabulationProdutoEditor({ produtoId, onClose, onSaved })
           <div className="config-field config-field--ativo-toggle">
             <ConfigAtivoToggle ativo={ativo} onChange={setAtivo} />
           </div>
+          <label className="config-field config-field--checkbox">
+            <input
+              type="checkbox"
+              checked={apenasInterno}
+              onChange={(e) => setApenasInterno(e.target.checked)}
+            />
+            <span className="config-field__label">Apenas interno</span>
+          </label>
         </div>
       </div>
 
