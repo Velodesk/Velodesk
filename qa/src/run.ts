@@ -29,6 +29,7 @@ import { limparTicketsDaRodada } from './limpeza';
 import { gerarDevolutivas } from './ia';
 import { alimentarPlanilha, nomeRodada, resumoTexto } from './relatorio';
 import { montarEstadoAtual, gravarEstadoSentinela, gravarEstadoSentinelaMongo } from './estadoSentinela';
+import { enviarRelatorioTelegram, montarMensagemResumo } from './telegram';
 
 const RAIZ = path.join(__dirname, '..');
 const PLANILHA = process.env.QA_PLANILHA
@@ -155,6 +156,10 @@ async function main() {
     observacaoGeral: observacoes.join(' • '),
     devolutivas: devolutivas.textos,
   });
+
+  // Uma mensagem por rodada, sempre — com falha ou não (enviarRelatorioTelegram já é
+  // fail-soft: nunca derruba a rodada se o Telegram estiver fora ou mal configurado).
+  await enviarRelatorioTelegram(montarMensagemResumo(coletor.resultados));
 
   console.log(`\n${resumoTexto(coletor)}`);
   console.log(`\nPlanilha atualizada: ${PLANILHA}`);

@@ -42,8 +42,12 @@ export const colTransporte = async () => (await dbConfig()).collection('email_tr
 export const colContadores = async () => (await dbChamados()).collection('sequence_counters');
 
 // ── Sentinela Velodesk (dashboard) — coleção própria, nunca toca dado real ──
-export const colQaSentinelaEstado = async () => (await dbConfig()).collection('qa_sentinela_estado');
-export const colQaSentinelaRuns = async () => (await dbConfig()).collection('qa_sentinela_runs');
+// _id é string própria (ex.: "atual", ou o runId) nessas duas coleções, não o
+// ObjectId padrão do Mongo — daí o generic explícito.
+export const colQaSentinelaEstado = async () =>
+  (await dbConfig()).collection<Document & { _id: string }>('qa_sentinela_estado');
+export const colQaSentinelaRuns = async () =>
+  (await dbConfig()).collection<Document & { _id: string }>('qa_sentinela_runs');
 
 // ── filtros reaproveitados do backend ──────────────────────────────────────
 
