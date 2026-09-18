@@ -1,7 +1,0 @@
-Não estou vendo meu saldo => Reclamações sobre encerramento conta Celcoin
-App travando ao enviar um PIX (problema na conta corrente) => Não recebi um PIX (problema na conta corrente)
-Erro ao enviar PIX => Não recebi um PIX (problema na conta corrente)
-Ver saldo da conta => Reclamações sobre encerramento conta Celcoin
-Pix celular - depósito => Não recebi um PIX (problema na conta corrente)
-Não sei em qual conta vai cair meu pix => Status da proposta — contratei e ainda não recebi
-Queria um extrato => Reclamações sobre encerramento conta Celcoin
