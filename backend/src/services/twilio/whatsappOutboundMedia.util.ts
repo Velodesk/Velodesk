@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { env } from '../../config/env';
 import { parseSentAttachmentStorageKeyFromApiUrl } from '../sentAttachmentStorage.service';
 
-const TOKEN_TTL_MS = 15 * 60 * 1000;
+export const TOKEN_TTL_MS = 15 * 60 * 1000;
 
 function signingSecret(): string {
   return env.attachmentScanCallbackSecret || env.jwtSecret;
