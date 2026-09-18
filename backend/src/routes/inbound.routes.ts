@@ -43,6 +43,7 @@ import {
 import { isRealtimeSupabaseConfigured } from '../config/supabaseRealtime';
 import { processInboundTicket } from '../services/inbound-ticket/inboundTicket.service';
 import { getClientTicketHistory, listClientTicketsForApp } from '../services/inbound-ticket/inboundTicketRead.service';
+import { listProdutos } from '../services/tabulation.service';
 import { ORIGIN_CANAL_CONFIG } from '../services/inbound-ticket/types';
 import { verifyWhatsAppOutboundMediaToken } from '../services/twilio/whatsappOutboundMedia.util';
 import { openSentAttachment } from '../services/sentAttachmentStorage.service';
@@ -397,6 +398,23 @@ router.get('/tickets/client', inboundTicketAuthMiddleware, async (req, res: Resp
   } catch (err) {
     console.error('[inbound/tickets/client]', err);
     return res.status(500).json({ message: 'Falha ao listar tickets do cliente' });
+  }
+});
+
+/** Lista de produtos (tabulação Desk) — origem app, pra provisionar o app com o mesmo vocabulário do Desk. */
+router.get('/produtos', inboundTicketAuthMiddleware, async (req, res: Response) => {
+  try {
+    if (req.inboundTicketOrigin !== 'app') {
+      return res.status(403).json({ message: 'Leitura de produtos é exclusiva da origem app' });
+    }
+
+    const produtos = await listProdutos(false);
+    return res.json({
+      produtos: produtos.map(({ produto, ordem }) => ({ produto, ordem })),
+    });
+  } catch (err) {
+    console.error('[inbound/produtos]', err);
+    return res.status(500).json({ message: 'Falha ao listar produtos' });
   }
 });
 
