@@ -433,6 +433,13 @@ export const emailOutboundApi = {
   ),
 };
 
+export const redesSociaisApi = {
+  listComentarios: (params = {}) => api.get('/redes-sociais/comentarios', { params }).then((r) => r.data),
+  relatorio: (params = {}) => api.get('/redes-sociais/relatorio', { params }).then((r) => r.data),
+  responder: (id, resposta) => api.patch(`/redes-sociais/comentarios/${encodeURIComponent(id)}/responder`, { resposta }).then((r) => r.data),
+  ignorar: (id) => api.patch(`/redes-sociais/comentarios/${encodeURIComponent(id)}/ignorar`).then((r) => r.data),
+};
+
 export const consultasApi = {
   health: () => api.get('/consultas/health').then((r) => r.data),
   fetch360: (payload = {}) =>

@@ -3,6 +3,7 @@
  */
 import React from 'react';
 import { CG_GROUPS, getStatusLabel, formatSlaRestante } from '../../../services/especiais/consumidorGovData';
+import { getDeskSearchInferredLabel } from '../../../services/desk/utils';
 import {
   formatRaListDate,
   getRaSlaClass,
@@ -29,6 +30,7 @@ export default function CgTicketList({
   const listTitle = (searchActive || listSearchQuery.trim())
     ? `Busca · ${items.length}`
     : `${groupName} · ${items.length}`;
+  const detectedLabel = getDeskSearchInferredLabel(listSearchQuery);
 
   return (
     <aside
@@ -60,11 +62,16 @@ export default function CgTicketList({
               </button>
             </div>
           </div>
-          <label className="ra-crm-list-search">
+          <div className="queue-search queue-search--ticket-list" role="search">
             <i className="ti ti-search" aria-hidden="true" />
             <input
-              type="search"
-              placeholder="Buscar ticket ou CPF…"
+              type="text"
+              id="cgCrmListSearch"
+              name="cgCrmListSearch"
+              autoComplete="off"
+              spellCheck={false}
+              inputMode="text"
+              placeholder="Buscar por CPF ou protocolo…"
               value={listSearchQuery}
               onChange={(e) => onListSearchChange?.(e.target.value)}
               onKeyDown={(e) => {
@@ -73,9 +80,16 @@ export default function CgTicketList({
                   onListSearchSubmit?.();
                 }
               }}
-              aria-label="Buscar por número de ticket ou CPF"
+              aria-label="Buscar ticket por CPF ou protocolo"
             />
-          </label>
+            <span
+              className="queue-search__mode queue-search__mode--detected"
+              title={`Busca detectada: ${detectedLabel}`}
+              aria-live="polite"
+            >
+              {detectedLabel}
+            </span>
+          </div>
           <div className="ra-crm-sort-chips">
             {['data', 'sla'].map((sort) => (
               <button

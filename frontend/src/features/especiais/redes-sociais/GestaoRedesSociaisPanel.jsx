@@ -5,10 +5,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useDeskColaboradores } from '../../../hooks/useDeskColaboradores';
 import { useNotifications } from '../../../context/NotificationContext';
+import ComentariosPanel from './ComentariosPanel';
+import AvaliacoesPanel from './AvaliacoesPanel';
+import DashboardPanel from './DashboardPanel';
 
 const TOP_TABS = [
-  { id: 'inbox', label: 'Inbox', icon: 'ti-inbox', count: 12 },
   { id: 'comentarios', label: 'Comentários', icon: 'ti-message-circle', count: 34 },
+  { id: 'inbox', label: 'Inbox', icon: 'ti-inbox', count: 12 },
   { id: 'avaliacoes', label: 'Avaliações', icon: 'ti-star', count: 8 },
   { id: 'dashboard', label: 'Dashboard', icon: 'ti-chart-bar', count: null },
 ];
@@ -183,7 +186,7 @@ export default function GestaoRedesSociaisPanel({ onBack }) {
   const { showNotification } = useNotifications();
   const { agentOptions } = useDeskColaboradores();
 
-  const [topTab, setTopTab] = useState(TOP_TABS[0].id);
+  const [topTab, setTopTab] = useState('inbox');
   const [activeChannels, setActiveChannels] = useState(() => new Set(CHANNELS.map((c) => c.id)));
   const [statusTab, setStatusTab] = useState(STATUS_TABS[0].id);
   const [search, setSearch] = useState('');
@@ -321,13 +324,12 @@ export default function GestaoRedesSociaisPanel({ onBack }) {
         </div>
       </div>
 
-      {topTab !== 'inbox' ? (
-        <div className="especiais-channel-shell__placeholder">
-          <i className={`ti ${TOP_TABS.find((t) => t.id === topTab)?.icon}`} aria-hidden="true" />
-          <p>
-            Área de <strong>{TOP_TABS.find((t) => t.id === topTab)?.label}</strong> em construção.
-          </p>
-        </div>
+      {topTab === 'comentarios' ? (
+        <ComentariosPanel />
+      ) : topTab === 'avaliacoes' ? (
+        <AvaliacoesPanel />
+      ) : topTab === 'dashboard' ? (
+        <DashboardPanel />
       ) : (
         <div className="grs-inbox">
           <div className="grs-list">

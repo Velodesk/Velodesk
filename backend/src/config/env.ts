@@ -355,5 +355,20 @@ export const env = {
    */
   ticketEventsRealtimeUrl: (process.env.PRESENCE_REALTIME_URL || '').trim().replace(/\/+$/, ''),
   ticketEventsRealtimeApiKey: (process.env.PRESENCE_REALTIME_ANON_KEY || '').trim(),
+  /**
+   * Redes Sociais — captação de comentários/avaliações (Facebook/Instagram/Google Play) +
+   * classificação por IA (sentimento/motivo). Desligado por padrão: liga só quando os
+   * tokens/contas de serviço abaixo estiverem configurados e o time decidir ativar o polling.
+   */
+  redesSociaisCaptacaoEnabled: process.env.REDES_SOCIAIS_CAPTACAO_ENABLED === 'true',
+  /** Intervalo do ciclo de captação (default 15min) */
+  redesSociaisPollIntervalMs: parseInt(process.env.REDES_SOCIAIS_POLL_INTERVAL_MS || '900000', 10),
+  fbSystemUserToken: (process.env.FB_SYSTEM_USER_TOKEN || '').trim(),
+  fbPageId: (process.env.FB_PAGE_ID || '').trim(),
+  instagramAccessToken: (process.env.INSTAGRAM_ACCESS_TOKEN || '').trim(),
+  googleServiceAccountJson: (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '').trim(),
+  googlePlayPackageName: (process.env.GOOGLE_PLAY_PACKAGE_NAME || '').trim(),
+  graphApiVersion: (process.env.GRAPH_API_VERSION || 'v21.0').trim(),
+  graphApiVersionInstagram: (process.env.GRAPH_API_VERSION_INSTAGRAM || 'v21.0').trim(),
 };
 

@@ -23,8 +23,7 @@ export default function ProconCrmRoot() {
   const { showNotification } = useNotifications();
 
   const [activeGroup, setActiveGroup] = useState(PC_GROUPS[0]?.id || 'vencendo-hoje');
-  const [searchDraft, setSearchDraft] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
+  const [appliedSearch] = useState('');
   const [listSearchDraft, setListSearchDraft] = useState('');
   const [activeSort, setActiveSort] = useState('data');
   const [queueCollapsed, setQueueCollapsed] = useState(
@@ -203,10 +202,6 @@ export default function ProconCrmRoot() {
     showNotification,
   });
 
-  const handleSearchSubmit = useCallback(() => {
-    setAppliedSearch(searchDraft.trim());
-  }, [searchDraft]);
-
   const handleSelectItem = useCallback((pcId) => {
     navigate(`/especiais/procon/ticket/${pcId}`, { replace: true });
   }, [navigate]);
@@ -255,11 +250,8 @@ export default function ProconCrmRoot() {
     <div className="ra-crm-shell" id="proconCrmRoot">
       <PcQueuePanel
         activeGroup={activeGroup}
-        searchQuery={searchDraft}
         collapsed={queueCollapsed}
         groupCounts={groupCounts}
-        onSearchChange={setSearchDraft}
-        onSearchSubmit={handleSearchSubmit}
         onSelectGroup={setActiveGroup}
         onCollapse={() => handleQueueCollapse(true)}
         onExpand={() => handleQueueCollapse(false)}

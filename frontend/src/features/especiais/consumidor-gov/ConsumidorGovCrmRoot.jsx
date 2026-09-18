@@ -23,8 +23,7 @@ export default function ConsumidorGovCrmRoot() {
   const { showNotification } = useNotifications();
 
   const [activeGroup, setActiveGroup] = useState(CG_GROUPS[0]?.id || 'vencendo-hoje');
-  const [searchDraft, setSearchDraft] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
+  const [appliedSearch] = useState('');
   const [listSearchDraft, setListSearchDraft] = useState('');
   const [activeSort, setActiveSort] = useState('data');
   const [queueCollapsed, setQueueCollapsed] = useState(
@@ -203,10 +202,6 @@ export default function ConsumidorGovCrmRoot() {
     showNotification,
   });
 
-  const handleSearchSubmit = useCallback(() => {
-    setAppliedSearch(searchDraft.trim());
-  }, [searchDraft]);
-
   const handleSelectItem = useCallback((cgId) => {
     navigate(`/especiais/consumidor-gov/ticket/${cgId}`, { replace: true });
   }, [navigate]);
@@ -255,11 +250,8 @@ export default function ConsumidorGovCrmRoot() {
     <div className="ra-crm-shell" id="consumidorGovCrmRoot">
       <CgQueuePanel
         activeGroup={activeGroup}
-        searchQuery={searchDraft}
         collapsed={queueCollapsed}
         groupCounts={groupCounts}
-        onSearchChange={setSearchDraft}
-        onSearchSubmit={handleSearchSubmit}
         onSelectGroup={setActiveGroup}
         onCollapse={() => handleQueueCollapse(true)}
         onExpand={() => handleQueueCollapse(false)}

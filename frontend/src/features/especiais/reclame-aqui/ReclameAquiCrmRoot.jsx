@@ -30,8 +30,7 @@ export default function ReclameAquiCrmRoot() {
   const { showNotification } = useNotifications();
 
   const [activeGroup, setActiveGroup] = useState(RA_GROUPS[0]?.id || 'vencendo-hoje');
-  const [searchDraft, setSearchDraft] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
+  const [appliedSearch] = useState('');
   const [listSearchDraft, setListSearchDraft] = useState('');
   const [activeSort, setActiveSort] = useState('data');
   const [queueCollapsed, setQueueCollapsed] = useState(
@@ -236,10 +235,6 @@ export default function ReclameAquiCrmRoot() {
     showNotification,
   });
 
-  const handleSearchSubmit = useCallback(() => {
-    setAppliedSearch(searchDraft.trim());
-  }, [searchDraft]);
-
   const handleSelectItem = useCallback((raId) => {
     navigate(`/especiais/reclame-aqui/ticket/${raId}`, { replace: true });
   }, [navigate]);
@@ -316,11 +311,8 @@ export default function ReclameAquiCrmRoot() {
     <div className="ra-crm-shell" id="reclameAquiCrmRoot">
       <RaQueuePanel
         activeGroup={activeGroup}
-        searchQuery={searchDraft}
         collapsed={queueCollapsed}
         groupCounts={groupCounts}
-        onSearchChange={setSearchDraft}
-        onSearchSubmit={handleSearchSubmit}
         onSelectGroup={setActiveGroup}
         onCollapse={() => handleQueueCollapse(true)}
         onExpand={() => handleQueueCollapse(false)}

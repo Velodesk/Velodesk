@@ -14,11 +14,8 @@ const GROUP_DOTS = {
 
 export default function PcQueuePanel({
   activeGroup,
-  searchQuery,
   collapsed,
   groupCounts,
-  onSearchChange,
-  onSearchSubmit,
   onSelectGroup,
   onCollapse,
   onExpand,
@@ -45,21 +42,6 @@ export default function PcQueuePanel({
               <i className="ti ti-chevron-left" aria-hidden="true" />
             </button>
           </div>
-          <label className="ra-crm-queue-search">
-            <i className="ti ti-search" aria-hidden="true" />
-            <input
-              type="search"
-              placeholder="Buscar demandas…"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  onSearchSubmit?.();
-                }
-              }}
-            />
-          </label>
         </div>
 
         <ul className="ra-crm-queue-list">

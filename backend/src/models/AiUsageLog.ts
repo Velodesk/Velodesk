@@ -18,7 +18,8 @@ export type AiUsageFeature =
   | 'refinar_rascunho'
   | 'chamado_ia_analise'
   | 'telephony_ia_analise'
-  | 'assunto_semelhante';
+  | 'assunto_semelhante'
+  | 'redes_sociais_classificacao';
 
 export interface IAiUsageLog extends Document {
   provider: AiUsageProvider;

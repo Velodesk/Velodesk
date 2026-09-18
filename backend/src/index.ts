@@ -47,6 +47,7 @@ import funcoesPermissoesRoutes from './routes/funcoesPermissoes.routes';
 import agentesDeskRoutes from './routes/agentesDesk.routes';
 import mailRulesRoutes from './routes/mailRules.routes';
 import mailPrioritySubjectRulesRoutes from './routes/mailPrioritySubjectRules.routes';
+import redesSociaisRoutes from './routes/redesSociais.routes';
 import emailOutboundRoutes from './routes/emailOutbound.routes';
 import macrosRoutes from './routes/macros.routes';
 import ticketIaAnalysisRoutes from './routes/ticketIaAnalysis.routes';
@@ -79,6 +80,7 @@ import { startWhatsappCostSyncJob } from './jobs/whatsappCostSync.job';
 import { startEmailSlaTriggerJob } from './jobs/emailSlaTrigger.job';
 import { startResolvePendenteTicketsJob } from './jobs/resolvePendenteTickets.job';
 import { startChamadoIaAnaliseJob } from './jobs/chamadoIaAnalise.job';
+import { startRedesSociaisCaptacaoJob } from './jobs/redesSociaisCaptacao.job';
 import { bootstrapEmailServices } from './services/emailBootstrap.service';
 import { startChamadoProtocoloWatcher } from './services/chamadoProtocoloWatcher.service';
 import { startWhatsAppAudioTranscriptionWorker } from './services/twilio/whatsappAudioTranscription.service';
@@ -219,6 +221,7 @@ app.use('/api/reclame-aqui/hugme', reclameAquiHugmeRoutes);
 app.use('/api/processos', processosRoutes);
 app.use('/api/csat', csatRoutes);
 app.use('/api/module-status', moduleStatusRoutes);
+app.use('/api/redes-sociais', redesSociaisRoutes);
 
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -381,6 +384,7 @@ async function start() {
       startEmailSlaTriggerJob();
       startResolvePendenteTicketsJob();
       startWhatsAppAudioTranscriptionWorker();
+      startRedesSociaisCaptacaoJob();
     });
   });
 }
