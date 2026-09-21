@@ -1,0 +1,5 @@
+qa
+sentinela/node_modules
+sentinela/.gitignore
+sentinela/.dockerignore
+sentinela/README.md
