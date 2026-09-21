@@ -34,15 +34,26 @@ function guessContentType(name: string): string {
   return 'application/octet-stream';
 }
 
+/**
+ * Só PDFs interessam ao módulo Legado Octa (comprovantes/contratos/regulamentos).
+ * Prints/vídeos de evidência técnica são descartados antes mesmo do download.
+ */
+function isPdfAttachment(name: string, url: string): boolean {
+  const lower = `${name || ''} ${url || ''}`.toLowerCase();
+  return lower.includes('.pdf');
+}
+
 function collectFromTicket(ticket: Record<string, unknown> | undefined): ImportadoAttachment[] {
   const out: ImportadoAttachment[] = [];
   const list = Array.isArray(ticket?.attachments) ? ticket!.attachments as Array<Record<string, unknown>> : [];
   for (const a of list) {
     const originUrl = String(a.url || '').trim();
     if (!originUrl) continue;
+    const name = String(a.name || 'anexo');
+    if (!isPdfAttachment(name, originUrl)) continue;
     out.push({
       octadeskId: a.id != null ? String(a.id) : a._id != null ? String(a._id) : undefined,
-      name: String(a.name || 'anexo'),
+      name,
       originUrl,
       status: 'pending',
       source: 'ticket',
@@ -61,9 +72,11 @@ function collectFromInteractions(interactions: unknown[] | undefined): Importado
     for (const a of atts) {
       const originUrl = String(a.url || '').trim();
       if (!originUrl) continue;
+      const name = String(a.name || 'anexo');
+      if (!isPdfAttachment(name, originUrl)) continue;
       out.push({
         octadeskId: a._id != null ? String(a._id) : a.id != null ? String(a.id) : undefined,
-        name: String(a.name || 'anexo'),
+        name,
         originUrl,
         status: 'pending',
         source: 'interaction',
