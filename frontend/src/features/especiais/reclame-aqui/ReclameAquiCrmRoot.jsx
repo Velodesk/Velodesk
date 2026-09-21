@@ -266,9 +266,7 @@ export default function ReclameAquiCrmRoot() {
     setInitialMessageBusy(true);
     try {
       const text = buildRaInitialGreetingMessage({
-        clientName: raItem?.consumidor,
         agentName: getAgentName(),
-        complaintId: raItem?.idReclamacaoRa,
       });
       const updated = await sendRaWaMessage(ticketId, text, ticket);
       if (updated) setTicket(updated);
@@ -280,7 +278,7 @@ export default function ReclameAquiCrmRoot() {
     } finally {
       setInitialMessageBusy(false);
     }
-  }, [raItem?.ticketId, raItem?.consumidor, raItem?.idReclamacaoRa, ticket, showNotification]);
+  }, [raItem?.ticketId, ticket, showNotification]);
 
   const handleClassificacaoDraftChange = useCallback((draft) => {
     setClassificacaoDraft(draft);

@@ -35,6 +35,7 @@ export const ACESSO_MODULO_IDS: string[] = [
   'especiais-redes-sociais',
   'reports',
   'tickets-resolvidos',
+  'legado-octa',
 ];
 
 export const PERMISSION_CATALOG: Record<string, string[]> = {

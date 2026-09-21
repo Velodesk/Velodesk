@@ -40,6 +40,7 @@ export interface TabulationProdutoDto {
   produto: string;
   ordem: number;
   ativo: boolean;
+  apenasInterno: boolean;
   motivos: ITabulacaoMotivo[];
 }
 
@@ -81,6 +82,7 @@ function produtoToDto(doc: ITabulacaoProduto): TabulationProdutoDto {
     produto: doc.produto,
     ordem: doc.ordem,
     ativo: doc.ativo,
+    apenasInterno: doc.apenasInterno === true,
     motivos: normalizeMotivos(doc.motivos || []),
   };
 }
@@ -90,6 +92,12 @@ export async function listProdutos(includeInactive = true): Promise<TabulationPr
   const filter = includeInactive ? {} : { ativo: true };
   const docs = await Model.find(filter).sort({ ordem: 1, produto: 1 });
   return docs.map(produtoToDto);
+}
+
+/** Produtos elegíveis para consulta pela API externa (app): ativos e não marcados como uso interno. */
+export async function listProdutosPublicos(): Promise<TabulationProdutoDto[]> {
+  const produtos = await listProdutos(false);
+  return produtos.filter((p) => !p.apenasInterno);
 }
 
 export async function getProdutoById(id: string): Promise<TabulationProdutoDto | null> {
@@ -112,7 +120,7 @@ export async function getActiveTabulation(): Promise<TabulationActiveDto> {
 }
 
 export async function createProduto(
-  body: { produto: string; ordem?: number; ativo?: boolean; motivos?: ITabulacaoMotivo[] },
+  body: { produto: string; ordem?: number; ativo?: boolean; apenasInterno?: boolean; motivos?: ITabulacaoMotivo[] },
   updatedBy: string
 ): Promise<TabulationProdutoDto> {
   const Model = getTabulacaoProdutoModel();
@@ -132,6 +140,7 @@ export async function createProduto(
     produto,
     ordem,
     ativo: body.ativo !== false,
+    apenasInterno: body.apenasInterno === true,
     motivos: normalizeMotivos(body.motivos || []),
     updatedBy,
   });
@@ -141,7 +150,7 @@ export async function createProduto(
 
 export async function replaceProduto(
   id: string,
-  body: { produto?: string; ordem?: number; ativo?: boolean; motivos?: ITabulacaoMotivo[] },
+  body: { produto?: string; ordem?: number; ativo?: boolean; apenasInterno?: boolean; motivos?: ITabulacaoMotivo[] },
   updatedBy: string
 ): Promise<TabulationProdutoDto | null> {
   const Model = getTabulacaoProdutoModel();
@@ -157,6 +166,7 @@ export async function replaceProduto(
   }
   if (body.ordem !== undefined) doc.ordem = body.ordem;
   if (body.ativo !== undefined) doc.ativo = body.ativo;
+  if (body.apenasInterno !== undefined) doc.apenasInterno = body.apenasInterno;
   if (body.motivos !== undefined) doc.motivos = normalizeMotivos(body.motivos);
   doc.updatedBy = updatedBy;
 
@@ -167,7 +177,7 @@ export async function replaceProduto(
 
 export async function patchProduto(
   id: string,
-  body: { produto?: string; ordem?: number; ativo?: boolean },
+  body: { produto?: string; ordem?: number; ativo?: boolean; apenasInterno?: boolean },
   updatedBy: string
 ): Promise<TabulationProdutoDto | null> {
   return replaceProduto(id, body, updatedBy);

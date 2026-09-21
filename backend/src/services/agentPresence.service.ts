@@ -2,6 +2,7 @@
 import type { AuthPayload } from '../middleware/auth';
 import { env } from '../config/env';
 import { getAgentPresenceModel } from '../models/AgentPresence';
+import { isAllMongoReady, waitForMongoReady } from '../config/database';
 
 function emailLocalPart(email?: string): string {
   const normalized = String(email ?? '').trim().toLowerCase();
@@ -32,6 +33,7 @@ export function isPresenceStale(lastSeenAt?: Date | null): boolean {
 }
 
 export async function recordAgentHeartbeat(authUser: AuthPayload): Promise<PresenceHeartbeatResult> {
+  if (!isAllMongoReady()) await waitForMongoReady();
   const Model = getAgentPresenceModel();
   const email = normalizeEmail(authUser.email);
   const userId = String(authUser.userId ?? '').trim();
@@ -69,6 +71,7 @@ export async function recordAgentHeartbeat(authUser: AuthPayload): Promise<Prese
 }
 
 export async function recordAgentOffline(authUser: AuthPayload): Promise<void> {
+  if (!isAllMongoReady()) await waitForMongoReady();
   const Model = getAgentPresenceModel();
   const userId = String(authUser.userId ?? '').trim();
   if (!userId) return;

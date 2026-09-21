@@ -265,12 +265,14 @@ export function raTicketHasAgentReply(ticket) {
   return buildWhatsAppConvMsgs(ticket).some((msg) => msg.type === 'agent' && String(msg.text || '').trim());
 }
 
-/** Saudação inicial padrão do time de Reclame Aqui, com os dados do ticket já preenchidos. */
-export function buildRaInitialGreetingMessage({ clientName, agentName, complaintId }) {
-  const nome = String(clientName || '').trim() || 'cliente';
+/**
+ * Saudação inicial padrão do time de Reclame Aqui — vira o {{3}} do template WhatsApp
+ * aprovado (DESK_ACTIVE_WHATSAPP_TEMPLATE_TWILIO_BODY), que já cobre "Olá {nome}, aqui é o
+ * Velotax." e "Referente ao seu chamado {protocolo}:" — por isso não repete nome nem protocolo.
+ */
+export function buildRaInitialGreetingMessage({ agentName }) {
   const agente = String(agentName || '').trim() || 'Atendimento Velotax';
-  const id = String(complaintId || '').trim() || '—';
-  return `Olá, ${nome}. Tudo bem?\n\nMe chamo ${agente} e sou especialista no atendimento do Reclame Aqui, no Velotax. O motivo do meu contato é referente ao apontamento ID:${id}\n\nVerifiquei a sua solicitação, podemos conversar por aqui?`;
+  return `Tudo bem? Me chamo ${agente} e sou especialista no atendimento de demandas Reclame Aqui, no Velotax. Podemos conversar por aqui?`;
 }
 
 export function formatRaDeadlineLabel(iso) {

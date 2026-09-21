@@ -101,6 +101,37 @@ function hydrateCustomerDataApiKey(envPaths) {
   }
 }
 
+/**
+ * MONGODB_LEGACY (cluster dedicado do módulo Legado Octa) vem anotado na fonte da verdade
+ * com um prefixo tipo "(legado-octa) MONGODB_LEGACY=..." — dotenv não reconhece isso como
+ * KEY=VALUE (a chave inteira, com parênteses e espaço, não bate no formato) e a linha é
+ * silenciosamente ignorada. Leitura explícita, mesmo padrão do x-api-key acima.
+ */
+function hydrateLegacyOctaUri(envPaths) {
+  if (process.env.MONGODB_LEGACY) return;
+  const keyPattern = /MONGODB_LEGACY\s*=\s*(.+)\s*$/i;
+  for (const envPath of envPaths) {
+    if (!envPath || !fs.existsSync(envPath)) continue;
+    let content = '';
+    try {
+      content = fs.readFileSync(envPath, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const match = trimmed.match(keyPattern);
+      if (!match) continue;
+      const value = match[1].trim().replace(/^["']|["']$/g, '').trim();
+      if (value) {
+        process.env.MONGODB_LEGACY = value;
+        return;
+      }
+    }
+  }
+}
+
 function loadFrom(startDir) {
   const backendDir = path.resolve(startDir);
   const backendEnvPath = path.join(backendDir, '.env');
@@ -141,6 +172,14 @@ function loadFrom(startDir) {
 
   // dotenv não suporta chaves com hífen (x-api-key) — leitura explícita dos arquivos
   hydrateCustomerDataApiKey([
+    fonteHubEnvPath,
+    fonteEnvPath,
+    backendEnvPath,
+    custom,
+  ].filter(Boolean));
+
+  // MONGODB_LEGACY vem anotado com prefixo "(legado-octa) " — mesma limitação do dotenv
+  hydrateLegacyOctaUri([
     fonteHubEnvPath,
     fonteEnvPath,
     backendEnvPath,

@@ -47,24 +47,34 @@ const router = Router();
 router.post('/presence/heartbeat', authMiddleware, async (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ success: false, error: 'Não autenticado' });
 
-  const result = await recordAgentHeartbeat(req.user);
+  try {
+    const result = await recordAgentHeartbeat(req.user);
 
-  if (result.wasOffline && env.assignmentRouterEnabled) {
-    const key = provisionalResponsavelFromAuth(req.user);
-    if (key) {
-      void rebalanceAgentToCap(key).catch((err) => {
-        console.warn('[agents/presence/heartbeat] rebalance falhou', err);
-      });
+    if (result.wasOffline && env.assignmentRouterEnabled) {
+      const key = provisionalResponsavelFromAuth(req.user);
+      if (key) {
+        void rebalanceAgentToCap(key).catch((err) => {
+          console.warn('[agents/presence/heartbeat] rebalance falhou', err);
+        });
+      }
     }
-  }
 
-  return res.json({ success: true, ...result, source: 'agents_presence_heartbeat' });
+    return res.json({ success: true, ...result, source: 'agents_presence_heartbeat' });
+  } catch (err) {
+    console.error('[agents/presence/heartbeat] falhou', err);
+    return res.status(500).json({ success: false, error: (err as Error).message });
+  }
 });
 
 router.post('/presence/offline', authMiddleware, async (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ success: false, error: 'Não autenticado' });
-  await recordAgentOffline(req.user);
-  return res.json({ success: true, online: false, source: 'agents_presence_offline' });
+  try {
+    await recordAgentOffline(req.user);
+    return res.json({ success: true, online: false, source: 'agents_presence_offline' });
+  } catch (err) {
+    console.error('[agents/presence/offline] falhou', err);
+    return res.status(500).json({ success: false, error: (err as Error).message });
+  }
 });
 
 /**

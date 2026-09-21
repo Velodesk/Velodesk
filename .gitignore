@@ -8,6 +8,7 @@ backend/node_modules/
 frontend/dist/
 backend/dist/
 backend/data/inbound-attachments/
+backend/data/octadesk-legacy-attachments/
 
 # WhatsApp auth cache
 backend/.wwebjs_auth/

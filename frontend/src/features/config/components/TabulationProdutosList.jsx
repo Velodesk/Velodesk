@@ -475,6 +475,11 @@ export default function TabulationProdutosList({ id, onChanged }) {
                   )}
                   <td>
                     <strong className="config-table__name">{item.produto}</strong>
+                    {item.apenasInterno && (
+                      <span className="config-table__badge" title="Não exibido na API de consulta do app externo">
+                        Apenas interno
+                      </span>
+                    )}
                   </td>
                   <td>{(item.motivos || []).length}</td>
                   {!orderEditMode && (

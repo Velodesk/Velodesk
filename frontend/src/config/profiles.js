@@ -130,6 +130,13 @@ export const NAV_ITEMS = [
     tooltip: 'Redes Sociais',
   },
   {
+    id: 'legado-octa',
+    path: '/legado-octa',
+    label: 'Legado Octa',
+    icon: 'ti-archive',
+    tooltip: 'Histórico Octadesk (somente consulta)',
+  },
+  {
     id: 'preferencias',
     path: '/preferencias',
     label: 'Preferências',

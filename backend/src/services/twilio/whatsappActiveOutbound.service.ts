@@ -16,6 +16,7 @@ import {
   type WhatsAppOutboundResult,
 } from './whatsappOutbound.service';
 import { buildWhatsAppOutboundMediaPublicUrlFromApiUrl } from './whatsappOutboundMedia.util';
+import { getTwilioClient, isTwilioConfigured } from './twilioClient.util';
 
 export const DEFAULT_DESK_INITIAL_TEMPLATE_TEXT = 'Estamos entrando em contato sobre sua solicitação.';
 
@@ -118,6 +119,81 @@ export function resolveWhatsAppDeskActiveContentSid(explicit?: string): string {
   return sid;
 }
 
+/**
+ * Template UTILITY separado pra saudação padrão do atendimento comum (sem texto livre do
+ * agente) — content_sid próprio porque um template aprovado pelo WhatsApp não pode ter o
+ * corpo editado depois; e como o corpo daqui não tem slot de texto livre (diferente do
+ * DESK_ACTIVE_WHATSAPP_TEMPLATE_TWILIO_BODY, usado pelos módulos de casos especiais), reusar
+ * o mesmo content_sid quebraria a saudação customizada por órgão.
+ */
+export const DESK_STANDARD_WHATSAPP_TEMPLATE_TWILIO_BODY = [
+  'Olá {{1}}, aqui é o Velotax.',
+  'Eu sou {{2}} e irei realizar o atendimento referente ao seu chamado {{3}}!',
+  'Responda esta mensagem para continuarmos o atendimento.',
+].join('\n');
+
+export function buildDeskStandardTemplateBody(variables: Record<string, string>): string {
+  const name = String(variables['1'] ?? 'Cliente').trim() || 'Cliente';
+  const agent = String(variables['2'] ?? 'Atendimento Velotax').trim() || 'Atendimento Velotax';
+  const protocol = String(variables['3'] ?? '—').trim() || '—';
+  return [
+    `Olá ${name}, aqui é o Velotax.`,
+    `Eu sou ${agent} e irei realizar o atendimento referente ao seu chamado ${protocol}!`,
+    'Responda esta mensagem para continuarmos o atendimento.',
+  ].join('\n');
+}
+
+export function buildDeskStandardTemplateVariables(
+  chamado: IChamadoN1,
+  dados: IClienteDados | null,
+  agentName?: string,
+): Record<string, string> {
+  return {
+    1: resolveTemplateClientName(chamado, dados),
+    2: String(agentName ?? '').trim() || 'Atendimento Velotax',
+    3: resolveProtocol(chamado),
+  };
+}
+
+export function resolveWhatsAppDeskStandardContentSid(explicit?: string): string {
+  return String(explicit ?? env.twilioWhatsappDeskStandardContentSid ?? '').trim();
+}
+
+/**
+ * O template padrão novo (desk_atendimento_padrao_v1) foi submetido pra aprovação do WhatsApp
+ * e pode ainda não ter sido aprovado pela Meta — nesse caso o Twilio rejeita o envio. Em vez de
+ * travar a comunicação, checamos o status aprovado antes de usar (cache curto pra não bater na
+ * API do Twilio a cada mensagem) e caímos de volta pro template já aprovado (casos especiais,
+ * com o resumo padrão) enquanto a aprovação não sai.
+ */
+let standardTemplateApprovalCache: { approved: boolean; checkedAt: number } | null = null;
+const STANDARD_TEMPLATE_APPROVAL_CACHE_MS = 5 * 60 * 1000;
+
+export async function isDeskStandardTemplateApproved(): Promise<boolean> {
+  const sid = resolveWhatsAppDeskStandardContentSid();
+  if (!sid || !isTwilioConfigured()) return false;
+
+  const now = Date.now();
+  if (standardTemplateApprovalCache && now - standardTemplateApprovalCache.checkedAt < STANDARD_TEMPLATE_APPROVAL_CACHE_MS) {
+    return standardTemplateApprovalCache.approved;
+  }
+
+  try {
+    const client = getTwilioClient();
+    const res = await client.request({
+      method: 'get',
+      uri: `https://content.twilio.com/v1/Content/${sid}/ApprovalRequests`,
+    });
+    const approved = res.body?.whatsapp?.status === 'approved';
+    standardTemplateApprovalCache = { approved, checkedAt: now };
+    return approved;
+  } catch (err) {
+    console.warn('[whatsapp-active-outbound] falha ao checar aprovação do template padrão — usando fallback', (err as Error).message);
+    standardTemplateApprovalCache = { approved: false, checkedAt: now };
+    return false;
+  }
+}
+
 export async function sendWhatsAppForChamado(
   chamado: IChamadoN1,
   options: SendWhatsAppForChamadoOptions,
@@ -144,6 +220,7 @@ export async function sendWhatsAppForChamado(
     || (!options.forceSession && !sessionOpen);
 
   let rawText = String(options.text ?? '').trim();
+  const hasCustomText = Boolean(rawText);
   const attachmentUrls = resolveAttachmentsForTwilio(options.attachments);
   if (!rawText && !attachmentUrls.length && useTemplate) {
     rawText = DEFAULT_DESK_INITIAL_TEMPLATE_TEXT;
@@ -179,18 +256,33 @@ export async function sendWhatsAppForChamado(
     return { sent: false, reason: 'Texto da mensagem é obrigatório', sessionOpen };
   }
 
-  const contentSid = resolveWhatsAppDeskActiveContentSid(options.contentSid);
+  // Sem texto livre custom (agente não digitou nada) — mensagem padrão do atendimento comum,
+  // com template próprio (nome do responsável + protocolo), não o de casos especiais. Só usa
+  // o template novo se ele já estiver aprovado pelo WhatsApp; senão cai no antigo (já aprovado)
+  // pra não travar o envio enquanto a aprovação não sai.
+  const useStandardTemplate = !hasCustomText
+    && !options.contentSid
+    && !options.contentVariables
+    && await isDeskStandardTemplateApproved();
+
+  const contentSid = useStandardTemplate
+    ? resolveWhatsAppDeskStandardContentSid()
+    : resolveWhatsAppDeskActiveContentSid(options.contentSid);
   if (!contentSid) {
     return {
       sent: false,
-      reason: 'TWILIO_WHATSAPP_DESK_ACTIVE_CONTENT_SID ausente — necessário para mensagem ativa',
+      reason: useStandardTemplate
+        ? 'TWILIO_WHATSAPP_DESK_STANDARD_CONTENT_SID ausente — necessário para mensagem padrão de atendimento'
+        : 'TWILIO_WHATSAPP_DESK_ACTIVE_CONTENT_SID ausente — necessário para mensagem ativa',
       mode: 'template',
       sessionOpen: false,
     };
   }
 
   const contentVariables = options.contentVariables
-    ?? buildDeskActiveTemplateVariables(chamado, dados, rawText);
+    ?? (useStandardTemplate
+      ? buildDeskStandardTemplateVariables(chamado, dados, options.agentName)
+      : buildDeskActiveTemplateVariables(chamado, dados, rawText));
 
   const result = await sendWhatsAppTemplateMessage({
     to: destination,
@@ -198,7 +290,9 @@ export async function sendWhatsAppForChamado(
     contentVariables,
   });
 
-  const renderedBody = buildDeskActiveTemplateBody(contentVariables);
+  const renderedBody = useStandardTemplate
+    ? buildDeskStandardTemplateBody(contentVariables)
+    : buildDeskActiveTemplateBody(contentVariables);
 
   return {
     ...result,

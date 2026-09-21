@@ -21,6 +21,7 @@ export default function CgTicketSide({
   finalized = false,
   onClassificacaoDraftChange,
   onCgItemUpdated,
+  initialMessagePrompt,
 }) {
   if (!cgItem) return null;
 
@@ -54,6 +55,7 @@ export default function CgTicketSide({
           saving={saving}
           disabled={disabled}
           finalized={finalized}
+          initialMessagePrompt={initialMessagePrompt}
         />
       </div>
     </aside>

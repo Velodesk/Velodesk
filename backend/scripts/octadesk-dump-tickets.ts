@@ -1,9 +1,14 @@
 /**
- * octadesk-dump-tickets.ts v1.0.0
- * Passada A — lista todos os tickets Octadesk → legado_tickets.importados_octadesk
+ * octadesk-dump-tickets.ts v1.1.0
+ * Passada A — lista tickets Octadesk dos últimos N meses (default 18) →
+ * legado_tickets.importados_octadesk. Usa GET /search com filtro openDate
+ * (API v1) em vez de paginar /tickets inteiro — evita reprocessar os
+ * >100 mil tickets completos (causa do estouro de armazenamento anterior).
  *
  * Uso:
  *   npx tsx scripts/octadesk-dump-tickets.ts
+ *   npx tsx scripts/octadesk-dump-tickets.ts --since-months=12
+ *   npx tsx scripts/octadesk-dump-tickets.ts --from=2026-08-01 --to=2026-09-01
  *   npx tsx scripts/octadesk-dump-tickets.ts --max-pages=5
  *   npx tsx scripts/octadesk-dump-tickets.ts --reset-checkpoint
  */
@@ -24,9 +29,18 @@ import {
 const PASS = 'passA-tickets';
 const LIMIT = 100;
 
+function sinceDateIso(sinceMonths: number): string {
+  const d = new Date();
+  d.setUTCMonth(d.getUTCMonth() - sinceMonths);
+  return d.toISOString().slice(0, 10);
+}
+
 async function main(): Promise<void> {
   requireOctadeskApiKey();
   const maxPages = Number(parseArg('max-pages') || '0') || 0;
+  const sinceMonths = Number(parseArg('since-months') || '12') || 12;
+  const openDateFrom = parseArg('from') || sinceDateIso(sinceMonths);
+  const openDateTo = parseArg('to') || '';
   const db = await connectLegadoTickets();
   const col = importadosCol(db);
 
@@ -44,7 +58,10 @@ async function main(): Promise<void> {
   let totalItems: number | null = null;
   let totalPages: number | null = null;
 
-  console.log(`[passA] iniciando em page=${page} limit=${LIMIT}`);
+  console.log(
+    `[passA] iniciando em page=${page} limit=${LIMIT} createdAt>=${openDateFrom}`
+    + (openDateTo ? ` createdAt<${openDateTo}` : ` (${sinceMonths} meses)`),
+  );
 
   while (true) {
     if (maxPages > 0 && pagesDone >= maxPages) {
@@ -52,7 +69,13 @@ async function main(): Promise<void> {
       break;
     }
 
-    const path = `/tickets?page=${page}&limit=${LIMIT}&sort[property]=number&sort[direction]=asc`;
+    // GET /tickets/search e GET /search não existem neste gateway (testado contra a API
+    // real — ambos devolvem 404). O filtro de data funciona via filters[] em GET /tickets,
+    // com createdAt (openDate não é uma propriedade válida — testado, retorna 400).
+    const path = `/tickets?page=${page}&limit=${LIMIT}`
+      + `&filters[0][property]=createdAt&filters[0][operator]=ge&filters[0][value]=${openDateFrom}`
+      + (openDateTo ? `&filters[1][property]=createdAt&filters[1][operator]=lt&filters[1][value]=${openDateTo}` : '')
+      + `&sort[property]=number&sort[direction]=asc`;
     const res = await octadeskFetch(path);
     if (res.status < 200 || res.status >= 300) {
       throw new Error(`[passA] HTTP ${res.status}: ${res.text.slice(0, 400)}`);
@@ -60,7 +83,6 @@ async function main(): Promise<void> {
 
     totalItems = headerInt(res.headers, 'X-Total-Items') ?? totalItems;
     totalPages = headerInt(res.headers, 'X-Total-Pages') ?? totalPages;
-    const nextPage = String(res.headers.get('X-Next-Page') || '').toLowerCase() === 'true';
 
     const list = Array.isArray(res.body) ? (res.body as Record<string, unknown>[]) : [];
     if (!list.length) {
@@ -101,7 +123,7 @@ async function main(): Promise<void> {
     pagesDone += 1;
     page += 1;
 
-    if (!nextPage && (totalPages == null || page > totalPages)) {
+    if (list.length < LIMIT) {
       await setCheckpoint(db, PASS, {
         page,
         done: true,
@@ -109,7 +131,7 @@ async function main(): Promise<void> {
         totalPages,
         finishedAt: new Date(),
       });
-      console.log('[passA] sem próxima página — concluído');
+      console.log('[passA] última página (batch < take) — concluído');
       break;
     }
   }
