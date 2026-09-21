@@ -37,6 +37,11 @@ export function getGmailWatchStateModel(): Model<IGmailWatchState> {
 }
 
 export async function findGmailWatchSingleton() {
+  return findGmailWatchStateByKey(env.gmailWatchStateDocumentId);
+}
+
+/** `configKey` diferente por mailbox permite mais de um watch (ex.: mailbox legado em transição). */
+export async function findGmailWatchStateByKey(configKey: string) {
   const Model = getGmailWatchStateModel();
-  return Model.findOne({ configKey: env.gmailWatchStateDocumentId }).lean().exec();
+  return Model.findOne({ configKey }).lean().exec();
 }

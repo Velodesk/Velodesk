@@ -8,6 +8,7 @@ import { loadMailPrioritySubjectRules } from './mailPrioritySubjectRules.service
 import {
   ensureGmailWatchFresh,
   setupGmailWatch,
+  setupLegacyGmailWatch,
   startGmailWatchRenewalLoop,
 } from './gmail/gmailWatch.service';
 import { ensureInboundAttachmentDir } from './inboundAttachmentStorage.service';
@@ -53,7 +54,7 @@ async function trySetupGmailWatchWithRetries(): Promise<void> {
     const result = await setupGmailWatch();
     if (result) {
       console.log(`[emailBootstrap] Gmail watch ativo na tentativa ${attempt}/${WATCH_SETUP_MAX_ATTEMPTS}`);
-      return;
+      break;
     }
 
     if (attempt < WATCH_SETUP_MAX_ATTEMPTS) {
@@ -61,10 +62,19 @@ async function trySetupGmailWatchWithRetries(): Promise<void> {
         `[emailBootstrap] watch falhou — nova tentativa em ${WATCH_SETUP_RETRY_MS / 1000}s (${attempt}/${WATCH_SETUP_MAX_ATTEMPTS})`,
       );
       await new Promise((resolve) => setTimeout(resolve, WATCH_SETUP_RETRY_MS));
+    } else {
+      console.error('[emailBootstrap] Gmail watch não ativado após todas as tentativas');
     }
   }
 
-  console.error('[emailBootstrap] Gmail watch não ativado após todas as tentativas');
+  if (env.gmailLegacyInboundEnabled) {
+    const legacyResult = await setupLegacyGmailWatch();
+    if (legacyResult) {
+      console.log('[emailBootstrap] Gmail watch legado ativo (mailbox em transição, somente inbound)');
+    } else {
+      console.error('[emailBootstrap] Gmail watch legado não ativado — verifique GMAIL_LEGACY_DELEGATED_USER_EMAIL');
+    }
+  }
 }
 
 export async function bootstrapEmailServices(): Promise<void> {

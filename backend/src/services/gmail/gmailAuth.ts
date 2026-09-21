@@ -9,7 +9,15 @@ import {
 export const GMAIL_SCOPE_SEND = 'https://www.googleapis.com/auth/gmail.send';
 export const GMAIL_SCOPE_READONLY = 'https://www.googleapis.com/auth/gmail.readonly';
 
-export async function createGmailClient(scopes: string[]): Promise<gmail_v1.Gmail> {
+/**
+ * `delegatedUserEmail` sobrescreve o subject do JWT — usado pelo watch do mailbox legado
+ * (suporte@velotax.com.br), que autentica como outro usuário via a mesma service account
+ * com domain-wide delegation, sem tocar no snapshot de outbound.
+ */
+export async function createGmailClient(
+  scopes: string[],
+  delegatedUserEmail?: string,
+): Promise<gmail_v1.Gmail> {
   if (!isEmailTransportReady()) {
     throw new Error('Gmail API não configurado em desk_config.email_transport');
   }
@@ -17,11 +25,12 @@ export async function createGmailClient(scopes: string[]): Promise<gmail_v1.Gmai
   const snap = getEmailTransportSnapshot();
   if (!snap) throw new Error('Snapshot de email transport ausente');
 
+  const subject = (delegatedUserEmail || snap.delegatedUserEmail).trim().toLowerCase();
   const auth = new google.auth.JWT({
     email: snap.serviceAccountJson.client_email,
     key: snap.serviceAccountJson.private_key,
     scopes,
-    subject: snap.delegatedUserEmail,
+    subject,
   });
   await auth.authorize();
 
