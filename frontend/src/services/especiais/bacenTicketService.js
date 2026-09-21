@@ -5,7 +5,7 @@ import { clientsApi, ticketsApi, boxesApi, reclamacoesApi } from '../../api/clie
 import { mapClienteDocToContact } from '../../api/adapters/clienteAdapter';
 import { apiTicketToCockpit, adaptColumnsFromApi } from '../../api/adapters/ticketAdapter';
 import { getAgentName } from '../clientDb';
-import { toWhatsAppChatIdDigits } from '../desk/utils';
+import { buildWhatsAppConvMsgs, toWhatsAppChatIdDigits } from '../desk/utils';
 import { createWorkflowState, getWorkflowTemplateById } from '../desk/workflowEngine';
 import { BC_STATUS } from './bacenData';
 import { applyTicketStatusToEspeciaisItem } from './especiaisGroupKey';
@@ -289,6 +289,24 @@ export async function sendBcWaMessage(ticketId, text, ticket) {
   });
   const raw = await ticketsApi.get(ticketId);
   return apiTicketToCockpit(raw);
+}
+
+/**
+ * true assim que o agente enviar a 1ª mensagem via WhatsApp — critério é específico do canal
+ * WhatsApp (não considera mensagens registradas públicas/internas de outros canais).
+ */
+export function bcTicketHasAgentReply(ticket) {
+  return buildWhatsAppConvMsgs(ticket).some((msg) => msg.type === 'agent' && String(msg.text || '').trim());
+}
+
+/**
+ * Saudação inicial padrão do time de Bacen — vira o {{3}} do template WhatsApp aprovado
+ * (DESK_ACTIVE_WHATSAPP_TEMPLATE_TWILIO_BODY), que já cobre "Olá {nome}, aqui é o Velotax."
+ * e "Referente ao seu chamado {protocolo}:" — por isso não repete nome nem protocolo.
+ */
+export function buildBcInitialGreetingMessage({ agentName }) {
+  const agente = String(agentName || '').trim() || 'Atendimento Velotax';
+  return `Tudo bem? Me chamo ${agente} e sou especialista no atendimento de demandas Bacen, no Velotax. Podemos conversar por aqui?`;
 }
 
 export async function publishBcPublicResponse(ticketId, text) {

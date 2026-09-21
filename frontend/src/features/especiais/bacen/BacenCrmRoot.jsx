@@ -9,7 +9,15 @@ import { useNotifications } from '../../../context/NotificationContext';
 import { useBcNovaDemandaModals } from '../../../hooks/useBcNovaDemandaModals';
 import { BC_GROUPS } from '../../../services/especiais/bacenData';
 import { loadDemandas, searchDemandasFromApi } from '../../../services/especiais/bacenStore';
-import { fetchBcTicketView, loadBacenTicketsFromApi } from '../../../services/especiais/bacenTicketService';
+import {
+  bcTicketHasAgentReply,
+  buildBcInitialGreetingMessage,
+  fetchBcTicketView,
+  loadBacenTicketsFromApi,
+  sendBcWaMessage,
+} from '../../../services/especiais/bacenTicketService';
+import { isInitialMessageAnswered, markInitialMessageAnswered } from '../../../services/especiais/initialMessagePrompt';
+import { getAgentName } from '../../../services/clientDb';
 import { useEspeciaisTicketCommit } from '../shared/useEspeciaisTicketCommit';
 import { useEspeciaisDualSearch } from '../shared/useEspeciaisDualSearch';
 import BcQueuePanel from './BcQueuePanel';
@@ -72,6 +80,8 @@ export default function BacenCrmRoot() {
   const [internalText, setInternalText] = useState('');
   const [composeAttachments, setComposeAttachments] = useState([]);
   const [classificacaoDraft, setClassificacaoDraft] = useState({ produto: '', motivo: '' });
+  const [initialMessageBusy, setInitialMessageBusy] = useState(false);
+  const [initialMessageAnsweredLocally, setInitialMessageAnsweredLocally] = useState(false);
 
   const allItems = useMemo(() => {
     if (isRemoteSearch && remoteItems) return remoteItems;
@@ -104,7 +114,7 @@ export default function BacenCrmRoot() {
     return items;
   }, [allItems, activeGroup, activeSort, listSearchDraft, isRemoteSearch]);
 
-  const reloadTicket = useCallback(async () => {
+  const reloadTicket = useCallback(async (silent = false) => {
     if (!id) {
       setBcItem(null);
       setTicket(null);
@@ -113,7 +123,7 @@ export default function BacenCrmRoot() {
       return;
     }
 
-    setTicketLoading(true);
+    if (!silent) setTicketLoading(true);
     setRedirectTo(null);
     try {
       const view = await fetchBcTicketView(id);
@@ -138,8 +148,9 @@ export default function BacenCrmRoot() {
       if (view.bcItem.groupKey) {
         setActiveGroup(view.bcItem.groupKey);
       }
-      setTicketLoading(false);
+      if (!silent) setTicketLoading(false);
     } catch {
+      if (silent) return;
       showNotification('Não foi possível carregar o ticket.', 'error');
       setBcItem(null);
       setTicket(null);
@@ -147,9 +158,15 @@ export default function BacenCrmRoot() {
     }
   }, [id, showNotification]);
 
+  // listVersion sobe tanto por navegação real (troca de ticket) quanto por sincronizações de
+  // fundo (mensagem WhatsApp enviada, salvar/finalizar) — só a primeira precisa do spinner de
+  // tela cheia; as demais devem atualizar os dados sem re-exibir "Carregando ticket...".
+  const lastLoadedIdRef = useRef(null);
   useEffect(() => {
-    reloadTicket();
-  }, [reloadTicket, listVersion]);
+    const isSameTicket = lastLoadedIdRef.current === id;
+    lastLoadedIdRef.current = id;
+    reloadTicket(isSameTicket);
+  }, [reloadTicket, listVersion, id]);
 
   useEffect(() => {
     setWaChatOpen(false);
@@ -159,6 +176,7 @@ export default function BacenCrmRoot() {
     setInternalText('');
     setComposeAttachments([]);
     setClassificacaoDraft({ produto: '', motivo: '' });
+    setInitialMessageAnsweredLocally(false);
   }, [id]);
 
   const composeSession = useMemo(() => ({
@@ -232,6 +250,32 @@ export default function BacenCrmRoot() {
   const handleCloseChat = useCallback(() => {
     setWaChatOpen(false);
   }, []);
+
+  const showInitialMessagePrompt = Boolean(bcItem?.ticketId)
+    && !initialMessageAnsweredLocally
+    && !isInitialMessageAnswered('Bc', bcItem?.ticketId)
+    && !bcTicketHasAgentReply(ticket);
+
+  const handleSendInitialMessage = useCallback(async () => {
+    const ticketId = bcItem?.ticketId;
+    if (!ticketId) return;
+
+    setInitialMessageBusy(true);
+    try {
+      const text = buildBcInitialGreetingMessage({
+        agentName: getAgentName(),
+      });
+      const updated = await sendBcWaMessage(ticketId, text, ticket);
+      if (updated) setTicket(updated);
+      markInitialMessageAnswered('Bc', ticketId);
+      setInitialMessageAnsweredLocally(true);
+      showNotification('Mensagem inicial enviada ao cliente.', 'success');
+    } catch {
+      showNotification('Não foi possível enviar a mensagem.', 'error');
+    } finally {
+      setInitialMessageBusy(false);
+    }
+  }, [bcItem?.ticketId, ticket, showNotification]);
 
   const handleQueueCollapse = useCallback((collapsed) => {
     setQueueCollapsed(collapsed);
@@ -315,6 +359,9 @@ export default function BacenCrmRoot() {
         finalized={finalized}
         onClassificacaoDraftChange={handleClassificacaoDraftChange}
         onBcItemUpdated={handleBcItemUpdated}
+        initialMessagePrompt={showInitialMessagePrompt
+          ? { onSend: handleSendInitialMessage, busy: initialMessageBusy }
+          : null}
       />
 
       {demandaModals}

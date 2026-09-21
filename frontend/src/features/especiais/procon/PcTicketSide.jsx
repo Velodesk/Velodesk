@@ -29,6 +29,7 @@ export default function PcTicketSide({
   finalized = false,
   onClassificacaoDraftChange,
   onPcItemUpdated,
+  initialMessagePrompt,
 }) {
   if (!pcItem) return null;
 
@@ -107,6 +108,7 @@ export default function PcTicketSide({
           saving={saving}
           disabled={disabled}
           finalized={finalized}
+          initialMessagePrompt={initialMessagePrompt}
         />
       </div>
     </aside>
