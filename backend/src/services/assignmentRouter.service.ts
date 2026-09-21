@@ -1,9 +1,9 @@
-/** assignmentRouter.service v1.5.0 — responsável gravado só como nome/alias (nunca login/e-mail) */
+/** assignmentRouter.service v1.6.0 — checagem de online por e-mail (não mais por nome de exibição) */
 import { env } from '../config/env';
 import type { AuthPayload } from '../middleware/auth';
 import { ChamadoN1 } from '../models/ChamadoN1';
 import type { IChamadoN1 } from '../models/ChamadoN1';
-import { listOnlineEligiblePresenceKeys } from './agentPresence.service';
+import { listOnlineEligibleEmails } from './agentPresence.service';
 import { listAgentesDeskLive } from './agenteDesk.service';
 import { listColaboradoresDesk } from './colaboradoresCadastro.service';
 import { loadParticipanteOverrides } from './roletaParticipantes.service';
@@ -348,26 +348,23 @@ async function loadRoletaPoolAgents(): Promise<RoletaPoolAgent[]> {
 }
 
 async function loadOnlineEligibleAgents(): Promise<Array<{ responsavel: string; candidates: string[] }>> {
-  const [onlineKeys, agentes, overrides] = await Promise.all([
-    listOnlineEligiblePresenceKeys(),
+  const [onlineEmails, agentes, overrides] = await Promise.all([
+    listOnlineEligibleEmails(),
     loadRoletaPoolAgents(),
     loadParticipanteOverrides(),
   ]);
 
-  const onlineSet = new Set(onlineKeys.map((key) => key.toLowerCase()));
   const agents: Array<{ responsavel: string; candidates: string[] }> = [];
 
   for (const agente of agentes) {
     if (!agentEligibleForRoletaPool(agente, overrides)) continue;
+    if (!onlineEmails.has(String(agente.email ?? '').trim().toLowerCase())) continue;
 
     const responsavel = provisionalResponsavelFromUser({
       name: agente.colaboradorNome,
       email: agente.email,
     });
     if (!responsavel) continue;
-
-    const responsavelKey = responsavel.toLowerCase();
-    if (!onlineSet.has(responsavelKey)) continue;
 
     agents.push({
       responsavel,
@@ -438,8 +435,8 @@ function agentMatchesFuncaoSlug(
 }
 
 async function resolveFuncaoEspecialAgent(funcaoSlug: string): Promise<AssignmentResult | null> {
-  const [onlineKeys, agentes, countByResponsavel] = await Promise.all([
-    listOnlineEligiblePresenceKeys(),
+  const [onlineEmails, agentes, countByResponsavel] = await Promise.all([
+    listOnlineEligibleEmails(),
     loadRoletaPoolAgents(),
     aggregateRoletaOpenCounts(),
   ]);
@@ -448,14 +445,9 @@ async function resolveFuncaoEspecialAgent(funcaoSlug: string): Promise<Assignmen
   const eligible = agentes.filter((agente) => agentMatchesFuncaoSlug(agente, slug));
   if (eligible.length === 0) return null;
 
-  const onlineSet = new Set(onlineKeys.map((key) => key.toLowerCase()));
-  const onlineEligible = eligible.filter((agente) => {
-    const responsavel = provisionalResponsavelFromUser({
-      name: agente.colaboradorNome,
-      email: agente.email,
-    });
-    return responsavel && onlineSet.has(responsavel.toLowerCase());
-  });
+  const onlineEligible = eligible.filter((agente) => (
+    onlineEmails.has(String(agente.email ?? '').trim().toLowerCase())
+  ));
 
   const poolSource = onlineEligible.length > 0 ? onlineEligible : eligible;
   const agents = poolSource.map((agente) => {
