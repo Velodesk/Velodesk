@@ -116,9 +116,17 @@ export const env = {
   twilioWhatsappContentSid: (
     process.env.TWILIO_WHATSAPP_CONTENT_SID || 'HXb5b62575e6e4ff6129ad7c8efe1f983e'
   ).trim(),
-  /** Template UTILITY — 1º contato / fora da janela 24h (Desk ativo) */
+  /** Template UTILITY — 1º contato / fora da janela 24h (Desk ativo, texto livre casos especiais) */
   twilioWhatsappDeskActiveContentSid: (
     process.env.TWILIO_WHATSAPP_DESK_ACTIVE_CONTENT_SID || 'HXcbba12297392a996aeaf60af3e05ccc4'
+  ).trim(),
+  /**
+   * Template UTILITY — saudação padrão do atendimento comum (sem texto livre do agente).
+   * Submetido pra aprovação WhatsApp em 2026-09-21 (status inicial: received) — pode ainda não
+   * estar aprovado; enquanto isso, mensagens sem texto custom falham com sid ausente/rejeitado.
+   */
+  twilioWhatsappDeskStandardContentSid: (
+    process.env.TWILIO_WHATSAPP_DESK_STANDARD_CONTENT_SID || 'HXccf021eb57cbce842debd32c66c94d54'
   ).trim(),
   whatsappInboundEnabled: process.env.WHATSAPP_INBOUND_ENABLED !== 'false',
   /** Resposta automática TwiML ao inbound — vazio = só registra no ticket, sem mensagem ao cliente */
