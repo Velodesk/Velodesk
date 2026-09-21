@@ -110,6 +110,33 @@ export async function listOnlineEligiblePresenceKeys(): Promise<string[]> {
   )];
 }
 
+/**
+ * E-mails (login) de quem está online agora — usar isto para checar elegibilidade da roleta,
+ * NUNCA `listOnlineEligiblePresenceKeys`/responsavelKey para esse fim: responsavelKey é o
+ * e-mail local-part ("camila.goncalves"), mas o pool da roleta identifica cada agente pelo
+ * NOME de exibição resolvido ("Camila Gonçalves") — os dois formatos nunca coincidem, o que
+ * fazia loadOnlineEligibleAgents/resolveFuncaoEspecialAgent nunca encontrar ninguém online de
+ * verdade (roleta automática efetivamente nunca atribuía, mesmo com gente logada). E-mail é o
+ * único identificador estável e já presente nos dois lados (presence.email e agente.email).
+ */
+export async function listOnlineEligibleEmails(): Promise<Set<string>> {
+  const Model = getAgentPresenceModel();
+  const cutoff = new Date(Date.now() - env.assignmentRouterPresenceTtlMs);
+  const docs = await Model.find({
+    online: true,
+    lastSeenAt: { $gte: cutoff },
+    email: { $ne: '' },
+  })
+    .select('email')
+    .lean();
+
+  return new Set(
+    docs
+      .map((doc) => String(doc.email ?? '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
 export async function isAgentOnlineByResponsavelKey(responsavelKey: string): Promise<boolean> {
   const key = String(responsavelKey ?? '').trim().toLowerCase();
   if (!key) return false;
