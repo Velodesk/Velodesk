@@ -42,7 +42,7 @@ function TicketRows({
   if (!tickets.length) {
     return (
       <tr>
-        <td colSpan={mergeEnabled ? 6 : 5} className="client360-empty-cell">
+        <td colSpan={mergeEnabled ? 7 : 6} className="client360-empty-cell">
           Nenhum ticket nesta seção.
         </td>
       </tr>
@@ -112,6 +112,7 @@ function TicketRows({
         <td>{getTicketTitle(t)}</td>
         <td>{t.lateralForm?.canal || t.channel || t.source || '—'}</td>
         <td>{getTicketStatusLabel(t.status)}</td>
+        <td>{t.responsibleAgent || t.lateralForm?.responsavel || '—'}</td>
         <td>{formatTableDate(t.updatedAt || t.createdAt)}</td>
       </tr>
     );
@@ -325,6 +326,7 @@ export default function ClientTicketHistoryModal({
               <th>Assunto</th>
               <th>Canal</th>
               <th>Status</th>
+              <th>Agente</th>
               <th>Data</th>
             </tr>
           </thead>

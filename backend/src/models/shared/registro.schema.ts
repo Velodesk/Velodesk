@@ -38,6 +38,9 @@ export interface ITabulacao {
   tipoChamado: string;
   produto: string;
   motivo: string;
+  /** Motivo 2/3 — tabulações adicionais só usadas hoje por Bacen e Consumidor.gov. */
+  motivo2?: string;
+  motivo3?: string;
   detalhe: string;
   canal: string;
   responsavel: string;
@@ -49,6 +52,8 @@ export const TabulacaoSchema = new Schema<ITabulacao>(
     tipoChamado: { type: String, default: '' },
     produto: { type: String, default: '' },
     motivo: { type: String, default: '' },
+    motivo2: { type: String, default: '' },
+    motivo3: { type: String, default: '' },
     detalhe: { type: String, default: '' },
     canal: { type: String, default: '' },
     responsavel: { type: String, default: '' },

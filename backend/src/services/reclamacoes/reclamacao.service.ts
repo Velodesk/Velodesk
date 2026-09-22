@@ -247,6 +247,8 @@ function buildReclamacaoPayload(
     produto: String(meta.produto ?? tab.produto ?? '').trim() || undefined,
     tipo: String(meta.tipo ?? tab.tipoChamado ?? (tab as { classificacaoTipo?: string }).classificacaoTipo ?? '').trim() || undefined,
     motivo: String(meta.motivo ?? tab.motivo ?? '').trim() || undefined,
+    motivo2: String(meta.motivo2 ?? tab.motivo2 ?? '').trim() || undefined,
+    motivo3: String(meta.motivo3 ?? tab.motivo3 ?? '').trim() || undefined,
     statusCanal: String(
       meta.statusPc
       ?? meta.statusGov
@@ -410,6 +412,8 @@ export async function syncFromChamado(chamado: IChamadoN1): Promise<IReclamacao 
     // o item na fila (a tela lê de reclamacoes_*, que ficava com o valor antigo/vazio).
     produto: String(tab.produto ?? existing.produto ?? '').trim() || undefined,
     motivo: String(tab.motivo ?? existing.motivo ?? '').trim() || undefined,
+    motivo2: String(tab.motivo2 ?? existing.motivo2 ?? '').trim() || undefined,
+    motivo3: String(tab.motivo3 ?? existing.motivo3 ?? '').trim() || undefined,
     workflowAtivo: Boolean(chamado.workflow?.active),
     workflowId: chamado.workflow?.workflowId ?? existing.workflowId,
     workflow: buildReclamacaoWorkflowSnapshot(chamado) ?? existing.workflow,
@@ -779,6 +783,8 @@ export function reclamacaoToPortalDto(doc: IReclamacao): Record<string, unknown>
     produto: doc.produto,
     tipo: doc.tipo,
     motivo: doc.motivo,
+    motivo2: doc.motivo2,
+    motivo3: doc.motivo3,
     dataReclamacao: doc.dataReclamacao,
     // Alias pro campo genérico acima — Procon/Consumidor.gov/Bacen exibem e editam essa data
     // como "dataDemanda" no front (CgDadosFields/BcDadosFields); sem isto, o PATCH grava em
@@ -867,7 +873,7 @@ export async function patchReclamacao(
   const allowed: Partial<IReclamacao> = {};
   const scalarFields = [
     'statusCanal', 'prazoLegal', 'atendente', 'responsavel', 'aberta',
-    'protocoloExterno', 'idDemandaExterna', 'slaPct', 'motivo', 'produto', 'assunto',
+    'protocoloExterno', 'idDemandaExterna', 'slaPct', 'motivo', 'motivo2', 'motivo3', 'produto', 'assunto',
     'dataReclamacao', 'ticketStatus',
   ] as const;
 

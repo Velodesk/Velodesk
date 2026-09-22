@@ -112,7 +112,7 @@ export function classifyConsultaStatusLabel(label) {
   return 'pending';
 }
 
-function pickPrimaryContract(contracts) {
+export function pickPrimaryContract(contracts) {
   if (!contracts.length) return null;
   const nonCanceled = contracts.filter(
     (c) => classifyConsultaStatusLabel(c.contractStatusLabel || c.contractStatus) !== 'canceled',

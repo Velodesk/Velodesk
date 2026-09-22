@@ -741,6 +741,39 @@ body.velodesk-dark #velodeskDeskV2Root .crm-consultas__empty {
     color: var(--velo-dark-text-muted);
 }
 
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-nav-item,
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-workspace__semrelacao,
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-detail {
+    background: var(--velo-dark-surface);
+    border-color: var(--velo-dark-border);
+}
+
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-nav-item.is-active {
+    background: var(--velo-dark-surface-hover);
+}
+
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-detail__metric {
+    background: var(--velo-dark-surface-inset);
+    border-color: var(--velo-dark-border);
+}
+
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-detail__title {
+    color: var(--velo-dark-accent);
+}
+
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-nav-item__title,
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-detail__metric span,
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-detail__timeline-label {
+    color: var(--velo-dark-text);
+}
+
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-nav-item__meta,
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-detail__eyebrow,
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-detail__note,
+body.velodesk-dark #velodeskDeskV2Root .crm-consultas-workspace__semrelacao-toggle {
+    color: var(--velo-dark-text-muted);
+}
+
 body.velodesk-dark #velodeskDeskV2Root .crm-note-card {
     background: var(--velo-dark-surface);
     border-color: var(--velo-dark-border);

@@ -19,6 +19,7 @@ import {
   isTicketReadOnly,
 } from '../../../services/desk/utils';
 import { saveEspeciaisTicketContact } from './especiaisSaveContact';
+import { formatDateBr } from '../../../utils/dateTimeBr';
 
 export default function EspeciaisDeskTicketView({
   ticket,
@@ -152,6 +153,9 @@ export default function EspeciaisDeskTicketView({
           </div>
           <div className="tabs-top__status-group">
             <TicketFusaoStatusControls ticket={ticket} />
+            <span className="tabs-top__opened-at">
+              Aberto em {formatDateBr(ticket?.createdAt)}
+            </span>
             <span className={'status-badge tabs-top__status status-badge--' + statusClass}>
               {statusLabel}
             </span>

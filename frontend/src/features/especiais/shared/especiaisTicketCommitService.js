@@ -101,12 +101,15 @@ export function buildEspeciaisCommitPayload(ticket, session, { finalize = false,
     ? lf[config.metaKey]
     : {};
 
-  // Inclui classificação (produto/motivo) do draft se presente
+  // Inclui classificação (produto/motivo/motivo2/motivo3) do draft se presente — motivo2/3 só
+  // existem hoje em Bacen e Consumidor.gov (BcClassificacaoFields/CgClassificacaoFields)
   const classificacaoDraft = session?.classificacaoDraft;
   const updatedMeta = {
     ...existingMeta,
     ...(classificacaoDraft?.produto ? { produto: classificacaoDraft.produto } : {}),
     ...(classificacaoDraft?.motivo ? { motivo: classificacaoDraft.motivo } : {}),
+    ...(classificacaoDraft?.motivo2 ? { motivo2: classificacaoDraft.motivo2 } : {}),
+    ...(classificacaoDraft?.motivo3 ? { motivo3: classificacaoDraft.motivo3 } : {}),
   };
 
   if (finalize) {
@@ -121,6 +124,8 @@ export function buildEspeciaisCommitPayload(ticket, session, { finalize = false,
     ...(apiLf[config.metaKey] && typeof apiLf[config.metaKey] === 'object' ? apiLf[config.metaKey] : {}),
     ...(classificacaoDraft?.produto ? { produto: classificacaoDraft.produto } : {}),
     ...(classificacaoDraft?.motivo ? { motivo: classificacaoDraft.motivo } : {}),
+    ...(classificacaoDraft?.motivo2 ? { motivo2: classificacaoDraft.motivo2 } : {}),
+    ...(classificacaoDraft?.motivo3 ? { motivo3: classificacaoDraft.motivo3 } : {}),
   };
   if (finalize) {
     apiUpdatedMeta[config.statusField] = config.respondidaStatus;
@@ -130,8 +135,12 @@ export function buildEspeciaisCommitPayload(ticket, session, { finalize = false,
   // O backend valida a tabulação a partir de lateralForm.produto/motivo no nível raiz
   // (chamado.tabulacao), não do bag aninhado por canal acima — sem isto, o Salvar falha
   // com "Preencha a tabulação" mesmo com produto/motivo do RA/Procon/Bacen/CG preenchidos.
+  // motivo2/motivo3 não são obrigatórios (assertTabulacaoForStatus só valida o motivo
+  // principal), mas seguem pro mesmo nível raiz pra serem persistidos em chamado.tabulacao.
   if (classificacaoDraft?.produto) apiLf.produto = classificacaoDraft.produto;
   if (classificacaoDraft?.motivo) apiLf.motivo = classificacaoDraft.motivo;
+  if (classificacaoDraft?.motivo2) apiLf.motivo2 = classificacaoDraft.motivo2;
+  if (classificacaoDraft?.motivo3) apiLf.motivo3 = classificacaoDraft.motivo3;
 
   return {
     payload: {

@@ -5,9 +5,8 @@
 import React from 'react';
 import useCustomerConsulta from '../../../hooks/useCustomerConsulta';
 import { getClientContactFields } from '../../../services/desk/utils';
-import { CONSULTA_PRODUCT_SLUGS } from '../../../services/desk/consultaFormatters';
 import ConsultaOverviewSummary from './ConsultaOverviewSummary';
-import ConsultaProductCard from './ConsultaProductCard';
+import ConsultaProductWorkspace from './ConsultaProductWorkspace';
 
 export default function DeskConsultasPanel({ ticket, client, active = false }) {
   const contact = getClientContactFields(ticket, client);
@@ -16,9 +15,7 @@ export default function DeskConsultasPanel({ ticket, client, active = false }) {
     data,
     error,
     refreshing,
-    productLoading,
     reload,
-    loadProduct,
   } = useCustomerConsulta({ ticket, client, active });
 
   const ticketKey = String(ticket?.id || ticket?._id || ticket?.protocolo || '');
@@ -108,28 +105,15 @@ export default function DeskConsultasPanel({ ticket, client, active = false }) {
             contactName={contact.name}
           />
 
-          <section className="crm-consultas__products" aria-label="Produtos do cliente">
-            <h3 className="crm-consultas__section-title">
-              Produtos ({CONSULTA_PRODUCT_SLUGS.length})
-            </h3>
-            <div className="crm-consultas__products-grid">
-              {CONSULTA_PRODUCT_SLUGS.map((slug) => (
-                <ConsultaProductCard
-                  key={`${ticketKey}-${slug}`}
-                  slug={slug}
-                  entry={data.products?.[slug]}
-                  isTicketProduct={data.ticketProductSlug === slug}
-                  loading={Boolean(productLoading[slug])}
-                  onLoad={loadProduct}
-                />
-              ))}
-            </div>
-          </section>
+          <ConsultaProductWorkspace
+            key={ticketKey}
+            data={data}
+          />
 
           {data.errors?.length ? (
             <p className="crm-consultas__analise" role="status">
               <i className="ti ti-info-circle" aria-hidden="true" />
-              Alguns produtos não puderam ser carregados. Expanda o card do produto ou atualize a consulta.
+              Alguns produtos não puderam ser carregados. Atualize a consulta para tentar novamente.
             </p>
           ) : null}
 

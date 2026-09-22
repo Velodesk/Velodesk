@@ -13,11 +13,15 @@ export default function BcClassificacaoFields({ bcItem, onClassificacaoDraftChan
   const [motivos, setMotivos] = useState(BC_MOTIVOS);
   const [produtoDraft, setProdutoDraft] = useState(bcItem?.produto || '');
   const [motivoDraft, setMotivoDraft] = useState(bcItem?.motivo || '');
+  const [motivo2Draft, setMotivo2Draft] = useState(bcItem?.motivo2 || '');
+  const [motivo3Draft, setMotivo3Draft] = useState(bcItem?.motivo3 || '');
   const produtoOptions = getProdutoNames();
 
   useEffect(() => {
     setProdutoDraft(bcItem?.produto || '');
     setMotivoDraft(bcItem?.motivo || '');
+    setMotivo2Draft(bcItem?.motivo2 || '');
+    setMotivo3Draft(bcItem?.motivo3 || '');
   }, [bcItem?.id]);
 
   useEffect(() => {
@@ -38,13 +42,18 @@ export default function BcClassificacaoFields({ bcItem, onClassificacaoDraftChan
   if (!bcItem) return null;
 
   const handleFieldChange = (field, value) => {
-    if (field === 'produto') {
-      setProdutoDraft(value);
-      onClassificacaoDraftChange?.({ produto: value, motivo: motivoDraft });
-    } else if (field === 'motivo') {
-      setMotivoDraft(value);
-      onClassificacaoDraftChange?.({ produto: produtoDraft, motivo: value });
-    }
+    const next = {
+      produto: produtoDraft,
+      motivo: motivoDraft,
+      motivo2: motivo2Draft,
+      motivo3: motivo3Draft,
+      [field]: value,
+    };
+    if (field === 'produto') setProdutoDraft(value);
+    else if (field === 'motivo') setMotivoDraft(value);
+    else if (field === 'motivo2') setMotivo2Draft(value);
+    else if (field === 'motivo3') setMotivo3Draft(value);
+    onClassificacaoDraftChange?.(next);
   };
 
   const produtos = produtoOptions.length ? produtoOptions : [];
@@ -81,6 +90,38 @@ export default function BcClassificacaoFields({ bcItem, onClassificacaoDraftChan
         ))}
         {motivoDraft && !motivoList.includes(motivoDraft) ? (
           <option value={motivoDraft}>{motivoDraft}</option>
+        ) : null}
+      </select>
+
+      <label htmlFor="bc-classificacao-motivo2">Motivo 2</label>
+      <select
+        id="bc-classificacao-motivo2"
+        className="ra-registro__select"
+        value={motivo2Draft}
+        onChange={(e) => handleFieldChange('motivo2', e.target.value)}
+      >
+        <option value="">Selecionar</option>
+        {motivoList.map((motivo) => (
+          <option key={motivo} value={motivo}>{motivo}</option>
+        ))}
+        {motivo2Draft && !motivoList.includes(motivo2Draft) ? (
+          <option value={motivo2Draft}>{motivo2Draft}</option>
+        ) : null}
+      </select>
+
+      <label htmlFor="bc-classificacao-motivo3">Motivo 3</label>
+      <select
+        id="bc-classificacao-motivo3"
+        className="ra-registro__select"
+        value={motivo3Draft}
+        onChange={(e) => handleFieldChange('motivo3', e.target.value)}
+      >
+        <option value="">Selecionar</option>
+        {motivoList.map((motivo) => (
+          <option key={motivo} value={motivo}>{motivo}</option>
+        ))}
+        {motivo3Draft && !motivoList.includes(motivo3Draft) ? (
+          <option value={motivo3Draft}>{motivo3Draft}</option>
         ) : null}
       </select>
     </section>

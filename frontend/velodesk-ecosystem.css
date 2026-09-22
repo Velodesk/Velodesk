@@ -14367,7 +14367,9 @@ body.desk-v2-mode #aiChatbotModal {
 }
 
 label[for$="-classificacao-produto"],
-label[for$="-classificacao-motivo"] {
+label[for$="-classificacao-motivo"],
+label[for$="-classificacao-motivo2"],
+label[for$="-classificacao-motivo3"] {
     display: block;
     margin-bottom: 0.15rem;
     font-size: 0.72rem;
@@ -14377,7 +14379,9 @@ label[for$="-classificacao-motivo"] {
     color: #64748b;
 }
 
-label[for$="-classificacao-motivo"] {
+label[for$="-classificacao-motivo"],
+label[for$="-classificacao-motivo2"],
+label[for$="-classificacao-motivo3"] {
     margin-top: 0.3rem;
 }
 

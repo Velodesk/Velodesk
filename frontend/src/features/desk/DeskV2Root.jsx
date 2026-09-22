@@ -137,6 +137,7 @@ import WorkflowComunicacaoModal from '../workflow/components/WorkflowComunicacao
 import { replyWorkflowComunicacao } from '../../services/workflow/workflowDecisionHandlers';
 import deskPlatformTrace, { createPlatformTraceCounter } from '../../utils/deskPlatformTrace';
 import { hasPublicThreadChanged, hasWhatsAppThreadChanged, hasPersistedInternalNotesChanged, buildPublicThreadFingerprint } from '../../services/desk/ticketThreadSync';
+import { formatDateBr } from '../../utils/dateTimeBr';
 import { hasAtendimentoFuncao } from '../../services/desk/atuacaoVision';
 import { attachmentScanStatusesChanged, ticketHasPendingAttachmentScan } from '../../services/desk/attachmentPreview';
 
@@ -2618,6 +2619,9 @@ export default function DeskV2Root() {
               </div>
               <div className="tabs-top__status-group">
                 <TicketFusaoStatusControls ticket={ticket} onOpenChild={openMergedChildTicket} />
+                <span className="tabs-top__opened-at">
+                  Aberto em {formatDateBr(ticket?.createdAt)}
+                </span>
                 <span className={'status-badge tabs-top__status status-badge--' + ticketStatus.cls}>
                   {ticketStatus.label}
                 </span>

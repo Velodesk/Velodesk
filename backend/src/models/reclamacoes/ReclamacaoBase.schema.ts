@@ -106,6 +106,9 @@ export interface IReclamacao extends Document {
   produto?: string;
   tipo?: string;
   motivo?: string;
+  /** Motivo 2/3 — tabulações adicionais só usadas hoje por Bacen e Consumidor.gov. */
+  motivo2?: string;
+  motivo3?: string;
   statusCanal: string;
   // Denormalizado do ChamadoN1 vinculado — a listagem/patch desta coleção não faz join com
   // chamados_n1, então sem isto o front não sabe se o ticket está terminal (resolvido/fechado)
@@ -227,6 +230,8 @@ export const ReclamacaoBaseSchema = new Schema<IReclamacao>(
     produto: { type: String, default: '' },
     tipo: { type: String, default: '' },
     motivo: { type: String, default: '' },
+    motivo2: { type: String, default: '' },
+    motivo3: { type: String, default: '' },
     statusCanal: { type: String, default: 'nao-respondida' },
     ticketStatus: { type: String, default: '' },
     dataReclamacao: { type: Date, default: undefined },
