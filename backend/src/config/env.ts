@@ -116,9 +116,17 @@ export const env = {
   twilioWhatsappContentSid: (
     process.env.TWILIO_WHATSAPP_CONTENT_SID || 'HXb5b62575e6e4ff6129ad7c8efe1f983e'
   ).trim(),
-  /** Template UTILITY — 1º contato / fora da janela 24h (Desk ativo) */
+  /** Template UTILITY — 1º contato / fora da janela 24h (Desk ativo, texto livre casos especiais) */
   twilioWhatsappDeskActiveContentSid: (
     process.env.TWILIO_WHATSAPP_DESK_ACTIVE_CONTENT_SID || 'HXcbba12297392a996aeaf60af3e05ccc4'
+  ).trim(),
+  /**
+   * Template UTILITY — saudação padrão do atendimento comum (sem texto livre do agente).
+   * Submetido pra aprovação WhatsApp em 2026-09-21 (status inicial: received) — pode ainda não
+   * estar aprovado; enquanto isso, mensagens sem texto custom falham com sid ausente/rejeitado.
+   */
+  twilioWhatsappDeskStandardContentSid: (
+    process.env.TWILIO_WHATSAPP_DESK_STANDARD_CONTENT_SID || 'HXccf021eb57cbce842debd32c66c94d54'
   ).trim(),
   whatsappInboundEnabled: process.env.WHATSAPP_INBOUND_ENABLED !== 'false',
   /** Resposta automática TwiML ao inbound — vazio = só registra no ticket, sem mensagem ao cliente */
@@ -164,6 +172,12 @@ export const env = {
   octadeskApiKey: (process.env.OCTADESK_API_KEY || '').trim(),
   octadeskAgentEmail: (process.env.OCTADESK_AGENT_EMAIL || '').trim(),
   mongoLegadoTicketsDbName: (process.env.MONGODB_LEGADO_TICKETS_DB_NAME || 'legado_tickets').trim(),
+  /** Cluster dedicado e separado do Velodesk — só tickets legados do módulo "Legado Octa" */
+  // Cluster de prod (velodesk-crm) — decisão explícita do usuário após o cluster dedicado
+  // M0 (MONGODB_LEGACY) não aguentar o churn de staging mesmo processando mês a mês.
+  // Banco/collection próprios (legado_octa/tickets), isolados dos bancos de produção reais.
+  mongoLegacyOctaUri: (process.env.MONGODB_LEGADO_OCTA_URI || '').trim(),
+  mongoLegacyOctaDbName: (process.env.MONGODB_LEGACY_OCTA_DB_NAME || 'legado_octa').trim(),
   inboundAttachmentsDir: (process.env.INBOUND_ATTACHMENTS_DIR || '').trim(),
   sentAttachmentsDir: (process.env.SENT_ATTACHMENTS_DIR || '').trim(),
   inboundEmailEnabled: process.env.INBOUND_EMAIL_ENABLED === 'true',
@@ -210,6 +224,17 @@ export const env = {
   gmailInboundMaxMessagesPerPush: parseInt(process.env.GMAIL_INBOUND_MAX_MESSAGES_PER_PUSH || '8', 10),
   /** Orçamento de tempo por push antes de devolver 503 (Pub/Sub reentrega) */
   gmailInboundBudgetMs: parseInt(process.env.GMAIL_INBOUND_BUDGET_MS || '50000', 10),
+  /**
+   * Mailbox legado em watch somente-inbound durante a virada de e-mail oficial
+   * (ex.: suporte@velotax.com.br mantido só para receber respostas de tickets antigos,
+   * enquanto envio e novos tickets passam a usar o e-mail definitivo). Usa a mesma
+   * service account com domain-wide delegation do transporte principal, apenas com
+   * outro subject/mailbox — nunca envia, nunca vira defaultFromEmail.
+   */
+  gmailLegacyInboundEnabled: process.env.GMAIL_LEGACY_INBOUND_ENABLED === 'true',
+  gmailLegacyDelegatedUserEmail: (process.env.GMAIL_LEGACY_DELEGATED_USER_EMAIL || '').trim().toLowerCase(),
+  gmailLegacyWatchStateDocumentId:
+    process.env.GMAIL_LEGACY_WATCH_STATE_DOCUMENT_ID || 'desk_gmail_watch_legacy',
   /** @deprecated use desk_config.email_transport Gmail API */
   emailFrom: process.env.EMAIL_FROM || '',
   /** @deprecated use desk_config.email_transport Gmail API */

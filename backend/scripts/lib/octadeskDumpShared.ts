@@ -1,4 +1,8 @@
-/** octadeskDumpShared v1.0.2 — conexão sem ensureIndexes (cluster com escrita bloqueada) */
+/**
+ * octadeskDumpShared v1.1.0 — staging movido para o cluster dedicado (MONGODB_LEGACY),
+ * nunca mais para o velodesk-dev (cluster compartilhado, causou "over space quota" real
+ * em produção ao rodar o dump completo — ver histórico da migração).
+ */
 import mongoose, { Connection, Collection, Db } from 'mongoose';
 import { env } from '../../src/config/env';
 import { MONGO_DRIVER_OPTIONS } from '../../src/config/mongoUri';
@@ -61,8 +65,9 @@ export async function connectLegadoTickets(
     return legadoConnection.db;
   }
 
-  const mongoUri = String(env.mongoUri || '').trim();
-  if (!mongoUri) throw new Error('MONGODB_URI ausente');
+  // Cluster dedicado do módulo Legado Octa (MONGODB_LEGACY) — nunca o velodesk-dev principal.
+  const mongoUri = String(env.mongoLegacyOctaUri || '').trim();
+  if (!mongoUri) throw new Error('MONGODB_LEGADO_OCTA_URI ausente — defina no backend/.env.');
 
   const { uri: atlasUri } = await resolveAtlasSrvUri(mongoUri);
   legadoConnection = mongoose.createConnection(atlasUri, {

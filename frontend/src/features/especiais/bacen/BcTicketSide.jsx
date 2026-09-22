@@ -21,6 +21,7 @@ export default function BcTicketSide({
   finalized = false,
   onClassificacaoDraftChange,
   onBcItemUpdated,
+  initialMessagePrompt,
 }) {
   if (!bcItem) return null;
 
@@ -54,6 +55,7 @@ export default function BcTicketSide({
           saving={saving}
           disabled={disabled}
           finalized={finalized}
+          initialMessagePrompt={initialMessagePrompt}
         />
       </div>
     </aside>

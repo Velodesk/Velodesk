@@ -1,5 +1,6 @@
 /** index v1.17.0 — e-mails de saída configuráveis */
 import express from 'express';
+import 'express-async-errors';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -56,6 +57,7 @@ import consultasRoutes from './routes/consultas.routes';
 import ticketSearchRoutes from './routes/ticketSearch.routes';
 import ticketFusaoRoutes from './routes/ticketFusao.routes';
 import reclamacoesRoutes from './routes/reclamacoes.routes';
+import legadoOctaRoutes from './routes/legadoOcta.routes';
 import internalAttachmentScanRoutes from './routes/internalAttachmentScan.routes';
 import reclameAquiHugmeRoutes from './routes/reclameAquiHugme.routes';
 import processosRoutes from './routes/processos.routes';
@@ -217,6 +219,7 @@ app.use('/api/consultas', consultasRoutes);
 app.use('/api/ticket-search', ticketSearchRoutes);
 app.use('/api/ticket-fusao', ticketFusaoRoutes);
 app.use('/api/reclamacoes', reclamacoesRoutes);
+app.use('/api/legado-octa', legadoOctaRoutes);
 app.use('/api/reclame-aqui/hugme', reclameAquiHugmeRoutes);
 app.use('/api/processos', processosRoutes);
 app.use('/api/csat', csatRoutes);

@@ -58,6 +58,7 @@ import ReclameAquiChannelPage from '../features/especiais/ReclameAquiChannelPage
 import ProconChannelPage from '../features/especiais/ProconChannelPage';
 import ConsumidorGovChannelPage from '../features/especiais/ConsumidorGovChannelPage';
 import BacenChannelPage from '../features/especiais/BacenChannelPage';
+import LegadoOctaChannelPage from '../features/legado-octa/LegadoOctaChannelPage';
 import CasoEspecialDetailPage from '../features/workspace/components/gestaoDetail/CasoEspecialDetailPage';
 import AiUsageDetailPage from '../features/workspace/components/gestaoDetail/AiUsageDetailPage';
 import CsatDetailPage from '../features/workspace/components/gestaoDetail/CsatDetailPage';
@@ -119,6 +120,8 @@ function AppRoutes() {
             { path: 'especiais/bacen/*', element: React.createElement(BacenChannelPage) },
 
             { path: 'especiais/:channelId', element: React.createElement(EspeciaisChannelPage) },
+
+            { path: 'legado-octa/*', element: React.createElement(LegadoOctaChannelPage) },
 
             { path: 'config', element: React.createElement(ConfigPage) },
 

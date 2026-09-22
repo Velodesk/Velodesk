@@ -16710,6 +16710,18 @@ input:checked + .slider:before {
     color: var(--primary-blue);
 }
 
+#config .config-tabulation .config-table__badge {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #92400e;
+    background: #fef3c7;
+    vertical-align: middle;
+}
+
 #config .config-list-editor {
     margin: 1rem 0;
 }

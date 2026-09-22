@@ -64,6 +64,16 @@ export default function Sidebar() {
       navigate(path);
       return;
     }
+    if (item.id === 'legado-octa') {
+      const mainContent = document.querySelector('.main-content');
+      if (mainContent) {
+        mainContent.classList.remove('tickets-active');
+        mainContent.style.background = 'transparent';
+      }
+      window.syncMainSidebarNav?.(item.id);
+      navigate(path);
+      return;
+    }
     if (item.id === 'workflow-finalizados') {
       const mainContent = document.querySelector('.main-content');
       if (mainContent) {

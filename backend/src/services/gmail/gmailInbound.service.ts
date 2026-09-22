@@ -13,8 +13,10 @@ import {
   downloadGmailAttachments,
 } from './gmailAttachment.service';
 import {
-  getStoredHistoryId,
-  updateStoredHistoryId,
+  getStoredHistoryIdFor,
+  updateStoredHistoryIdFor,
+  getPrimaryWatchConfigKey,
+  getLegacyWatchTarget,
 } from './gmailWatch.service';
 import { getDelegatedUserEmail } from '../emailTransport.service';
 
@@ -63,9 +65,11 @@ function budgetExceeded(startedAt: number, workCount: number): boolean {
 
 export async function processGmailHistory(
   startHistoryId: string,
+  mailbox: string = getDelegatedUserEmail(),
+  configKey: string = getPrimaryWatchConfigKey(),
 ): Promise<GmailHistoryProcessResult> {
-  const gmail = await createGmailClient([GMAIL_SCOPE_READONLY]);
-  const delegated = getDelegatedUserEmail();
+  const gmail = await createGmailClient([GMAIL_SCOPE_READONLY], mailbox);
+  const delegated = mailbox;
   const results: InboundEmailProcessResult[] = [];
   let pageToken: string | undefined;
   let latestHistoryId = startHistoryId;
@@ -177,9 +181,10 @@ export async function processGmailHistory(
   }
 
   const nextHistoryId = hasMore ? cursorHistoryId : (latestHistoryId || cursorHistoryId);
-  const advanced = await updateStoredHistoryId(nextHistoryId);
+  const advanced = await updateStoredHistoryIdFor(configKey, nextHistoryId);
 
   console.info('[gmailInbound] history concluído', {
+    mailbox,
     startHistoryId,
     nextHistoryId,
     ponteiroAvancou: advanced,
@@ -191,6 +196,23 @@ export async function processGmailHistory(
   });
 
   return { results, hasMore, latestHistoryId };
+}
+
+/**
+ * Resolve para qual mailbox (principal ou legado) a notificação Pub/Sub pertence, a partir
+ * do `emailAddress` que o Gmail inclui no payload. O legado (ex.: suporte@velotax.com.br)
+ * fica em watch somente-inbound durante a transição — nunca é usado para envio.
+ */
+function resolveWatchTargetForNotification(emailAddress: string | undefined): {
+  mailbox: string;
+  configKey: string;
+} {
+  const normalized = (emailAddress || '').trim().toLowerCase();
+  const legacy = getLegacyWatchTarget();
+  if (legacy && normalized && normalized === legacy.mailbox) {
+    return { mailbox: legacy.mailbox, configKey: legacy.configKey };
+  }
+  return { mailbox: getDelegatedUserEmail(), configKey: getPrimaryWatchConfigKey() };
 }
 
 export async function handleGmailPubSubPush(
@@ -206,21 +228,25 @@ export async function handleGmailPubSubPush(
     return { processed: 0, results: [], hasMore: false };
   }
 
-  const stored = await getStoredHistoryId();
+  const { mailbox, configKey } = resolveWatchTargetForNotification(notification.emailAddress);
+  const stored = await getStoredHistoryIdFor(configKey);
   const startId = stored ?? String(notification.historyId);
 
   console.info('[gmailInbound] push recebido', {
+    emailAddress: notification.emailAddress ?? null,
+    mailbox,
     storedHistoryId: stored,
     notificationHistoryId: String(notification.historyId),
     startId,
   });
 
-  const { results, hasMore, expired } = await processGmailHistory(startId);
+  const { results, hasMore, expired } = await processGmailHistory(startId, mailbox, configKey);
 
   if (expired) {
     const target = String(notification.historyId);
-    const realigned = await updateStoredHistoryId(target);
+    const realigned = await updateStoredHistoryIdFor(configKey, target);
     console.warn('[gmailInbound] ponteiro realinhado após expiração do history', {
+      mailbox,
       de: startId,
       para: target,
       realigned,

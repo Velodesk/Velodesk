@@ -484,6 +484,13 @@ export const reclamacoesApi = {
     api.post('/reclamacoes/casos-especiais/por-cpf', { cpfs }).then((r) => r.data),
 };
 
+/** legado-octa — arquivo somente-consulta do histórico Octadesk (cluster dedicado) */
+export const legadoOctaApi = {
+  list: (params = {}) => api.get('/legado-octa/tickets', { params }).then((r) => r.data),
+  get: (octadeskNumber) =>
+    api.get(`/legado-octa/tickets/${encodeURIComponent(octadeskNumber)}`).then((r) => r.data),
+};
+
 /** reclame-aqui/hugme — base Hugme persistida no MongoDB */
 export const reclameAquiHugmeApi = {
   import: (file, modo = 'incremental') => {

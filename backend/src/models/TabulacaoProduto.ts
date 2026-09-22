@@ -19,6 +19,7 @@ export interface ITabulacaoProduto extends Document {
   produto: string;
   ordem: number;
   ativo: boolean;
+  apenasInterno: boolean;
   motivos: ITabulacaoMotivo[];
   updatedBy: string;
   createdAt: Date;
@@ -49,6 +50,7 @@ const TabulacaoProdutoSchema = new Schema<ITabulacaoProduto>(
     produto: { type: String, required: true },
     ordem: { type: Number, default: 0 },
     ativo: { type: Boolean, default: true },
+    apenasInterno: { type: Boolean, default: false },
     motivos: { type: [MotivoSchema], default: [] },
     updatedBy: { type: String, default: '' },
   },

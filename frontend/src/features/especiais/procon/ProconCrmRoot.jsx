@@ -9,7 +9,15 @@ import { useNotifications } from '../../../context/NotificationContext';
 import { usePcNovaDemandaModals } from '../../../hooks/usePcNovaDemandaModals';
 import { PC_GROUPS } from '../../../services/especiais/proconData';
 import { loadDemandas, searchDemandasFromApi } from '../../../services/especiais/proconStore';
-import { fetchPcTicketView, loadProconTicketsFromApi } from '../../../services/especiais/proconTicketService';
+import {
+  buildPcInitialGreetingMessage,
+  fetchPcTicketView,
+  loadProconTicketsFromApi,
+  pcTicketHasAgentReply,
+  sendPcWaMessage,
+} from '../../../services/especiais/proconTicketService';
+import { isInitialMessageAnswered, markInitialMessageAnswered } from '../../../services/especiais/initialMessagePrompt';
+import { getAgentName } from '../../../services/clientDb';
 import { useEspeciaisTicketCommit } from '../shared/useEspeciaisTicketCommit';
 import { useEspeciaisDualSearch } from '../shared/useEspeciaisDualSearch';
 import PcQueuePanel from './PcQueuePanel';
@@ -71,6 +79,8 @@ export default function ProconCrmRoot() {
   const [internalText, setInternalText] = useState('');
   const [composeAttachments, setComposeAttachments] = useState([]);
   const [classificacaoDraft, setClassificacaoDraft] = useState({ produto: '', motivo: '' });
+  const [initialMessageBusy, setInitialMessageBusy] = useState(false);
+  const [initialMessageAnsweredLocally, setInitialMessageAnsweredLocally] = useState(false);
 
   const allItems = useMemo(() => {
     if (isRemoteSearch && remoteItems) return remoteItems;
@@ -103,7 +113,7 @@ export default function ProconCrmRoot() {
     return items;
   }, [allItems, activeGroup, activeSort, listSearchDraft, isRemoteSearch]);
 
-  const reloadTicket = useCallback(async () => {
+  const reloadTicket = useCallback(async (silent = false) => {
     if (!id) {
       setPcItem(null);
       setTicket(null);
@@ -112,7 +122,7 @@ export default function ProconCrmRoot() {
       return;
     }
 
-    setTicketLoading(true);
+    if (!silent) setTicketLoading(true);
     setRedirectTo(null);
     try {
       const view = await fetchPcTicketView(id);
@@ -137,8 +147,9 @@ export default function ProconCrmRoot() {
       if (view.pcItem.groupKey) {
         setActiveGroup(view.pcItem.groupKey);
       }
-      setTicketLoading(false);
+      if (!silent) setTicketLoading(false);
     } catch {
+      if (silent) return;
       showNotification('Não foi possível carregar o ticket.', 'error');
       setPcItem(null);
       setTicket(null);
@@ -146,9 +157,15 @@ export default function ProconCrmRoot() {
     }
   }, [id, showNotification]);
 
+  // listVersion sobe tanto por navegação real (troca de ticket) quanto por sincronizações de
+  // fundo (mensagem WhatsApp enviada, salvar/finalizar) — só a primeira precisa do spinner de
+  // tela cheia; as demais devem atualizar os dados sem re-exibir "Carregando ticket...".
+  const lastLoadedIdRef = useRef(null);
   useEffect(() => {
-    reloadTicket();
-  }, [reloadTicket, listVersion]);
+    const isSameTicket = lastLoadedIdRef.current === id;
+    lastLoadedIdRef.current = id;
+    reloadTicket(isSameTicket);
+  }, [reloadTicket, listVersion, id]);
 
   useEffect(() => {
     setWaChatOpen(false);
@@ -158,6 +175,7 @@ export default function ProconCrmRoot() {
     setInternalText('');
     setComposeAttachments([]);
     setClassificacaoDraft({ produto: '', motivo: '' });
+    setInitialMessageAnsweredLocally(false);
   }, [id]);
 
   const composeSession = useMemo(() => ({
@@ -227,6 +245,32 @@ export default function ProconCrmRoot() {
   const handleCloseChat = useCallback(() => {
     setWaChatOpen(false);
   }, []);
+
+  const showInitialMessagePrompt = Boolean(pcItem?.ticketId)
+    && !initialMessageAnsweredLocally
+    && !isInitialMessageAnswered('Pc', pcItem?.ticketId)
+    && !pcTicketHasAgentReply(ticket);
+
+  const handleSendInitialMessage = useCallback(async () => {
+    const ticketId = pcItem?.ticketId;
+    if (!ticketId) return;
+
+    setInitialMessageBusy(true);
+    try {
+      const text = buildPcInitialGreetingMessage({
+        agentName: getAgentName(),
+      });
+      const updated = await sendPcWaMessage(ticketId, text, ticket);
+      if (updated) setTicket(updated);
+      markInitialMessageAnswered('Pc', ticketId);
+      setInitialMessageAnsweredLocally(true);
+      showNotification('Mensagem inicial enviada ao cliente.', 'success');
+    } catch {
+      showNotification('Não foi possível enviar a mensagem.', 'error');
+    } finally {
+      setInitialMessageBusy(false);
+    }
+  }, [pcItem?.ticketId, ticket, showNotification]);
 
   const handleQueueCollapse = useCallback((collapsed) => {
     setQueueCollapsed(collapsed);
@@ -307,6 +351,9 @@ export default function ProconCrmRoot() {
         finalized={finalized}
         onClassificacaoDraftChange={handleClassificacaoDraftChange}
         onPcItemUpdated={handlePcItemUpdated}
+        initialMessagePrompt={showInitialMessagePrompt
+          ? { onSend: handleSendInitialMessage, busy: initialMessageBusy }
+          : null}
       />
 
       {demandaModals}

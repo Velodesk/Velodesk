@@ -2,6 +2,7 @@
 import type { AuthPayload } from '../middleware/auth';
 import { env } from '../config/env';
 import { getAgentPresenceModel } from '../models/AgentPresence';
+import { isAllMongoReady, waitForMongoReady } from '../config/database';
 
 function emailLocalPart(email?: string): string {
   const normalized = String(email ?? '').trim().toLowerCase();
@@ -32,6 +33,7 @@ export function isPresenceStale(lastSeenAt?: Date | null): boolean {
 }
 
 export async function recordAgentHeartbeat(authUser: AuthPayload): Promise<PresenceHeartbeatResult> {
+  if (!isAllMongoReady()) await waitForMongoReady();
   const Model = getAgentPresenceModel();
   const email = normalizeEmail(authUser.email);
   const userId = String(authUser.userId ?? '').trim();
@@ -69,6 +71,7 @@ export async function recordAgentHeartbeat(authUser: AuthPayload): Promise<Prese
 }
 
 export async function recordAgentOffline(authUser: AuthPayload): Promise<void> {
+  if (!isAllMongoReady()) await waitForMongoReady();
   const Model = getAgentPresenceModel();
   const userId = String(authUser.userId ?? '').trim();
   if (!userId) return;
@@ -105,6 +108,33 @@ export async function listOnlineEligiblePresenceKeys(): Promise<string[]> {
       .map((doc) => String(doc.responsavelKey ?? '').trim().toLowerCase())
       .filter(Boolean),
   )];
+}
+
+/**
+ * E-mails (login) de quem está online agora — usar isto para checar elegibilidade da roleta,
+ * NUNCA `listOnlineEligiblePresenceKeys`/responsavelKey para esse fim: responsavelKey é o
+ * e-mail local-part ("camila.goncalves"), mas o pool da roleta identifica cada agente pelo
+ * NOME de exibição resolvido ("Camila Gonçalves") — os dois formatos nunca coincidem, o que
+ * fazia loadOnlineEligibleAgents/resolveFuncaoEspecialAgent nunca encontrar ninguém online de
+ * verdade (roleta automática efetivamente nunca atribuía, mesmo com gente logada). E-mail é o
+ * único identificador estável e já presente nos dois lados (presence.email e agente.email).
+ */
+export async function listOnlineEligibleEmails(): Promise<Set<string>> {
+  const Model = getAgentPresenceModel();
+  const cutoff = new Date(Date.now() - env.assignmentRouterPresenceTtlMs);
+  const docs = await Model.find({
+    online: true,
+    lastSeenAt: { $gte: cutoff },
+    email: { $ne: '' },
+  })
+    .select('email')
+    .lean();
+
+  return new Set(
+    docs
+      .map((doc) => String(doc.email ?? '').trim().toLowerCase())
+      .filter(Boolean),
+  );
 }
 
 export async function isAgentOnlineByResponsavelKey(responsavelKey: string): Promise<boolean> {
