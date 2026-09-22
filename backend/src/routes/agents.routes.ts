@@ -3,7 +3,7 @@
  * VERSION: v1.2.2 | DATE: 2026-08-07
  */
 import { Router, Request, Response } from 'express';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, authFromHeaderOrBody } from '../middleware/auth';
 import { supervisorMiddleware } from '../middleware/supervisor';
 import { env } from '../config/env';
 import { resolveOperadorDisplayNameForAuthEmail } from '../services/colaboradoresCadastro.service';
@@ -44,7 +44,7 @@ import {
 
 const router = Router();
 
-router.post('/presence/heartbeat', authMiddleware, async (req: Request, res: Response) => {
+router.post('/presence/heartbeat', authFromHeaderOrBody, async (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ success: false, error: 'Não autenticado' });
 
   try {
@@ -66,7 +66,7 @@ router.post('/presence/heartbeat', authMiddleware, async (req: Request, res: Res
   }
 });
 
-router.post('/presence/offline', authMiddleware, async (req: Request, res: Response) => {
+router.post('/presence/offline', authFromHeaderOrBody, async (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ success: false, error: 'Não autenticado' });
   try {
     await recordAgentOffline(req.user);
