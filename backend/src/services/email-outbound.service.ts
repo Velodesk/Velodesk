@@ -25,7 +25,7 @@ export interface OutboundEmailResult {
 }
 
 /** Throttle serializado: espaça os envios pra não estourar o rate limit do Gmail API. */
-const SEND_MIN_INTERVAL_MS = Number(process.env.EMAIL_SEND_MIN_INTERVAL_MS || 2000);
+const SEND_MIN_INTERVAL_MS = Number(process.env.EMAIL_SEND_MIN_INTERVAL_MS || 5000);
 let sendQueueTail: Promise<void> = Promise.resolve();
 let lastSendAt = 0;
 

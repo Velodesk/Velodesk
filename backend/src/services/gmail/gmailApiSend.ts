@@ -180,22 +180,6 @@ export function buildRawRfc822({
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-const RATE_LIMIT_RETRY_DELAYS_MS = [1_000, 3_000, 8_000];
-
-function isRateLimitError(err: unknown): boolean {
-  const anyErr = err as { code?: number; response?: { status?: number }; message?: string };
-  const status = anyErr?.code ?? anyErr?.response?.status;
-  if (status === 429 || status === 403) {
-    const message = String(anyErr?.message || '');
-    if (/rate limit exceeded/i.test(message)) return true;
-  }
-  return /rate limit exceeded/i.test(String(anyErr?.message || ''));
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export async function sendViaGmailApi(
   authParams: GmailAuthParams,
   mail: GmailSendParams
@@ -226,20 +210,10 @@ export async function sendViaGmailApi(
     attachments: mail.attachments,
   });
 
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      await gmail.users.messages.send({
-        userId: 'me',
-        requestBody: { raw },
-      });
-      return { success: true };
-    } catch (err) {
-      const delay = RATE_LIMIT_RETRY_DELAYS_MS[attempt];
-      if (!isRateLimitError(err) || delay === undefined) {
-        throw err;
-      }
-      console.warn(`[gmailApiSend] rate limit — retry ${attempt + 1}/${RATE_LIMIT_RETRY_DELAYS_MS.length} em ${delay}ms`);
-      await sleep(delay);
-    }
-  }
+  await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: { raw },
+  });
+
+  return { success: true };
 }
