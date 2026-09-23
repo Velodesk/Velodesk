@@ -24,6 +24,21 @@ export interface OutboundEmailResult {
   reason?: string;
 }
 
+/** Throttle serializado: espaça os envios pra não estourar o rate limit do Gmail API. */
+const SEND_MIN_INTERVAL_MS = Number(process.env.EMAIL_SEND_MIN_INTERVAL_MS || 2000);
+let sendQueueTail: Promise<void> = Promise.resolve();
+let lastSendAt = 0;
+
+function throttleSend<T>(fn: () => Promise<T>): Promise<T> {
+  const scheduled = sendQueueTail.then(async () => {
+    const wait = Math.max(0, lastSendAt + SEND_MIN_INTERVAL_MS - Date.now());
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    lastSendAt = Date.now();
+  });
+  sendQueueTail = scheduled.catch(() => {});
+  return scheduled.then(fn);
+}
+
 export function buildProtocolSubject(protocolo: string, _titulo?: string): string {
   return buildClientEmailSubject(protocolo, false);
 }
@@ -56,22 +71,24 @@ export async function sendOutboundEmail(payload: OutboundEmailPayload): Promise<
   }
 
   try {
-    await sendViaGmailApi(
-      {
-        serviceAccountJson: snap.serviceAccountJson,
-        delegatedUserEmail: snap.delegatedUserEmail,
-      },
-      {
-        from: getEffectiveFromAddress(),
-        to,
-        subject: payload.subject,
-        html: payload.html ?? wrapTextAsHtml(payload.text),
-        messageId: payload.headers?.messageId,
-        inReplyTo: payload.headers?.inReplyTo,
-        references: payload.headers?.references,
-        inlineImages: payload.inlineImages,
-        attachments: payload.attachments,
-      }
+    await throttleSend(() =>
+      sendViaGmailApi(
+        {
+          serviceAccountJson: snap.serviceAccountJson,
+          delegatedUserEmail: snap.delegatedUserEmail,
+        },
+        {
+          from: getEffectiveFromAddress(),
+          to,
+          subject: payload.subject,
+          html: payload.html ?? wrapTextAsHtml(payload.text),
+          messageId: payload.headers?.messageId,
+          inReplyTo: payload.headers?.inReplyTo,
+          references: payload.headers?.references,
+          inlineImages: payload.inlineImages,
+          attachments: payload.attachments,
+        }
+      )
     );
     return { sent: true };
   } catch (err) {
