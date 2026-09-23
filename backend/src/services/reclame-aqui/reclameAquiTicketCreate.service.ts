@@ -340,11 +340,22 @@ export async function upsertRaTicketFromSource(
   }
 
   const payload = buildTicketPayloadFromRaSource(sourced, author);
-  // O status do registro (currentStatus/box do ticket) vem do 2º parâmetro aqui, não de
-  // payload.status — sem passar o status real, todo ticket nasceria "novo" (fila aberta),
-  // mesmo o histórico já encerrado na plataforma RA (só "Status Hugme"=Novo continua aberto).
-  const partial = await createChamadoFromBody(payload, mapTicketStatusFromHugme(source.statusHugme || ''));
+  // Sempre cria com status "novo" — createChamadoFromBody usa o 2º parâmetro pra decidir se
+  // exige tabulação completa (assertTabulacaoForStatus), e boa parte da base histórica do RA
+  // nunca teve produto/motivo classificados no Desk mesmo já estando fechada na plataforma RA.
+  // Passar "resolvido" aqui bloquearia a importação dessas linhas com "Preencha a tabulação".
+  const partial = await createChamadoFromBody(payload, 'novo');
   const chamado = await ChamadoN1.create(partial) as IChamadoN1;
+
+  // Ajusta o status real do registro DEPOIS da criação, sem passar pela validação de
+  // tabulação (que é para ações de agente ao vivo, não para reidratar histórico já encerrado).
+  const ticketStatus = mapTicketStatusFromHugme(source.statusHugme || '');
+  if (ticketStatus === 'resolvido' && chamado.registro?.length) {
+    chamado.registro[chamado.registro.length - 1].status = 'resolvido';
+    chamado.markModified('registro');
+    await chamado.save();
+  }
+
   const reclamacao = await persistRaReclamacao(chamado, sourced, origemEntrada, {
     route: origemEntrada !== 'hugme-import',
   });
