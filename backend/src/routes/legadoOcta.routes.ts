@@ -121,8 +121,11 @@ router.get('/whatsapp/:id', async (req, res: Response<unknown, { user?: AuthPayl
   const Model = getWhatsappLegadoOctaModel();
 
   const id = String(req.params.id || '');
-  const filter = Types.ObjectId.isValid(id) ? { _id: id } : { octadeskRoomId: id };
-  const conversa = await Model.findOne(filter).lean();
+  // octadeskRoomId vem do _id original do Octadesk — também tem formato de ObjectId,
+  // então não dá pra distinguir por shape; tenta os dois campos.
+  const orClauses: Record<string, unknown>[] = [{ octadeskRoomId: id }];
+  if (Types.ObjectId.isValid(id)) orClauses.push({ _id: id });
+  const conversa = await Model.findOne({ $or: orClauses }).lean();
   if (!conversa) {
     return res.status(404).json({ message: 'Conversa legada não encontrada' });
   }

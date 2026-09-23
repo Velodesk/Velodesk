@@ -32,13 +32,20 @@ export default function LegadoOctaWhatsappListPage() {
       const digits = raw.replace(/\D/g, '');
       const params = { page: targetPage, pageSize };
       if (digits.length === 11) {
+        // Ambíguo: CPF e telefone com DDD têm o mesmo tamanho — tenta CPF primeiro
+        // (não há conversa nesse ramo com esse telefone quando o CPF não bate).
         params.cpf = digits;
       } else if (digits.length >= 10) {
         params.phone = digits;
       } else {
         params.protocolo = raw;
       }
-      const data = await legadoOctaApi.listWhatsapp(params);
+      let data = await legadoOctaApi.listWhatsapp(params);
+      if (!data.total && params.cpf) {
+        delete params.cpf;
+        params.phone = digits;
+        data = await legadoOctaApi.listWhatsapp(params);
+      }
       setItems(data.items || []);
       setTotal(data.total || 0);
       setPage(targetPage);

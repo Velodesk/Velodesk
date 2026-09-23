@@ -12,6 +12,18 @@ function formatDateTime(value) {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('pt-BR');
 }
 
+// O conteúdo bruto do Octadesk vem com marcação HTML (<p>, <br>, etc.) em boa parte das
+// mensagens — sem editor rico aqui, então converte pra texto simples preservando quebras de linha.
+function plainTextContent(html) {
+  const withBreaks = String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+  const div = document.createElement('div');
+  div.innerHTML = withBreaks;
+  return (div.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export default function LegadoOctaWhatsappDetailPage() {
   const { id } = useParams();
   const [conversa, setConversa] = useState(null);
@@ -66,7 +78,7 @@ export default function LegadoOctaWhatsappDetailPage() {
               <div style={{ fontSize: 11, fontWeight: 600, color: '#666', marginBottom: 2 }}>
                 {m.authorName || (m.isAgent ? 'Atendimento' : 'Cliente')}
               </div>
-              <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+              <div style={{ whiteSpace: 'pre-wrap' }}>{plainTextContent(m.content)}</div>
               <div style={{ fontSize: 10, color: '#999', textAlign: 'right', marginTop: 4 }}>
                 {formatDateTime(m.dateCreation)}
               </div>
