@@ -1,4 +1,5 @@
-/** assignmentRouter.service v1.6.0 — checagem de online por e-mail (não mais por nome de exibição) */
+/** assignmentRouter.service v1.7.0 — estratégia round_robin (ASSIGNMENT_ROUTER_STRATEGY) pro pool genérico */
+import mongoose from 'mongoose';
 import { env } from '../config/env';
 import type { AuthPayload } from '../middleware/auth';
 import { ChamadoN1 } from '../models/ChamadoN1';
@@ -378,7 +379,64 @@ async function loadOnlineEligibleAgents(): Promise<Array<{ responsavel: string; 
   return agents;
 }
 
+const ROLETA_RODIZIO_SEQUENCE_ID = 'roletaRodizioGenerico';
+
+function sequenceCountersCollection() {
+  return mongoose.connection.collection<{ _id: string; contador: number }>('sequence_counters');
+}
+
+/**
+ * Mesmo padrão atômico já usado pra protocolo de ticket (ver protocolo.service.ts:45-57) —
+ * findOneAndUpdate com $inc é uma operação indivisível no documento: duas chamadas concorrentes
+ * NUNCA recebem o mesmo valor de volta, o motor de armazenamento serializa. É isso que garante
+ * que dois tickets em voo ao mesmo tempo não caiam na mesma posição da fila, diferente da leitura
+ * de carga de hoje (que lê antes de decidir, deixando uma janela).
+ */
+async function nextRoletaRodizioContador(): Promise<number> {
+  const updated = await sequenceCountersCollection().findOneAndUpdate(
+    { _id: ROLETA_RODIZIO_SEQUENCE_ID },
+    { $inc: { contador: 1 } },
+    { upsert: true, returnDocument: 'after' },
+  );
+  const contador = updated?.contador;
+  if (typeof contador !== 'number' || contador <= 0) {
+    throw new Error('Contador de rodízio da roleta indisponível');
+  }
+  return contador;
+}
+
+/**
+ * Estratégia round_robin (ASSIGNMENT_ROUTER_STRATEGY=round_robin) — só do pool genérico, nunca
+ * usada por função especial (essa continua só em pickLeastLoadedAgent/resolveFuncaoEspecialAgent).
+ * Sem teto/carga: a vez de cada um é decidida só pela posição na fila naquele instante, ordenada
+ * de forma estável (alfabética) pra o índice fazer sentido. A lista de quem está online é
+ * recalculada do zero a cada chamada (mesma loadOnlineEligibleAgents de sempre) — agente que sai
+ * simplesmente não entra na conta da próxima vez, agente que entra passa a contar a partir da
+ * próxima decisão, sem nenhuma reconciliação especial.
+ */
+async function pickRoundRobinAgent(
+  agents: Array<{ responsavel: string; candidates: string[] }>,
+): Promise<AssignmentResult> {
+  const ordenados = [...agents].sort((a, b) => a.responsavel.localeCompare(b.responsavel, 'pt-BR'));
+  const contador = await nextRoletaRodizioContador();
+  const posicao = contador % ordenados.length;
+  const escolhido = ordenados[posicao];
+
+  console.info(
+    `[assignmentRouter] rodízio responsavel=${escolhido.responsavel} posicao=${posicao}/${ordenados.length} contador=${contador}`
+  );
+
+  // carga não é rastreada nessa estratégia — 0 é só o valor de log em applyRoletaAssignment.
+  return { responsavel: escolhido.responsavel, carga: 0 };
+}
+
 export async function resolveLeastLoadedAgent(): Promise<AssignmentResult | null> {
+  if (env.assignmentRouterStrategy === 'round_robin') {
+    const agents = await loadOnlineEligibleAgents();
+    if (agents.length === 0) return null;
+    return pickRoundRobinAgent(agents);
+  }
+
   const [agents, countByResponsavel] = await Promise.all([
     loadOnlineEligibleAgents(),
     aggregateRoletaOpenCounts(),
