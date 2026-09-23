@@ -13,13 +13,14 @@ import {
 } from './chamado.mapper';
 
 const TZ = 'America/Sao_Paulo';
-const TERMINAL_STATUS_LIST = ['resolvido', 'cancelado', 'fechado'];
-const TERMINAL_STATUSES = new Set(TERMINAL_STATUS_LIST);
+// Data de resolução = quando o ticket foi marcado 'resolvido', não quando foi 'fechado'
+// (fechamento é apenas encerramento automático ~48h depois, sem relação com o SLA de resolução).
+const RESOLVED_STATUS = 'resolvido';
 
 /**
  * Expressões de agregação que espelham EXATAMENTE os helpers JS abaixo, para permitir
  * mover as contagens/somatórios para o MongoDB sem alterar os números entregues:
- * - `resolvedAtExpr`  === getResolvedAt (último registro terminal, na ordem do array)
+ * - `resolvedAtExpr`  === getResolvedAt (último registro com status 'resolvido', na ordem do array)
  * - `firstResponseExpr` === getFirstAgentResponseAt (1ª resposta pública do atendente)
  * - `lastStatusExpr`  === lastStatus (status do último registro, '' ou vazio => 'novo')
  */
@@ -29,7 +30,7 @@ const resolvedAtExpr = {
     initialValue: null,
     in: {
       $cond: [
-        { $in: ['$$this.status', TERMINAL_STATUS_LIST] },
+        { $eq: ['$$this.status', RESOLVED_STATUS] },
         '$$this.data',
         '$$value',
       ],
@@ -246,7 +247,7 @@ export function getCurrentYearRange(): DateRange {
 function getResolvedAt(chamado: IChamadoN1): Date | null {
   const regs = chamado.registro ?? [];
   for (let i = regs.length - 1; i >= 0; i--) {
-    if (TERMINAL_STATUSES.has(regs[i].status)) return new Date(regs[i].data);
+    if (regs[i].status === RESOLVED_STATUS) return new Date(regs[i].data);
   }
   return null;
 }

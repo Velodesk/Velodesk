@@ -154,6 +154,10 @@ async function loadSnapshotCounters(): Promise<SnapshotCounters> {
  */
 const RESOLVIDO_STATUSES_SEM_CANCELADO = ['resolvido', 'fechado'];
 const CANCELADO_STATUSES = ['cancelado'];
+// Data de resolução = quando o ticket foi marcado 'resolvido', não quando foi 'fechado'
+// (fechamento é encerramento automático ~48h depois; usar 'fechado' aqui faria o TMA/TME
+// pular para a data de fechamento em vez da resolução real).
+const RESOLVED_STATUS_ONLY = 'resolvido';
 
 /** Contagem de tickets criados no período, EXCLUINDO cancelados. */
 async function countCriadosNoPeriodoSemCancelados(start: Date, end: Date): Promise<number> {
@@ -207,7 +211,7 @@ async function computeTmaTmeSemCancelados(
       initialValue: null,
       in: {
         $cond: [
-          { $in: ['$$this.status', RESOLVIDO_STATUSES_SEM_CANCELADO] },
+          { $eq: ['$$this.status', RESOLVED_STATUS_ONLY] },
           '$$this.data',
           '$$value',
         ],
@@ -297,7 +301,7 @@ async function loadSerieSemCancelados(
       initialValue: null,
       in: {
         $cond: [
-          { $in: ['$$this.status', RESOLVIDO_STATUSES_SEM_CANCELADO] },
+          { $eq: ['$$this.status', RESOLVED_STATUS_ONLY] },
           '$$this.data',
           '$$value',
         ],
