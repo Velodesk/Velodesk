@@ -58,6 +58,19 @@ function writeAll(items) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
+/**
+ * `row.workflow` pode vir como o snapshot rico do backend (objeto, ver
+ * buildReclamacaoWorkflowSnapshot em reclamacao.service.ts) — nunca renderizar esse objeto
+ * direto na tabela (React error #31). Sempre normalizar pra um rótulo de texto.
+ */
+function formatWorkflowLabel(value, workflowAtivo) {
+  if (value && typeof value === 'object') {
+    return value.active ? 'Ativo' : 'Finalizado';
+  }
+  if (typeof value === 'string') return value;
+  return workflowAtivo ? 'Ativo' : '—';
+}
+
 function normalizeApiItem(row) {
   const statusGov = row.statusGov || row.statusCanal || CG_STATUS.NAO_RESPONDIDA;
   const base = {
@@ -67,7 +80,7 @@ function normalizeApiItem(row) {
     statusGov,
     ticketStatus: row.ticketStatus || row.statusTicket,
     respostaAction: row.respostaAction || 'responder',
-    workflow: row.workflow || (row.workflowAtivo ? 'Ativo' : '—'),
+    workflow: formatWorkflowLabel(row.workflow, row.workflowAtivo),
     tabulacao: row.tabulacao || row.produto || '—',
     atendente: row.atendente || row.responsavel || '—',
   };
