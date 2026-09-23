@@ -36,6 +36,9 @@ import {
 } from './reclamacoes/reclamacao.service';
 import { isReclamacoesConnected } from '../config/database';
 import { parseDateOnlyBrBound } from './dates/brDateTime.util';
+import { connectLegacyOcta } from '../config/legacyOctaConnection';
+import { getTicketLegadoOctaModel } from '../models/TicketLegadoOcta';
+import { getWhatsappLegadoOctaModel } from '../models/WhatsappLegadoOcta';
 
 export interface SearchCriterio {
   campo: string;
@@ -580,9 +583,15 @@ export async function searchTickets(
     if (tickets.length >= limit) break;
   }
 
+  const cpfCriterio = criterios.find((c) => String(c.campo || '').trim().toLowerCase() === 'cpf');
+  const cpfValue = cpfCriterio ? digitsOnlyCpf(String(cpfCriterio.valor || '')) : '';
+  const merged = cpfValue.length === 11
+    ? await mergeLegadoOctaIntoCpfHistory(cpfValue, tickets)
+    : tickets;
+
   return {
-    tickets,
-    total: tickets.length,
+    tickets: merged,
+    total: merged.length,
     limit,
   };
 }
@@ -672,6 +681,76 @@ async function mergeReclamacoesIntoCpfHistory(
   return merged.slice(0, BY_CPF_LIMIT);
 }
 
+function legadoTicketToHistoryTicketDto(doc: Record<string, unknown>): TicketDto {
+  const id = `legado-octa-ticket:${doc.octadeskNumber}`;
+  return {
+    _id: id,
+    id,
+    chamadoProtocolo: String(doc.protocoloExibicao || ''),
+    chamadoTitulo: String(doc.summary || ''),
+    title: String(doc.summary || ''),
+    status: 'Arquivo — somente consulta',
+    priority: 'normal',
+    channel: 'Legado Octa',
+    source: 'legado-octa-ticket',
+    clientName: String(doc.requesterName || '') || undefined,
+    clientCPF: String(doc.requesterCpf || '') || undefined,
+    updatedAt: doc.openDate,
+  } as unknown as TicketDto;
+}
+
+function legadoWhatsappToHistoryTicketDto(doc: Record<string, unknown>): TicketDto {
+  const id = `legado-octa-whatsapp:${doc.octadeskRoomId}`;
+  return {
+    _id: id,
+    id,
+    chamadoProtocolo: String(doc.protocoloExibicao || ''),
+    chamadoTitulo: `WhatsApp — ${String(doc.clientName || doc.clientPhone || '')}`,
+    title: `WhatsApp — ${String(doc.clientName || doc.clientPhone || '')}`,
+    status: 'Arquivo — somente consulta',
+    priority: 'normal',
+    channel: 'Legado Octa (WhatsApp)',
+    source: 'legado-octa-whatsapp',
+    clientName: String(doc.clientName || '') || undefined,
+    clientCPF: String(doc.clientCpf || '') || undefined,
+    updatedAt: doc.lastMessageAt,
+  } as unknown as TicketDto;
+}
+
+/**
+ * Complementa o histórico com tickets e conversas de WhatsApp arquivados no Legado Octa
+ * (cluster dedicado, separado do app principal) — mesmo padrão fail-soft de
+ * mergeReclamacoesIntoCpfHistory: se a conexão dedicada não responder, degrada sem quebrar
+ * a busca. Resultados são só consulta — nunca abrem no fluxo normal de ticket.
+ */
+async function mergeLegadoOctaIntoCpfHistory(cpf: string, tickets: TicketDto[]): Promise<TicketDto[]> {
+  try {
+    await connectLegacyOcta();
+    const TicketModel = getTicketLegadoOctaModel();
+    const WhatsappModel = getWhatsappLegadoOctaModel();
+
+    const [legadoTickets, legadoWhatsapp] = await Promise.all([
+      TicketModel.find({ requesterCpf: cpf }, {
+        octadeskNumber: 1, protocoloExibicao: 1, summary: 1, requesterName: 1, requesterCpf: 1, openDate: 1,
+      }).limit(50).lean(),
+      WhatsappModel.find({ clientCpf: cpf }, {
+        octadeskRoomId: 1, protocoloExibicao: 1, clientName: 1, clientCpf: 1, clientPhone: 1, lastMessageAt: 1,
+      }).limit(50).lean(),
+    ]);
+
+    if (!legadoTickets.length && !legadoWhatsapp.length) return tickets;
+
+    const merged = [...tickets];
+    for (const doc of legadoTickets) merged.push(legadoTicketToHistoryTicketDto(doc as Record<string, unknown>));
+    for (const doc of legadoWhatsapp) merged.push(legadoWhatsappToHistoryTicketDto(doc as Record<string, unknown>));
+    merged.sort(ticketSortUpdatedDesc);
+    return merged;
+  } catch (err) {
+    console.warn('[ticket-search] falha ao consultar Legado Octa por CPF:', (err as Error).message);
+    return tickets;
+  }
+}
+
 /**
  * Lista tickets do CPF no Mongo (histórico Client360), excluindo absorvidos da fusão.
  * Inclui também ocorrências em chamados_reclamacoes.
@@ -717,7 +796,8 @@ export async function searchTicketsByCpf(
     tickets.push(chamadoToTicketListItem(chamado, boxId, ctx));
   }
 
-  const merged = await mergeReclamacoesIntoCpfHistory(cpf, tickets, boxes, visibility);
+  const withReclamacoes = await mergeReclamacoesIntoCpfHistory(cpf, tickets, boxes, visibility);
+  const merged = await mergeLegadoOctaIntoCpfHistory(cpf, withReclamacoes);
   return { tickets: merged, total: merged.length, cpf };
 }
 
@@ -757,7 +837,8 @@ export async function searchTicketsByCpfDeskBar(
     tickets.push(chamadoToTicketListItem(chamado, boxId, ctx));
   }
 
-  const merged = await mergeReclamacoesIntoCpfHistory(cpf, tickets, boxes, null);
+  const withReclamacoes = await mergeReclamacoesIntoCpfHistory(cpf, tickets, boxes, null);
+  const merged = await mergeLegadoOctaIntoCpfHistory(cpf, withReclamacoes);
   return { tickets: merged, total: merged.length, cpf };
 }
 
