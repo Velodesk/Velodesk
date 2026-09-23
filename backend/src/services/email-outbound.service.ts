@@ -1,5 +1,6 @@
 /** email-outbound.service v1.5.1 — espera Gmail no startup antes de descartar envio */
 import { sendViaGmailApi, type GmailInlineImage, type GmailOutboundAttachment } from './gmail/gmailApiSend';
+import { sendViaSmtpRelay } from './gmail/smtpRelaySend';
 import {
   ensureEmailTransportReady,
   getEffectiveFromAddress,
@@ -42,7 +43,13 @@ let sendQueueTail: Promise<void> = Promise.resolve();
 let lastSendAt = 0;
 
 function isRateLimitError(err: unknown): boolean {
-  return /rate limit exceeded/i.test(String((err as Error)?.message || ''));
+  const message = String((err as Error)?.message || '');
+  return (
+    /rate limit exceeded/i.test(message) ||
+    /daily .*(relay|sending) limit exceeded/i.test(message) ||
+    /peak .*relay limit exceeded/i.test(message) ||
+    /quota exceeded/i.test(message)
+  );
 }
 
 function throttleSend<T>(fn: () => Promise<T>): Promise<T> {
@@ -98,9 +105,11 @@ export async function sendOutboundEmail(payload: OutboundEmailPayload): Promise<
     return { sent: false, reason: 'Destinatário inválido' };
   }
 
+  const sendFn = snap.transportMode === 'smtp' ? sendViaSmtpRelay : sendViaGmailApi;
+
   try {
     await throttleSend(() =>
-      sendViaGmailApi(
+      sendFn(
         {
           serviceAccountJson: snap.serviceAccountJson,
           delegatedUserEmail: snap.delegatedUserEmail,

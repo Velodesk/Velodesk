@@ -1,6 +1,7 @@
 /** test-gmail-modules.ts v1.1.0 — smoke test Gmail + HTML e-mail */
 import { buildProtocolSubject } from '../src/services/email-outbound.service';
 import { buildRawRfc822 } from '../src/services/gmail/gmailApiSend';
+import { buildNodemailerMessage } from '../src/services/gmail/smtpRelaySend';
 import { decodePubSubMessage } from '../src/services/gmail/gmailInbound.service';
 import { gmailMessageToInboundPayload, shouldSkipGmailMessage } from '../src/services/gmail/gmailMessageParser';
 import { composeHtmlToEmailHtml } from '../src/services/emailHtml.util';
@@ -30,6 +31,33 @@ function testBuildRawRfc822() {
   assert(decoded.includes('Message-ID:'), 'Message-ID ausente');
   assert(decoded.includes('In-Reply-To:'), 'In-Reply-To ausente');
   assert(decoded.includes('References:'), 'References ausente');
+}
+
+function testSmtpMessageMapping() {
+  const message = buildNodemailerMessage({
+    from: 'chamados@test.com',
+    to: 'cliente@test.com',
+    subject: 'Teste',
+    html: '<p>oi <img src="cid:logo@velodesk"></p>',
+    messageId: '<desk.test@velotax.com.br>',
+    inReplyTo: '<desk.root@velotax.com.br>',
+    references: ['<desk.root@velotax.com.br>'],
+    inlineImages: [
+      { cid: 'logo@velodesk', filename: 'logo.png', contentType: 'image/png', buffer: Buffer.from('fake-png') },
+    ],
+    attachments: [
+      { filename: 'anexo.pdf', contentType: 'application/pdf', buffer: Buffer.from('fake-pdf') },
+    ],
+  });
+
+  assert(message.messageId === '<desk.test@velotax.com.br>', 'messageId ausente/errado');
+  assert(message.inReplyTo === '<desk.root@velotax.com.br>', 'inReplyTo ausente/errado');
+  assert(Array.isArray(message.references) && message.references.length === 1, 'references ausente/errado');
+
+  const attachments = message.attachments as Array<{ cid?: string; filename?: string }>;
+  assert(Array.isArray(attachments) && attachments.length === 2, 'attachments deveria ter 2 itens (inline + arquivo)');
+  assert(attachments[0].cid === 'logo@velodesk', 'cid da imagem inline ausente/errado');
+  assert(attachments[1].filename === 'anexo.pdf', 'filename do anexo ausente/errado');
 }
 
 function testComposeHtmlToEmailHtml() {
@@ -80,6 +108,7 @@ function testGmailMessageParser() {
 function main() {
   testBuildProtocolSubject();
   testBuildRawRfc822();
+  testSmtpMessageMapping();
   testComposeHtmlToEmailHtml();
   testBuildThreadSubject();
   testDecodePubSub();

@@ -4,7 +4,7 @@ import { isDeskConfigConnected } from '../config/database';
 import { findEmailTransportSingleton, IServiceAccountJson } from '../models/EmailTransportConfig';
 
 export interface EmailTransportSnapshot {
-  transportMode: 'gmail_api';
+  transportMode: 'gmail_api' | 'smtp';
   defaultFromEmail: string;
   delegatedUserEmail: string;
   serviceAccountJson: IServiceAccountJson;
@@ -23,7 +23,7 @@ function applyDoc(doc: {
   delegatedUserEmail?: string;
   serviceAccountJson?: IServiceAccountJson | null;
 } | null) {
-  if (!doc || doc.transportMode === 'smtp') {
+  if (!doc) {
     snapshot = null;
     return;
   }
@@ -40,8 +40,10 @@ function applyDoc(doc: {
     return;
   }
 
+  const transportMode: EmailTransportSnapshot['transportMode'] = doc.transportMode === 'smtp' ? 'smtp' : 'gmail_api';
+
   snapshot = {
-    transportMode: 'gmail_api',
+    transportMode,
     defaultFromEmail,
     delegatedUserEmail,
     serviceAccountJson: sa,
@@ -79,7 +81,7 @@ async function loadEmailTransportOnce(): Promise<'ready' | 'incomplete' | 'unava
     if (isEmailTransportReady()) {
       if (!loggedReady) {
         loggedReady = true;
-        console.log(`[emailTransport] Gmail API pronto — from=${getEffectiveFromAddress()}`);
+        console.log(`[emailTransport] pronto (${snapshot?.transportMode}) — from=${getEffectiveFromAddress()}`);
       }
       return 'ready';
     }

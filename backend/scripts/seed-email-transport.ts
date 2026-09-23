@@ -28,6 +28,8 @@ async function main() {
   const fromEmail = String(process.env.DESK_EMAIL_FROM ?? '').trim().toLowerCase();
   const delegated = String(process.env.DESK_EMAIL_DELEGATED ?? fromEmail).trim().toLowerCase();
   const sa = loadServiceAccountJson();
+  const transportModeRaw = String(process.env.DESK_EMAIL_TRANSPORT_MODE ?? 'gmail_api').trim().toLowerCase();
+  const transportMode = transportModeRaw === 'smtp' ? 'smtp' : 'gmail_api';
 
   if (!fromEmail.includes('@') || !delegated.includes('@') || !sa) {
     process.exit(1);
@@ -41,7 +43,7 @@ async function main() {
     {
       $set: {
         configKey: env.deskEmailTransportDocumentId,
-        transportMode: 'gmail_api',
+        transportMode,
         defaultFromEmail: fromEmail,
         delegatedUserEmail: delegated,
         serviceAccountJson: sa,
@@ -51,7 +53,7 @@ async function main() {
   );
 
   console.log(`OK — desk_config.${env.deskEmailTransportCollection} / ${env.deskEmailTransportDocumentId}`);
-  console.log(`  from=${fromEmail} delegated=${delegated}`);
+  console.log(`  from=${fromEmail} delegated=${delegated} transportMode=${transportMode}`);
 
   await disconnectDatabase();
   await mongoose.disconnect();
