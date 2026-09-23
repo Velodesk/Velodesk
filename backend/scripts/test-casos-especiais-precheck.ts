@@ -1,6 +1,7 @@
-/** test-casos-especiais-precheck.ts v1.0.0 — smoke do pre-check Agente 4 (sem LLM/DB) */
+/** test-casos-especiais-precheck.ts v1.1.0 — smoke do pre-check Agente 4 (sem LLM/DB) */
 import type { IChamadoN1 } from '../src/models/ChamadoN1';
 import { detectCasoEspecialSignal } from '../src/services/agents/casosEspeciaisPrecheck';
+import { setMailPrioritySubjectSnapshotForTests } from '../src/services/mailPrioritySubjectRules.service';
 
 function mockChamado(partial: Partial<IChamadoN1>): IChamadoN1 {
   return {
@@ -42,7 +43,7 @@ const cases: Array<{ name: string; chamado: IChamadoN1; expect: { triggered: boo
     expect: { triggered: true, fastPath: false },
   },
   {
-    name: 'Ameaça cliente — vou no Procon',
+    name: 'Ameaça cliente — vou no Procon (sem regra cadastrada em Config)',
     chamado: mockChamado({
       chamadoTitulo: 'Reclamação',
       registro: [{
@@ -58,6 +59,32 @@ const cases: Array<{ name: string; chamado: IChamadoN1; expect: { triggered: boo
         status: 'novo',
       }],
     }),
+    // Gatilho por palavra-chave livre no corpo saiu do código (vive só em Config > E-mail >
+    // Assuntos Prioritários) — sem regra cadastrada, uma menção solta no corpo não dispara
+    // o Agente 4 sozinha. Ver caso seguinte para o cenário com regra cadastrada.
+    expect: { triggered: false },
+  },
+  {
+    name: 'Menção a Bacen com regra de Assunto Prioritário cadastrada — dispara mas NÃO faz fast-path',
+    chamado: mockChamado({
+      chamadoTitulo: 'Dúvida',
+      registro: [{
+        data: new Date(),
+        origin: 'cliente',
+        autor: 'Cliente',
+        mensagemPublica: 'Vocês seguem alguma regra do Banco Central pra isso?',
+        anexosMensagemPublica: [],
+        anotacaoInterna: '',
+        anexosAnotacaoInterna: [],
+        alteracoes: [],
+        metadados: { source: 'email-inbound', emailFrom: 'cliente@gmail.com' },
+        status: 'novo',
+      }],
+    }),
+    // Regressão que causava classificação errada em produção: uma regra de Assunto Prioritário
+    // com órgão definido ("contém" no corpo) pulava direto pro fast-path (caso_formal_real),
+    // sem passar pelo LLM — mesmo sendo só uma citação retórica, não notificação nem ameaça.
+    // Precheck deve disparar o Agente 4 (LLM decide), mas nunca fast-pathear por conteúdo.
     expect: { triggered: true, fastPath: false },
   },
   {
@@ -115,6 +142,12 @@ const cases: Array<{ name: string; chamado: IChamadoN1; expect: { triggered: boo
     expect: { triggered: false },
   },
 ];
+
+// Simula uma regra cadastrada em Config > E-mail > Assuntos Prioritários (área=corpo,
+// critério=contém) com órgão definido, sem precisar de conexão real ao desk_config.
+setMailPrioritySubjectSnapshotForTests([
+  { area: 'corpo', matchType: 'contem', value: 'banco central', orgao: 'bacen' },
+]);
 
 let failed = 0;
 

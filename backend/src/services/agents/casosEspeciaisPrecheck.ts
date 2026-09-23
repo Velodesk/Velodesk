@@ -136,9 +136,15 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
   }
 
   const triggered = signals.length > 0;
+  // Assunto/corpo "contém" é match de PALAVRA no texto do cliente — não distingue notificação
+  // formal de ameaça vazia ou de citação retórica/jurídica (ex.: "vocês seguem as regras do
+  // Bacen?"). Essa distinção é exatamente o que o Agente 4 (LLM) foi treinado pra fazer, então
+  // um match de assunto/corpo NUNCA pula direto pro fast-path (caso_formal_real) — só dispara
+  // o Agente 4, com o órgão do cadastro como dica de origemProvavel. Fast-path fica reservado
+  // pra sinais sobre QUEM enviou (remetente institucional/prioritário, canal já formal) — fatos
+  // verificáveis, não interpretação de texto livre.
   const fastPathReal = Boolean(
     prioritySenderWithOrgao
-    || subjectMatchWithOrgao
     || (formalSource
       && (institutional.matched || signals.some((s) => s.startsWith('canal_formal:')))),
   );
