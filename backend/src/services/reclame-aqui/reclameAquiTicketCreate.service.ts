@@ -11,6 +11,7 @@ import {
   upsertFromChamado,
 } from '../reclamacoes/reclamacao.service';
 import type { ParsedHugmeRow } from './hugmeSpreadsheet.service';
+import { mapTicketStatusFromHugme } from './hugmeSpreadsheet.service';
 import { getActiveTabulation } from '../tabulation.service';
 import { getReclamacaoReclameAquiModel } from '../../models/reclamacoes/reclamacaoModels';
 
@@ -22,7 +23,13 @@ export interface RaTicketSource {
   telefoneWhatsapp?: string;
   assunto: string;
   descricao: string;
+  /** Já na formatação da tabulação própria do Desk (produto da árvore comum) — só presente na
+   * base histórica (coluna "Produto"); cadastro manual usa RaClassificacaoFields. */
   produto?: string;
+  /** Motivo da lista própria do RA (fora da árvore produto→motivo) — coluna "Motivo". */
+  motivo?: string;
+  /** Taxonomia bruta da plataforma RA (coluna "Produto RA"), sem relação com a tabulação Desk. */
+  produtoRa?: string;
   tipo?: string;
   /** Coluna A (Origem) — canal de entrada da reclamação na plataforma RA. */
   canal?: string;
@@ -87,6 +94,8 @@ export function parsedRowToRaTicketSource(row: ParsedHugmeRow): RaTicketSource {
     assunto: String(row.assunto || '').trim(),
     descricao: String(row.descricao || '').trim(),
     produto: String(row.produto || '').trim(),
+    motivo: String(row.motivo || '').trim(),
+    produtoRa: String(row.produtoRa || '').trim(),
     tipo: String(row.tipo || 'Reclamação').trim(),
     canal: row.canal || '',
     nomeSocial: row.nomeSocial || '',
@@ -124,6 +133,7 @@ function buildReclameAquiMeta(source: RaTicketSource) {
     tipo: source.tipo,
     cidade: source.cidade,
     uf: source.uf,
+    produtoRa: source.produtoRa || '',
     hugmeMotivoRa: source.hugmeMotivoRa || '',
     hugmeCategoriaRa: source.hugmeCategoriaRa || '',
     hugmeProblemaRa: source.hugmeProblemaRa || '',
@@ -140,7 +150,7 @@ export function buildTicketPayloadFromRaSource(source: RaTicketSource, author = 
     title: String(source.assunto || '').trim() || 'Reclamação Reclame Aqui',
     text: String(source.descricao || '').trim(),
     description: String(source.descricao || '').trim(),
-    status: 'novo',
+    status: mapTicketStatusFromHugme(source.statusHugme || ''),
     clientName: String(source.consumidor || '').trim(),
     clientCPF: cpf || undefined,
     author,
@@ -148,7 +158,7 @@ export function buildTicketPayloadFromRaSource(source: RaTicketSource, author = 
       classificacaoTipo: source.tipo || 'Reclamação',
       tipoChamado: source.tipo || 'Reclamação',
       produto: source.produto || '',
-      motivo: '',
+      motivo: source.motivo || '',
       detalhe: 'Reclamação Reclame Aqui',
       canal: 'Reclame Aqui',
       responsavel: author,
@@ -189,6 +199,7 @@ async function enrichRaReclamacaoFirstClassFields(
     canal: source.canal || '',
     nomeSocial: source.nomeSocial || '',
     motivoRa: source.hugmeMotivoRa || '',
+    produtoRa: source.produtoRa || '',
     categoriaRa: source.hugmeCategoriaRa || '',
     problemaRa: source.hugmeProblemaRa || '',
     sentimentoRa: source.hugmeSentimentoRa || '',
@@ -271,7 +282,14 @@ export async function upsertRaTicketFromSource(
   }
 
   const existing = await findByIdDemandaExterna('reclame_aqui', idOrigem);
-  const deskProduto = await resolveTabulacaoProduto(source.produto);
+  // Import Hugme (base histórica) grava o produto literal da planilha — exigir match exato
+  // contra o catálogo ATIVO hoje perderia a classificação de produtos antigos/renomeados desde
+  // que a reclamação foi registrada (é dado de consulta/controle, não precisa validar contra a
+  // árvore de tabulação vigente). Outras origens (cadastro manual/registro) continuam resolvendo
+  // contra o catálogo, porque ali o ticket é operado ao vivo e precisa ficar consistente com ele.
+  const deskProduto = origemEntrada === 'hugme-import'
+    ? String(source.produto || '').trim()
+    : await resolveTabulacaoProduto(source.produto);
   const sourced = { ...source, produto: deskProduto };
 
   if (existing?.chamadoId) {
@@ -305,6 +323,7 @@ export async function upsertRaTicketFromSource(
         ...chamado.tabulacao[lastIdx],
         canal: 'Reclame Aqui',
         ...(deskProduto ? { produto: deskProduto } : {}),
+        ...(sourced.motivo ? { motivo: sourced.motivo } : {}),
       };
       chamado.markModified('tabulacao');
     }
@@ -321,7 +340,10 @@ export async function upsertRaTicketFromSource(
   }
 
   const payload = buildTicketPayloadFromRaSource(sourced, author);
-  const partial = await createChamadoFromBody(payload, 'novo');
+  // O status do registro (currentStatus/box do ticket) vem do 2º parâmetro aqui, não de
+  // payload.status — sem passar o status real, todo ticket nasceria "novo" (fila aberta),
+  // mesmo o histórico já encerrado na plataforma RA (só "Status Hugme"=Novo continua aberto).
+  const partial = await createChamadoFromBody(payload, mapTicketStatusFromHugme(source.statusHugme || ''));
   const chamado = await ChamadoN1.create(partial) as IChamadoN1;
   const reclamacao = await persistRaReclamacao(chamado, sourced, origemEntrada, {
     route: origemEntrada !== 'hugme-import',

@@ -21,7 +21,13 @@ export const HUGME_COLUMN_MAP: Record<string, string[]> = {
   ],
   dataReclamacao: ['data reclamacao', 'data reclamação', 'data da reclamacao', 'data da reclamação'],
   dataResposta: ['data de resposta', 'data da resposta'],
-  produto: ['produto ra', 'produto', 'produto/servico', 'produto/serviço'],
+  // "Produto"/"Motivo" (sem sufixo "RA") são colunas exclusivas da base histórica — já vêm no
+  // formato da tabulação própria do Desk (produto da árvore comum + motivo da lista do RA), pra
+  // reidratar a classificação sem perder o histórico. "Produto RA"/"Motivo da Reclamação RA" são
+  // a taxonomia bruta da plataforma Reclame Aqui, sem relação com a tabulação do Desk.
+  produto: ['produto'],
+  motivo: ['motivo'],
+  produtoRa: ['produto ra', 'produto/servico', 'produto/serviço'],
   motivoRa: ['motivo da reclamacao ra', 'motivo da reclamação ra'],
   categoriaRa: ['categoria ra'],
   problemaRa: ['problema ra'],
@@ -63,9 +69,12 @@ export interface ParsedHugmeRow {
   hugmeSentimentoRa?: string;
   dataReclamacao?: string;
   dataResposta?: string;
+  /** Produto/motivo já na formatação da tabulação própria do Desk (colunas "Produto"/"Motivo" —
+   * só presentes na base histórica; a taxonomia bruta do RA fica em produtoRa/hugmeMotivoRa). */
   produto?: string;
   tipo?: string;
   motivo?: string;
+  produtoRa?: string;
   nota?: string;
   statusRa?: string;
   statusRaLabel?: string;
@@ -248,6 +257,15 @@ function mapStatusRaFromHugme(label: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Status do TICKET (chamado.status) a partir da coluna "Status Hugme" — só "Novo" mantém o
+ * ticket aberto; qualquer outro valor (Fechado/Respondido/Pendente/etc.) é histórico já
+ * encerrado na plataforma RA e deve nascer resolvido, sem entupir as filas operacionais.
+ */
+export function mapTicketStatusFromHugme(statusHugmeLabel: string): 'novo' | 'resolvido' {
+  return normalizeHeader(statusHugmeLabel) === 'novo' ? 'novo' : 'resolvido';
+}
+
 function mapRowToParsed(
   row: unknown[],
   headerIndex: Record<string, number>,
@@ -294,7 +312,8 @@ function mapRowToParsed(
     ),
     produto: getFieldFromRow(row, headerIndex, 'produto') || undefined,
     tipo: undefined,
-    motivo: undefined,
+    motivo: getFieldFromRow(row, headerIndex, 'motivo') || undefined,
+    produtoRa: getFieldFromRow(row, headerIndex, 'produtoRa') || undefined,
     nota: getFieldFromRow(row, headerIndex, 'nota') || undefined,
     statusRa: mapStatusRaFromHugme(statusRaLabel),
     statusRaLabel: statusRaLabel || undefined,
