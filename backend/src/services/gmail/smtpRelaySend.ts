@@ -16,6 +16,13 @@ const SMTP_EHLO_NAME = process.env.SMTP_RELAY_EHLO_NAME || 'velodesk.velotax.com
 // Escopo mais amplo que o `gmail.send` da API — necessário pro SMTP AUTH via XOAUTH2.
 const SMTP_RELAY_SCOPE = 'https://mail.google.com/';
 
+// Evita conexão pendurada indefinidamente se o egress pra smtp-relay.gmail.com
+// cair silenciosamente (partição de rede) — sem isso um envio travado bloqueia
+// a fila serializada inteira de email-outbound.service.ts, Gmail API incluso.
+const SMTP_CONNECTION_TIMEOUT_MS = Number(process.env.SMTP_RELAY_CONNECTION_TIMEOUT_MS || 15_000);
+const SMTP_GREETING_TIMEOUT_MS = Number(process.env.SMTP_RELAY_GREETING_TIMEOUT_MS || 15_000);
+const SMTP_SOCKET_TIMEOUT_MS = Number(process.env.SMTP_RELAY_SOCKET_TIMEOUT_MS || 30_000);
+
 async function mintSmtpRelayAccessToken(authParams: GmailAuthParams): Promise<string> {
   const { serviceAccountJson, delegatedUserEmail } = authParams;
   const auth = new google.auth.JWT({
@@ -24,7 +31,7 @@ async function mintSmtpRelayAccessToken(authParams: GmailAuthParams): Promise<st
     scopes: [SMTP_RELAY_SCOPE],
     subject: delegatedUserEmail,
   });
-  const { token } = await auth.authorize().then(() => auth.getAccessToken());
+  const { access_token: token } = await auth.authorize();
   if (!token) {
     throw new Error('Falha ao obter access token XOAUTH2 para SMTP relay');
   }
@@ -38,6 +45,9 @@ function buildSmtpTransport(authParams: GmailAuthParams, accessToken: string): T
     secure: false,
     requireTLS: true,
     name: SMTP_EHLO_NAME,
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
+    socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
     auth: {
       type: 'OAuth2',
       user: authParams.delegatedUserEmail,

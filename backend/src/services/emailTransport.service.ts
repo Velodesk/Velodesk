@@ -43,7 +43,22 @@ function applyDoc(doc: {
   // transportMode só decide qual caminho de ENVIO email-outbound.service.ts usa.
   // O snapshot (incluindo serviceAccountJson) precisa existir sempre — o inbound
   // (gmailAuth.ts/createGmailClient) depende dele independente do modo de envio.
-  const transportMode: 'gmail_api' | 'smtp' = doc.transportMode === 'smtp' ? 'smtp' : 'gmail_api';
+  const rawTransportMode = String(doc.transportMode ?? '').trim().toLowerCase();
+  if (rawTransportMode && rawTransportMode !== 'gmail_api' && rawTransportMode !== 'smtp') {
+    console.warn(
+      `[emailTransport] transportMode="${doc.transportMode}" não reconhecido em desk_config.email_transport — caindo para "gmail_api"`
+    );
+  }
+  const transportMode: 'gmail_api' | 'smtp' = rawTransportMode === 'smtp' ? 'smtp' : 'gmail_api';
+
+  // No SMTP relay com "Require SMTP Authentication", a identidade autenticada
+  // (delegatedUserEmail) e o From: (defaultFromEmail) divergentes podem levar
+  // o Google a rejeitar o envio — sinaliza cedo em vez de só falhar em produção.
+  if (transportMode === 'smtp' && defaultFromEmail && delegatedUserEmail && defaultFromEmail !== delegatedUserEmail) {
+    console.warn(
+      `[emailTransport] modo smtp com defaultFromEmail (${defaultFromEmail}) != delegatedUserEmail (${delegatedUserEmail}) — confirme que o relay aceita esse alias como remetente`
+    );
+  }
 
   snapshot = {
     transportMode,
