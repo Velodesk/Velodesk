@@ -4,7 +4,7 @@ import { isDeskConfigConnected } from '../config/database';
 import { findEmailTransportSingleton, IServiceAccountJson } from '../models/EmailTransportConfig';
 
 export interface EmailTransportSnapshot {
-  transportMode: 'gmail_api';
+  transportMode: 'gmail_api' | 'smtp';
   defaultFromEmail: string;
   delegatedUserEmail: string;
   serviceAccountJson: IServiceAccountJson;
@@ -23,7 +23,7 @@ function applyDoc(doc: {
   delegatedUserEmail?: string;
   serviceAccountJson?: IServiceAccountJson | null;
 } | null) {
-  if (!doc || doc.transportMode === 'smtp') {
+  if (!doc) {
     snapshot = null;
     return;
   }
@@ -40,8 +40,13 @@ function applyDoc(doc: {
     return;
   }
 
+  // transportMode só decide qual caminho de ENVIO email-outbound.service.ts usa.
+  // O snapshot (incluindo serviceAccountJson) precisa existir sempre — o inbound
+  // (gmailAuth.ts/createGmailClient) depende dele independente do modo de envio.
+  const transportMode: 'gmail_api' | 'smtp' = doc.transportMode === 'smtp' ? 'smtp' : 'gmail_api';
+
   snapshot = {
-    transportMode: 'gmail_api',
+    transportMode,
     defaultFromEmail,
     delegatedUserEmail,
     serviceAccountJson: sa,
@@ -79,7 +84,7 @@ async function loadEmailTransportOnce(): Promise<'ready' | 'incomplete' | 'unava
     if (isEmailTransportReady()) {
       if (!loggedReady) {
         loggedReady = true;
-        console.log(`[emailTransport] Gmail API pronto — from=${getEffectiveFromAddress()}`);
+        console.log(`[emailTransport] pronto — modo=${snapshot?.transportMode} from=${getEffectiveFromAddress()}`);
       }
       return 'ready';
     }

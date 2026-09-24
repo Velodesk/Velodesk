@@ -68,6 +68,7 @@
     "mongodb": "^7.5.0",
     "mongoose": "^8.7.0",
     "multer": "^2.2.0",
+    "nodemailer": "^10.0.10",
     "openai": "^4.104.0",
     "twilio": "^6.0.2",
     "xlsx": "^0.18.5"
@@ -79,6 +80,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.7.4",
+    "@types/nodemailer": "^8.0.2",
     "mongodb-memory-server": "^11.2.0",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2"
