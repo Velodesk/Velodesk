@@ -66,9 +66,11 @@ function testComposeHtmlToEmailHtml() {
 }
 
 function testBuildThreadSubject() {
+  // buildThreadSubject sempre usa "Re:" (assunto único por chamado, ver
+  // comentário em emailThread.service.ts) — isReply é ignorado de propósito.
   const first = buildThreadSubject('0100177678', 'Dúvida', false);
   const reply = buildThreadSubject('0100177678', 'Dúvida', true);
-  assert(first === '[0100177678] Atendimento Velotax Numero 0100177678', `first: ${first}`);
+  assert(first === 'Re: [0100177678] Atendimento Velotax Numero 0100177678', `first: ${first}`);
   assert(reply === 'Re: [0100177678] Atendimento Velotax Numero 0100177678', `reply: ${reply}`);
 }
 
