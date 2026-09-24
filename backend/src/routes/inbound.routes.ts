@@ -21,7 +21,7 @@ import { processAppNotify } from '../services/app-inbound.service';
 import { isAllowedRecipient, processInboundEmail } from '../services/email-inbound.service';
 import { parseInboundEmailPayload } from '../services/inbound-email/adapters';
 import { handleGmailPubSubPush } from '../services/gmail/gmailInbound.service';
-import { getGmailWatchHealth, getLegacyGmailWatchHealth } from '../services/gmail/gmailWatch.service';
+import { getGmailWatchHealth } from '../services/gmail/gmailWatch.service';
 import { isEmailTransportReady } from '../services/emailTransport.service';
 import {
   getInboundTelephonyRecados,
@@ -68,16 +68,6 @@ router.get('/email/health', (_req, res: Response) => {
 router.get('/gmail/health', async (_req, res: Response) => {
   try {
     const watch = await getGmailWatchHealth();
-    res.json({ status: 'ok', ...watch });
-  } catch (err) {
-    res.status(500).json({ status: 'error', message: (err as Error).message });
-  }
-});
-
-/** Watch do mailbox legado (ex.: suporte@velotax.com.br) mantido só como inbound durante a transição. */
-router.get('/gmail/health/legacy', async (_req, res: Response) => {
-  try {
-    const watch = await getLegacyGmailWatchHealth();
     res.json({ status: 'ok', ...watch });
   } catch (err) {
     res.status(500).json({ status: 'error', message: (err as Error).message });
