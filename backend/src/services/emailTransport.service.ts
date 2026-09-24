@@ -4,7 +4,7 @@ import { isDeskConfigConnected } from '../config/database';
 import { findEmailTransportSingleton, IServiceAccountJson } from '../models/EmailTransportConfig';
 
 export interface EmailTransportSnapshot {
-  transportMode: 'gmail_api';
+  transportMode: 'gmail_api' | 'smtp';
   defaultFromEmail: string;
   delegatedUserEmail: string;
   serviceAccountJson: IServiceAccountJson;
@@ -23,7 +23,7 @@ function applyDoc(doc: {
   delegatedUserEmail?: string;
   serviceAccountJson?: IServiceAccountJson | null;
 } | null) {
-  if (!doc || doc.transportMode === 'smtp') {
+  if (!doc) {
     snapshot = null;
     return;
   }
@@ -40,8 +40,28 @@ function applyDoc(doc: {
     return;
   }
 
+  // transportMode só decide qual caminho de ENVIO email-outbound.service.ts usa.
+  // O snapshot (incluindo serviceAccountJson) precisa existir sempre — o inbound
+  // (gmailAuth.ts/createGmailClient) depende dele independente do modo de envio.
+  const rawTransportMode = String(doc.transportMode ?? '').trim().toLowerCase();
+  if (rawTransportMode && rawTransportMode !== 'gmail_api' && rawTransportMode !== 'smtp') {
+    console.warn(
+      `[emailTransport] transportMode="${doc.transportMode}" não reconhecido em desk_config.email_transport — caindo para "gmail_api"`
+    );
+  }
+  const transportMode: 'gmail_api' | 'smtp' = rawTransportMode === 'smtp' ? 'smtp' : 'gmail_api';
+
+  // No SMTP relay com "Require SMTP Authentication", a identidade autenticada
+  // (delegatedUserEmail) e o From: (defaultFromEmail) divergentes podem levar
+  // o Google a rejeitar o envio — sinaliza cedo em vez de só falhar em produção.
+  if (transportMode === 'smtp' && defaultFromEmail && delegatedUserEmail && defaultFromEmail !== delegatedUserEmail) {
+    console.warn(
+      `[emailTransport] modo smtp com defaultFromEmail (${defaultFromEmail}) != delegatedUserEmail (${delegatedUserEmail}) — confirme que o relay aceita esse alias como remetente`
+    );
+  }
+
   snapshot = {
-    transportMode: 'gmail_api',
+    transportMode,
     defaultFromEmail,
     delegatedUserEmail,
     serviceAccountJson: sa,
@@ -79,7 +99,7 @@ async function loadEmailTransportOnce(): Promise<'ready' | 'incomplete' | 'unava
     if (isEmailTransportReady()) {
       if (!loggedReady) {
         loggedReady = true;
-        console.log(`[emailTransport] Gmail API pronto — from=${getEffectiveFromAddress()}`);
+        console.log(`[emailTransport] pronto — modo=${snapshot?.transportMode} from=${getEffectiveFromAddress()}`);
       }
       return 'ready';
     }

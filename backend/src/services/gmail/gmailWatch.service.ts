@@ -1,4 +1,4 @@
-/** gmailWatch.service v1.2.0 — watch preserva ponteiro de history; avanço monotônico */
+/** gmailWatch.service v1.3.0 — preserva historyId ao renovar, reseta ao trocar de mailbox */
 import { env } from '../../config/env';
 import { isDeskConfigConnected } from '../../config/database';
 import { getGmailWatchStateModel, findGmailWatchSingleton } from '../../models/GmailWatchState';
@@ -22,22 +22,41 @@ export interface GmailWatchHealth {
 }
 
 /**
- * Grava o registro do watch sem tocar no historyId já existente: sobrescrever o ponteiro
- * descartaria silenciosamente todo o backlog ainda não processado.
+ * Grava o registro do watch. Renovação da MESMA caixa preserva o historyId já
+ * existente (sobrescrever descartaria silenciosamente backlog ainda não
+ * processado). Troca de caixa é o oposto: o historyId antigo não tem nenhum
+ * significado pro histórico da caixa nova, então é resetado pro valor fresco
+ * retornado por este próprio watch() — sem isso, a primeira notificação real
+ * bate num historyId inválido e o realinhamento automático em
+ * gmailInbound.service.ts pula, sem processar, tudo que chegou entre o
+ * registro do watch e essa notificação (mesma classe de perda de e-mail do
+ * incidente do watch duplo).
  */
 async function persistWatchState(mailbox: string, historyId: string, expiration: number) {
   const Model = getGmailWatchStateModel();
+  const previous = await findGmailWatchSingleton();
+  const mailboxChanged = !!previous?.mailbox && previous.mailbox !== mailbox;
+
+  const setFields: Record<string, unknown> = {
+    configKey: env.gmailWatchStateDocumentId,
+    mailbox,
+    expiration,
+    lastWatchAt: new Date(),
+  };
+  const setOnInsert: Record<string, unknown> = {};
+
+  if (mailboxChanged) {
+    setFields.historyId = String(historyId);
+    console.warn(
+      `[gmailWatch] mailbox mudou (${previous?.mailbox} -> ${mailbox}) — historyId resetado pro valor fresco ${historyId}`
+    );
+  } else {
+    setOnInsert.historyId = String(historyId);
+  }
+
   await Model.findOneAndUpdate(
     { configKey: env.gmailWatchStateDocumentId },
-    {
-      $set: {
-        configKey: env.gmailWatchStateDocumentId,
-        mailbox,
-        expiration,
-        lastWatchAt: new Date(),
-      },
-      $setOnInsert: { historyId: String(historyId) },
-    },
+    { $set: setFields, $setOnInsert: setOnInsert },
     { upsert: true, new: true }
   );
 

@@ -167,19 +167,28 @@ export function DeskStatusCommitButton({
 /** @deprecated use DeskStatusCommitButton */
 export const DeskComposeFooter = DeskStatusCommitButton;
 
+function normalizeMacroSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+}
+
 function ComposeMacrosMenu({ onSelect, disabled = false }) {
   const [open, setOpen] = useState(false);
   const [macros, setMacros] = useState(null);
+  const [query, setQuery] = useState('');
   const menuRef = useRef(null);
+  const searchInputRef = useRef(null);
 
   useEffect(() => {
-    if (!open || macros !== null) return;
+    if (!open) return undefined;
     let cancelled = false;
     fetchActiveMacrosCached()
       .then((list) => { if (!cancelled) setMacros(list); })
       .catch(() => { if (!cancelled) setMacros([]); });
     return () => { cancelled = true; };
-  }, [open, macros]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -193,6 +202,21 @@ function ComposeMacrosMenu({ onSelect, disabled = false }) {
   useEffect(() => {
     if (disabled) setOpen(false);
   }, [disabled]);
+
+  useEffect(() => {
+    if (open) {
+      searchInputRef.current?.focus();
+    } else {
+      setQuery('');
+    }
+  }, [open]);
+
+  const filteredMacros = useMemo(() => {
+    if (!macros) return macros;
+    const needle = normalizeMacroSearchText(query.trim());
+    if (!needle) return macros;
+    return macros.filter((item) => normalizeMacroSearchText(item.nome).includes(needle));
+  }, [macros, query]);
 
   return (
     <div className="crm-compose-bottom-bar__macros crm-macros-menu" ref={menuRef}>
@@ -209,11 +233,24 @@ function ComposeMacrosMenu({ onSelect, disabled = false }) {
         <i className="ti ti-chevron-down" aria-hidden="true" />
       </button>
       <div className="crm-macros-menu__list" role="menu" aria-label="Decisões" hidden={!open}>
-        {macros === null ? (
+        <div className="crm-macros-menu__search">
+          <i className="ti ti-search" aria-hidden="true" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar macro…"
+            aria-label="Buscar macro"
+          />
+        </div>
+        {filteredMacros === null ? (
           <span className="crm-macros-menu__empty">Carregando…</span>
-        ) : macros.length === 0 ? (
-          <span className="crm-macros-menu__empty">Nenhuma macro cadastrada.</span>
-        ) : macros.map((item) => (
+        ) : filteredMacros.length === 0 ? (
+          <span className="crm-macros-menu__empty">
+            {macros.length === 0 ? 'Nenhuma macro cadastrada.' : 'Nenhuma macro encontrada.'}
+          </span>
+        ) : filteredMacros.map((item) => (
           <button
             key={item._id}
             type="button"

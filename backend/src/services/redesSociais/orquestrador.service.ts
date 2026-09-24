@@ -6,16 +6,20 @@
  * os outros de rodar — cada erro é isolado e logado.
  *
  * Estado da captação (posts/mídias/comentários já conhecidos, e o cursor de cada
- * container) vive na memória do processo. Se o processo reiniciar, a próxima subida
- * refaz a sincronização inicial e recomeça o rastreamento do zero — isso é seguro
- * porque o índice único de `idOrigem` em RedesSociaisComentario garante que nada é
- * duplicado nem reclassificado (ver idsJaExistentes em redesSociaisComentario.service).
+ * container) é cacheado em memória durante a vida do processo, mas persistido no Mongo
+ * a cada ciclo (ver redesSociaisCaptacaoEstado.service) — um reinício do processo
+ * (deploy, cold start do Cloud Run) retoma de onde parou, em vez de refazer a
+ * sincronização inicial do zero. O índice único de `idOrigem` em RedesSociaisComentario
+ * segue como rede de segurança extra: mesmo que o cursor persistido fique desatualizado
+ * por algum motivo, nada é duplicado nem reclassificado (ver idsJaExistentes em
+ * redesSociaisComentario.service).
  *
- * AVISO SOBRE O PRIMEIRO CICLO (Facebook/Instagram): a sincronização inicial só marca
- * quais posts/mídias já existem — não marca quais comentários já existem. No PRIMEIRO
- * ciclo após ela, todo comentário/resposta já existente em todo post/mídia é tratado
- * como "novo" e classificado de uma vez (garante cobertura total desde o dia 1). Isso
- * pode tornar o primeiro ciclo mais lento e usar mais chamadas de IA que os seguintes.
+ * AVISO SOBRE O PRIMEIRO CICLO DE VERDADE (sem estado nenhum no Mongo ainda): a
+ * sincronização inicial só marca quais posts/mídias já existem — não marca quais
+ * comentários já existem. No PRIMEIRO ciclo após ela, todo comentário/resposta já
+ * existente em todo post/mídia é tratado como "novo" e classificado de uma vez (garante
+ * cobertura total desde o dia 1). Isso pode tornar o primeiro ciclo mais lento e usar
+ * mais chamadas de IA que os seguintes — mas só acontece uma vez, não a cada restart.
  */
 import { env } from '../../config/env';
 import {
@@ -36,6 +40,12 @@ import {
   buscarComentariosNovosGooglePlay,
   type ContaDeServicoGoogle,
 } from './captacao/googlePlayCaptacao.service';
+import {
+  carregarEstadoFacebook,
+  salvarEstadoFacebook,
+  carregarEstadoInstagram,
+  salvarEstadoInstagram,
+} from './redesSociaisCaptacaoEstado.service';
 import { classificarComentario } from './classificacaoComentario.service';
 import {
   idsJaExistentes,
@@ -101,13 +111,22 @@ async function rodarCicloFacebook(): Promise<void> {
   }
 
   if (!estadoFacebook) {
-    console.info('[redes-sociais] [Facebook] primeira execução — sincronizando lista de posts…');
-    estadoFacebook = await sincronizarTodosOsPostsFacebook(token, pageId);
-    console.info(`[redes-sociais] [Facebook] sincronização inicial: ${estadoFacebook.postsConhecidos.size} posts conhecidos.`);
+    estadoFacebook = await carregarEstadoFacebook();
+    if (estadoFacebook) {
+      console.info(
+        `[redes-sociais] [Facebook] estado restaurado do Mongo: ${estadoFacebook.postsConhecidos.size} posts, `
+        + `${estadoFacebook.comentariosConhecidos.size} comentários conhecidos.`,
+      );
+    } else {
+      console.info('[redes-sociais] [Facebook] sem estado salvo — sincronizando lista de posts…');
+      estadoFacebook = await sincronizarTodosOsPostsFacebook(token, pageId);
+      console.info(`[redes-sociais] [Facebook] sincronização inicial: ${estadoFacebook.postsConhecidos.size} posts conhecidos.`);
+    }
   }
 
   const { itensNovos, estadoAtualizado } = await executarCicloDeCaptacaoFacebook(token, pageId, estadoFacebook);
   estadoFacebook = estadoAtualizado;
+  await salvarEstadoFacebook(estadoFacebook);
   if (!itensNovos.length) return;
 
   const resultado = await processarNovosComentarios(itensNovos.map(normalizarDeFacebook));
@@ -122,13 +141,22 @@ async function rodarCicloInstagram(): Promise<void> {
   }
 
   if (!estadoInstagram) {
-    console.info('[redes-sociais] [Instagram] primeira execução — sincronizando lista de mídias…');
-    estadoInstagram = await sincronizarTodasAsMidias(token);
-    console.info(`[redes-sociais] [Instagram] sincronização inicial: ${estadoInstagram.midiasConhecidas.size} mídias conhecidas.`);
+    estadoInstagram = await carregarEstadoInstagram();
+    if (estadoInstagram) {
+      console.info(
+        `[redes-sociais] [Instagram] estado restaurado do Mongo: ${estadoInstagram.midiasConhecidas.size} mídias, `
+        + `${estadoInstagram.comentariosConhecidos.size} comentários conhecidos.`,
+      );
+    } else {
+      console.info('[redes-sociais] [Instagram] sem estado salvo — sincronizando lista de mídias…');
+      estadoInstagram = await sincronizarTodasAsMidias(token);
+      console.info(`[redes-sociais] [Instagram] sincronização inicial: ${estadoInstagram.midiasConhecidas.size} mídias conhecidas.`);
+    }
   }
 
   const { itensNovos, estadoAtualizado } = await executarCicloDeCaptacaoInstagram(token, estadoInstagram);
   estadoInstagram = estadoAtualizado;
+  await salvarEstadoInstagram(estadoInstagram);
   if (!itensNovos.length) return;
 
   const resultado = await processarNovosComentarios(itensNovos.map(normalizarDeInstagram));

@@ -14,6 +14,12 @@
  *
  * Depende de INSTAGRAM_ACCESS_TOKEN (env) — enquanto ausente, o ciclo do Instagram é
  * pulado (ver jobs/redesSociaisCaptacao.job.ts), sem quebrar Facebook/Google Play.
+ *
+ * PRIORIDADE: igual ao facebookCaptacao.service — o mais novo do perfil sempre vence,
+ * mesmo que a mídia seja antiga. Por isso `MAX_PAGINAS_POR_CONTAINER_POR_CICLO` limita
+ * quanto cada busca desce no histórico de uma mídia/comentário sem cursor conhecido, e
+ * `itensNovos` sai reordenado por `dataHora` no fim do ciclo. Mesma troca deliberada do
+ * Facebook: comentário muito antigo além da janela do ciclo fica pra trás.
  */
 import { env } from '../../../config/env';
 import type { ComentarioParaClassificar } from '../redesSociaisComentario.service';
@@ -103,6 +109,9 @@ function graphInstagramBase(): string {
 
 const TAMANHO_DE_PAGINA = 100;
 
+/** Ver mesma constante em facebookCaptacao.service — mesma trava de segurança. */
+const MAX_PAGINAS_POR_CONTAINER_POR_CICLO = 3;
+
 async function chamarGraphInstagramAPI<T>(url: URL): Promise<T> {
   const resposta = await fetch(url.toString());
   const corpo = (await resposta.json()) as T | GraphErroResponseInstagram;
@@ -167,14 +176,21 @@ export async function buscarNovosComentariosDaMidia(
   url.searchParams.set('limit', String(TAMANHO_DE_PAGINA));
   url.searchParams.set('access_token', accessToken);
 
+  let paginasVisitadas = 0;
   paginacao: while (url) {
     const corpo: GraphFilhosResponseInstagram = await chamarGraphInstagramAPI<GraphFilhosResponseInstagram>(url);
     for (const item of corpo.data) {
       if (item.id === ultimoConhecidoId) break paginacao;
       novos.push(item);
     }
+    paginasVisitadas += 1;
+    if (paginasVisitadas >= MAX_PAGINAS_POR_CONTAINER_POR_CICLO) break;
     url = corpo.paging?.next ? new URL(corpo.paging.next) : null;
   }
+
+  // A API do Instagram, ao contrário da do Facebook, não garante ordem cronológica —
+  // a ordenação por `timestamp` é feita no cliente, não confiando na ordem devolvida.
+  novos.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return novos;
 }
@@ -192,14 +208,19 @@ export async function buscarNovasRespostasDoComentario(
   url.searchParams.set('limit', String(TAMANHO_DE_PAGINA));
   url.searchParams.set('access_token', accessToken);
 
+  let paginasVisitadas = 0;
   paginacao: while (url) {
     const corpo: GraphFilhosResponseInstagram = await chamarGraphInstagramAPI<GraphFilhosResponseInstagram>(url);
     for (const item of corpo.data) {
       if (item.id === ultimoConhecidoId) break paginacao;
       novas.push(item);
     }
+    paginasVisitadas += 1;
+    if (paginasVisitadas >= MAX_PAGINAS_POR_CONTAINER_POR_CICLO) break;
     url = corpo.paging?.next ? new URL(corpo.paging.next) : null;
   }
+
+  novas.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return novas;
 }
@@ -263,6 +284,8 @@ export async function executarCicloDeCaptacaoInstagram(
 
     estado.ultimoFilhoConhecidoPorContainer.set(comentarioId, novasRespostas[0].id);
   }
+
+  itensNovos.sort((a, b) => new Date(b.dataHora).getTime() - new Date(a.dataHora).getTime());
 
   return { itensNovos, estadoAtualizado: estado };
 }

@@ -1,5 +1,6 @@
 /** email-outbound.service v1.5.1 — espera Gmail no startup antes de descartar envio */
 import { sendViaGmailApi, type GmailInlineImage, type GmailOutboundAttachment } from './gmail/gmailApiSend';
+import { sendViaSmtpRelay } from './gmail/smtpRelaySend';
 import {
   ensureEmailTransportReady,
   getEffectiveFromAddress,
@@ -42,7 +43,14 @@ let sendQueueTail: Promise<void> = Promise.resolve();
 let lastSendAt = 0;
 
 function isRateLimitError(err: unknown): boolean {
-  return /rate limit exceeded/i.test(String((err as Error)?.message || ''));
+  // Gmail API (googleapis): mensagem literal "User-rate limit exceeded (Mail sending)".
+  if (/rate limit exceeded/i.test(String((err as Error)?.message || ''))) return true;
+
+  // SMTP relay (nodemailer): usa o código de resposta SMTP estruturado, não o
+  // texto — evita reclassificar erro permanente (ex.: EHLO malformado, auth
+  // inválida) como rate limit só porque a mensagem contém "421"/"too many"/etc.
+  const responseCode = (err as { responseCode?: number })?.responseCode;
+  return responseCode === 421 || responseCode === 454;
 }
 
 function throttleSend<T>(fn: () => Promise<T>): Promise<T> {
@@ -98,9 +106,11 @@ export async function sendOutboundEmail(payload: OutboundEmailPayload): Promise<
     return { sent: false, reason: 'Destinatário inválido' };
   }
 
+  const sendFn = snap.transportMode === 'smtp' ? sendViaSmtpRelay : sendViaGmailApi;
+
   try {
     await throttleSend(() =>
-      sendViaGmailApi(
+      sendFn(
         {
           serviceAccountJson: snap.serviceAccountJson,
           delegatedUserEmail: snap.delegatedUserEmail,

@@ -58,6 +58,19 @@ function writeAll(items) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
+/**
+ * `row.workflow` pode vir como o snapshot rico do backend (objeto, ver
+ * buildReclamacaoWorkflowSnapshot em reclamacao.service.ts) — nunca renderizar esse objeto
+ * direto na tabela (React error #31). Sempre normalizar pra um rótulo de texto.
+ */
+function formatWorkflowLabel(value, workflowAtivo) {
+  if (value && typeof value === 'object') {
+    return value.active ? 'Ativo' : 'Finalizado';
+  }
+  if (typeof value === 'string') return value;
+  return workflowAtivo ? 'Ativo' : '—';
+}
+
 function normalizeApiItem(row) {
   const statusBc = row.statusBc || row.statusCanal || BC_STATUS.NAO_RESPONDIDA;
   const base = {
@@ -67,11 +80,7 @@ function normalizeApiItem(row) {
     statusBc,
     ticketStatus: row.ticketStatus || row.statusTicket,
     respostaAction: row.respostaAction || 'responder',
-    // row.workflow pode vir como o snapshot bruto do workflow (objeto, ver IReclamacaoWorkflow
-    // no backend) em vez de um rótulo de exibição — só usar a string quando já for uma.
-    workflow: typeof row.workflow === 'string' && row.workflow
-      ? row.workflow
-      : (row.workflowAtivo ? 'Ativo' : '—'),
+    workflow: formatWorkflowLabel(row.workflow, row.workflowAtivo),
     tabulacao: row.tabulacao || row.produto || '—',
     atendente: row.atendente || row.responsavel || '—',
   };
@@ -310,7 +319,7 @@ export function buildRegistroDefaults(item = {}) {
     prazoLegal,
     slaPct: item.slaPct ?? sla.slaPct,
     slaTone: item.slaTone || sla.slaTone,
-    workflow: typeof item.workflow === 'string' && item.workflow ? item.workflow : '—',
+    workflow: item.workflow || '—',
     tabulacao: item.tabulacao || item.produto || '—',
     atendente: item.atendente || '—',
     groupKey: resolveEspeciaisGroupKey(item, {
@@ -403,9 +412,7 @@ export function registerDemanda(item) {
     isDraft: false,
     workflowAtivo: true,
     statusBc: BC_STATUS.NAO_RESPONDIDA,
-    workflow: typeof item.workflow === 'string' && item.workflow && item.workflow !== '—'
-      ? item.workflow
-      : 'Tratativa Bacen',
+    workflow: item.workflow && item.workflow !== '—' ? item.workflow : 'Tratativa Bacen',
     groupKey: 'nao-respondidas',
     aberta: true,
     respostaAction: 'responder',

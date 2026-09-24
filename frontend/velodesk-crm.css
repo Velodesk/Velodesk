@@ -5432,10 +5432,10 @@
 }
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-macros-menu__trigger {
-    display: inline-flex;
-    align-items: center;
     gap: 4px;
-    font-size: var(--desk-fs-sm);
+    width: 104.02px;
+    height: 32px;
+    justify-content: center;
 }
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-macros-menu__trigger i {
@@ -5448,7 +5448,7 @@
     bottom: calc(100% + 6px);
     min-width: 220px;
     max-width: 320px;
-    max-height: 88px;
+    max-height: 220px;
     overflow-y: auto;
     background: #fff;
     border: 0.5px solid #E4E6EA;
@@ -5463,6 +5463,41 @@
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-macros-menu__list[hidden] {
     display: none;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-macros-menu__search {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background: #f3f4f8;
+    border: 0.5px solid #e4e6ea;
+    border-radius: 6px;
+    color: #9ca3af;
+    flex-shrink: 0;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-macros-menu__search i {
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-macros-menu__search input {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    outline: none;
+    font-family: inherit;
+    font-size: var(--desk-fs-sm);
+    color: #1a1a2e;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-macros-menu__search input::placeholder {
+    color: #9ca3af;
 }
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-macros-menu__item {
@@ -5493,6 +5528,8 @@
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-bottom-bar__ai {
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
     font-size: var(--desk-fs-sm);
 }
 
@@ -9981,6 +10018,7 @@ body.desk-v2-mode #cockpitFocusContext {
 
 #velodeskDeskV2Root .desk-my-tickets-table__th-check { width: 32px; }
 #velodeskDeskV2Root .desk-my-tickets-table__th-num { width: 148px; }
+#velodeskDeskV2Root .desk-my-tickets-table__th-name { width: 160px; }
 #velodeskDeskV2Root .desk-my-tickets-table__th-sla { width: 140px; }
 
 #velodeskDeskV2Root .desk-my-tickets-table__checkbox-cell {
@@ -10027,7 +10065,15 @@ body.desk-v2-mode #cockpitFocusContext {
     color: #1a1a2e;
 }
 
-#velodeskDeskV2Root .desk-my-tickets-table__sla {
+#velodeskDeskV2Root .desk-my-tickets-table__name-inner {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #1a1a2e;
+}
+
+#velodeskDeskV2Root .desk-my-tickets-table__sla-inner {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
