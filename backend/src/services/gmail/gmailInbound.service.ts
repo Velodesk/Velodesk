@@ -78,10 +78,15 @@ export async function processGmailHistory(
 
   try {
     do {
+      // historyTypes inclui 'labelAdded' porque e-mail de provedor externo (Outlook/Hotmail
+      // etc.) às vezes chega ao Gmail sem o label INBOX de imediato — a categorização anexa
+      // o label um instante depois, como um evento labelAdded separado. Pedir só messageAdded
+      // com labelId:'INBOX' filtra pro estado no momento da criação e perde essas mensagens
+      // pra sempre, sem log de erro (a raiz de um caso real de e-mail nunca virar ticket).
       const historyRes = await gmail.users.history.list({
         userId: 'me',
         startHistoryId,
-        historyTypes: ['messageAdded'],
+        historyTypes: ['messageAdded', 'labelAdded'],
         labelId: 'INBOX',
         pageToken,
       });
@@ -98,8 +103,27 @@ export async function processGmailHistory(
           break;
         }
 
+        // messagesAdded = mensagem criada já com INBOX; labelsAdded = INBOX anexado depois
+        // (categorização assíncrona) — dedupe por id caso o mesmo id apareça nos dois.
+        const candidateIds = new Set<string>();
+        const candidates: { id: string }[] = [];
         for (const added of record.messagesAdded ?? []) {
-          const msgRef = added.message;
+          const id = added.message?.id;
+          if (id && !candidateIds.has(id)) {
+            candidateIds.add(id);
+            candidates.push({ id });
+          }
+        }
+        for (const labelChange of record.labelsAdded ?? []) {
+          if (!(labelChange.labelIds ?? []).includes('INBOX')) continue;
+          const id = labelChange.message?.id;
+          if (id && !candidateIds.has(id)) {
+            candidateIds.add(id);
+            candidates.push({ id });
+          }
+        }
+
+        for (const msgRef of candidates) {
           if (!msgRef?.id) continue;
 
           const full = await gmail.users.messages.get({
