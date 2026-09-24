@@ -23,7 +23,6 @@
     "test:email-send": "tsx scripts/test-email-send.ts",
     "test:gmail-modules": "tsx scripts/test-gmail-modules.ts",
     "test:gmail-watch": "tsx scripts/test-gmail-watch.ts",
-    "setup:legacy-gmail-watch": "tsx scripts/setup-legacy-gmail-watch.ts",
     "test:gmail-inbound": "tsx scripts/test-gmail-inbound.ts",
     "test:mail-rules": "tsx scripts/test-mail-rules.ts",
     "test:ai-usage": "tsx scripts/test-ai-usage.ts",

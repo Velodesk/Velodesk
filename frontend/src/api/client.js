@@ -489,6 +489,9 @@ export const legadoOctaApi = {
   list: (params = {}) => api.get('/legado-octa/tickets', { params }).then((r) => r.data),
   get: (octadeskNumber) =>
     api.get(`/legado-octa/tickets/${encodeURIComponent(octadeskNumber)}`).then((r) => r.data),
+  listWhatsapp: (params = {}) => api.get('/legado-octa/whatsapp', { params }).then((r) => r.data),
+  getWhatsapp: (id) => api.get(`/legado-octa/whatsapp/${encodeURIComponent(id)}`).then((r) => r.data),
+  searchAll: (q) => api.get('/legado-octa/search', { params: { q } }).then((r) => r.data),
 };
 
 /** reclame-aqui/hugme — base Hugme persistida no MongoDB */

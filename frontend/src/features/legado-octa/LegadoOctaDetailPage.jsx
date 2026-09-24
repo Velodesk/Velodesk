@@ -59,7 +59,7 @@ export default function LegadoOctaDetailPage() {
   return (
     <div style={{ padding: 24, display: 'flex', gap: 24, alignItems: 'flex-start' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <Link to="/legado-octa" style={{ display: 'inline-block', marginBottom: 12 }}>
+        <Link to="/legado-octa/tickets" style={{ display: 'inline-block', marginBottom: 12 }}>
           &larr; Voltar à busca
         </Link>
         <h2 style={{ marginBottom: 4 }}>{ticket.summary || 'Ticket sem assunto'}</h2>

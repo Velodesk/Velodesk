@@ -224,17 +224,6 @@ export const env = {
   gmailInboundMaxMessagesPerPush: parseInt(process.env.GMAIL_INBOUND_MAX_MESSAGES_PER_PUSH || '8', 10),
   /** Orçamento de tempo por push antes de devolver 503 (Pub/Sub reentrega) */
   gmailInboundBudgetMs: parseInt(process.env.GMAIL_INBOUND_BUDGET_MS || '50000', 10),
-  /**
-   * Mailbox legado em watch somente-inbound durante a virada de e-mail oficial
-   * (ex.: suporte@velotax.com.br mantido só para receber respostas de tickets antigos,
-   * enquanto envio e novos tickets passam a usar o e-mail definitivo). Usa a mesma
-   * service account com domain-wide delegation do transporte principal, apenas com
-   * outro subject/mailbox — nunca envia, nunca vira defaultFromEmail.
-   */
-  gmailLegacyInboundEnabled: process.env.GMAIL_LEGACY_INBOUND_ENABLED === 'true',
-  gmailLegacyDelegatedUserEmail: (process.env.GMAIL_LEGACY_DELEGATED_USER_EMAIL || '').trim().toLowerCase(),
-  gmailLegacyWatchStateDocumentId:
-    process.env.GMAIL_LEGACY_WATCH_STATE_DOCUMENT_ID || 'desk_gmail_watch_legacy',
   /** @deprecated use desk_config.email_transport Gmail API */
   emailFrom: process.env.EMAIL_FROM || '',
   /** @deprecated use desk_config.email_transport Gmail API */
