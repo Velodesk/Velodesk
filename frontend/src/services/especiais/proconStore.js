@@ -67,7 +67,11 @@ function normalizeApiItem(row) {
     statusPc,
     ticketStatus: row.ticketStatus || row.statusTicket,
     respostaAction: row.respostaAction || 'responder',
-    workflow: row.workflow || (row.workflowAtivo ? 'Ativo' : '—'),
+    // row.workflow pode vir como o snapshot bruto do workflow (objeto, ver IReclamacaoWorkflow
+    // no backend) em vez de um rótulo de exibição — só usar a string quando já for uma.
+    workflow: typeof row.workflow === 'string' && row.workflow
+      ? row.workflow
+      : (row.workflowAtivo ? 'Ativo' : '—'),
     tabulacao: row.tabulacao || row.produto || '—',
     atendente: row.atendente || row.responsavel || '—',
   };
@@ -306,7 +310,7 @@ export function buildRegistroDefaults(item = {}) {
     prazoLegal,
     slaPct: item.slaPct ?? sla.slaPct,
     slaTone: item.slaTone || sla.slaTone,
-    workflow: item.workflow || '—',
+    workflow: typeof item.workflow === 'string' && item.workflow ? item.workflow : '—',
     tabulacao: item.tabulacao || item.produto || '—',
     atendente: item.atendente || '—',
     groupKey: resolveEspeciaisGroupKey(item, {
@@ -399,7 +403,9 @@ export function registerDemanda(item) {
     isDraft: false,
     workflowAtivo: true,
     statusPc: PC_STATUS.NAO_RESPONDIDA,
-    workflow: item.workflow && item.workflow !== '—' ? item.workflow : 'Tratativa Procon',
+    workflow: typeof item.workflow === 'string' && item.workflow && item.workflow !== '—'
+      ? item.workflow
+      : 'Tratativa Procon',
     groupKey: 'nao-respondidas',
     aberta: true,
     respostaAction: 'responder',
