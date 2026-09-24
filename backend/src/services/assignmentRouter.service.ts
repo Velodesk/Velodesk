@@ -569,8 +569,12 @@ export async function applyAssignmentToChamado(
   chamado: IChamadoN1,
   context: AssignmentContext
 ): Promise<boolean> {
-  if (!env.assignmentRouterEnabled) return false;
-  if (String(chamado.tabulacao?.[0]?.responsavel ?? '').trim()) return false;
+  // Mesma elegibilidade de applyAssignmentIfNeeded (canal telefone/agente-ia nunca cai na
+  // roleta genérica — responsável já vem identificado pelo próprio atendimento, ou fica sem
+  // dono de propósito; Procon/Consumidor.gov também ficam de fora, igual lá). Sem isso, os
+  // dois chamadores deste caminho (POST /app-notify e o handoff crítico do Agente de Gestão)
+  // atribuíam por essa porta mesmo em canais que deveriam ficar sem responsável.
+  if (!shouldAutoAssign(chamado)) return false;
 
   const assignment = await resolveLeastLoadedAgent();
   if (!assignment) {

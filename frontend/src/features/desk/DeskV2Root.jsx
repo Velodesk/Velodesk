@@ -1169,6 +1169,10 @@ export default function DeskV2Root() {
     }
     commitInProgressRef.current = true;
     let commitRollbackTicket = null;
+    // Snapshot da caixa de texto pra restaurar se o commit falhar depois da limpeza
+    // otimista (ver bloco antes do await commitTicketViaApi) — sem isso o agente perderia
+    // o rascunho num erro real de commit.
+    let composeRestoreOnError = null;
     // status é lido no catch (log/rollback) — precisa viver fora do try para não virar
     // ReferenceError ali (const dentro do try não é visível no catch).
     let status;
@@ -1388,6 +1392,42 @@ export default function DeskV2Root() {
         _detailLoaded: Boolean(ticket._detailLoaded || ticketBeforeMutate._detailLoaded),
       });
 
+      // Limpa a caixa de texto já aqui, otimista — junto com a mensagem otimista acima —
+      // em vez de só depois do await commitTicketViaApi. O texto já vai pro backend logo
+      // abaixo; esperar toda a resposta (workflow, e-mail em segundo plano etc.) só pra
+      // limpar a caixa deixava o agente vendo o texto "preso" por alguns segundos após o
+      // envio. Guarda o que tinha antes pra devolver no catch se o commit falhar de verdade.
+      const sessionKeyForCommit = activeTabId ? String(activeTabId) : null;
+      composeRestoreOnError = (hasPublicPayload || hasInternalPayload)
+        ? {
+          hasPublicPayload,
+          hasInternalPayload,
+          composeText,
+          composeReviewedPlain,
+          internalText,
+          composeAttachments,
+          sessionKey: sessionKeyForCommit,
+          tabSession: sessionKeyForCommit ? tabSessionsRef.current[sessionKeyForCommit] : null,
+        }
+        : null;
+      setSendStatus(status);
+      if (hasPublicPayload) setComposeText('');
+      if (hasPublicPayload) setComposeReviewedPlain('');
+      if (hasInternalPayload) setInternalText('');
+      if (hasPublicPayload) setComposeAttachments([]);
+      if (sessionKeyForCommit) {
+        const session = tabSessionsRef.current[sessionKeyForCommit];
+        if (session) {
+          tabSessionsRef.current[sessionKeyForCommit] = {
+            ...session,
+            composeText: hasPublicPayload ? '' : session.composeText,
+            composeReviewedPlain: hasPublicPayload ? '' : session.composeReviewedPlain,
+            internalText: hasInternalPayload ? '' : session.internalText,
+            composeAttachments: hasPublicPayload ? [] : session.composeAttachments,
+          };
+        }
+      }
+
       const ticketBeforeSave = findTicketEntry(ticket.id)?.ticket || prepared;
       const workflowFlushDeps = {
         ticketsApi,
@@ -1404,6 +1444,10 @@ export default function DeskV2Root() {
         ...(attachmentUrls.length ? { attachments: attachmentUrls } : {}),
       });
 
+      // Commit confirmado — não restaurar mais a caixa de texto se algo falhar daqui pra
+      // frente (ex.: flushPendingWorkflowOnSave), a mensagem já foi enviada de verdade.
+      composeRestoreOnError = null;
+
       const entryAfterSave = findTicketEntry(ticket.id);
       const flushResult = await flushPendingWorkflowOnSave(
         ticket.id,
@@ -1418,24 +1462,6 @@ export default function DeskV2Root() {
         );
       }
 
-      setSendStatus(status);
-      if (hasPublicPayload) setComposeText('');
-      if (hasPublicPayload) setComposeReviewedPlain('');
-      if (hasInternalPayload) setInternalText('');
-      if (hasPublicPayload) setComposeAttachments([]);
-      if (activeTabId) {
-        const sessionKey = String(activeTabId);
-        const session = tabSessionsRef.current[sessionKey];
-        if (session) {
-          tabSessionsRef.current[sessionKey] = {
-            ...session,
-            composeText: hasPublicPayload ? '' : session.composeText,
-            composeReviewedPlain: hasPublicPayload ? '' : session.composeReviewedPlain,
-            internalText: hasInternalPayload ? '' : session.internalText,
-            composeAttachments: hasPublicPayload ? [] : session.composeAttachments,
-          };
-        }
-      }
       showNotification(
         hasPublicPayload || hasInternalPayload ? 'Ticket enviado e salvo.' : 'Ticket salvo.',
         'success',
@@ -1458,6 +1484,19 @@ export default function DeskV2Root() {
     } catch (err) {
       if (commitRollbackTicket && ticket?.id) {
         patchTicket(ticket.id, commitRollbackTicket);
+      }
+      if (composeRestoreOnError) {
+        if (composeRestoreOnError.hasPublicPayload) {
+          setComposeText(composeRestoreOnError.composeText);
+          setComposeReviewedPlain(composeRestoreOnError.composeReviewedPlain);
+          setComposeAttachments(composeRestoreOnError.composeAttachments);
+        }
+        if (composeRestoreOnError.hasInternalPayload) {
+          setInternalText(composeRestoreOnError.internalText);
+        }
+        if (composeRestoreOnError.sessionKey && composeRestoreOnError.tabSession) {
+          tabSessionsRef.current[composeRestoreOnError.sessionKey] = composeRestoreOnError.tabSession;
+        }
       }
       const msg = err?.response?.data?.message || err?.message || 'Erro ao salvar ticket.';
       deskLog.error('AÇÃO', 'commit → falhou', {

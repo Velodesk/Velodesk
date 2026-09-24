@@ -445,15 +445,25 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
       );
       // Reclame Aqui não tem outbound de e-mail — "Mensagem Agente"/"Mensagem Cliente" só
       // registram histórico interno, nunca disparam contato real ao cliente por este canal.
+      //
+      // Fail-soft/fire-and-forget (mesmo padrão de syncFromChamado/evaluateEmailTriggers acima):
+      // o envio passa pelo throttle serializado global de e-mail (email-outbound.service.ts),
+      // que pode segurar o envio por dezenas de segundos quando vários agentes mandam mensagem
+      // ao mesmo tempo. Aguardar isso aqui prendia a resposta do commit até estourar o timeout
+      // do front (45s) — o ticket já resolve e a mensagem já fica registrada antes deste bloco
+      // (chamado.save() logo acima), então a resposta não depende do e-mail já ter saído. O
+      // envio real e o registro do messageId (persistOutboundEmailMeta + save, dentro de
+      // sendAgentReplyEmail) continuam acontecendo normalmente em segundo plano.
       if (shouldNotifyClient && !isReclameAquiChamado(chamado)) {
-        await notifyAgentReplyAsync(
+        notifyAgentReplyAsync(
           chamado,
           commitResult.publicText,
           undefined,
           commitResult.publicRegistroIndex,
           publicAttachments,
-        );
-        await chamado.save();
+        ).catch((err) => {
+          console.warn('[tickets.routes] notifyAgentReplyAsync (commit) fail-soft:', (err as Error).message);
+        });
       }
     }
 
