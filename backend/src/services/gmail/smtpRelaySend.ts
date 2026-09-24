@@ -8,6 +8,10 @@ export type { GmailAuthParams, GmailSendParams } from './gmailApiSend';
 
 const SMTP_RELAY_HOST = process.env.SMTP_RELAY_HOST || 'smtp-relay.gmail.com';
 const SMTP_RELAY_PORT = Number(process.env.SMTP_RELAY_PORT || 587);
+// EHLO precisa de um FQDN válido — o relay do Google rejeita com 421-4.7.0
+// "Try again later" se receber um hostname não qualificado (ex.: hostname
+// interno do container/máquina).
+const SMTP_EHLO_NAME = process.env.SMTP_RELAY_EHLO_NAME || 'velodesk.velotax.com.br';
 
 // Escopo mais amplo que o `gmail.send` da API — necessário pro SMTP AUTH via XOAUTH2.
 const SMTP_RELAY_SCOPE = 'https://mail.google.com/';
@@ -33,6 +37,7 @@ function buildSmtpTransport(authParams: GmailAuthParams, accessToken: string): T
     port: SMTP_RELAY_PORT,
     secure: false,
     requireTLS: true,
+    name: SMTP_EHLO_NAME,
     auth: {
       type: 'OAuth2',
       user: authParams.delegatedUserEmail,
