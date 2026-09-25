@@ -14,6 +14,7 @@ import { businessMsBetween } from './dates/businessHours.util';
 import { assembleClientEmail, plainTextToEmailHtml } from './emailSkeleton.service';
 import { escapeHtmlAttribute } from './emailHtml.util';
 import { sendOutboundEmail } from './email-outbound.service';
+import { extractComposeInlineImages } from './composeInlineImages.util';
 import { blockQaOutboundEmail } from './qaEmailGuard.service';
 import {
   buildOutboundMessageId,
@@ -163,7 +164,11 @@ async function composeAndSendCsatEmail(
   const protocolo = String(chamado.chamadoProtocolo ?? '').trim();
   const protocoloLineHtml = buildCsatProtocoloLineHtml(protocolo);
   const blocoEstrelasHtml = buildCsatStarsHtml(protocolo);
-  const corpo = `${corpoTextoHtml}\n${protocoloLineHtml}\n${blocoEstrelasHtml}`;
+  const corpoBruto = `${corpoTextoHtml}\n${protocoloLineHtml}\n${blocoEstrelasHtml}`;
+  // Gmail e outros webmails não renderizam <img src="data:..."> em e-mail recebido (só
+  // servem imagem remota http(s) ou anexo inline via CID) — converte pro mesmo mecanismo
+  // de CID já usado pelo compose manual, senão a estrela vira ícone quebrado.
+  const { html: corpo, inlineImages: starInlineImages } = extractComposeInlineImages(corpoBruto);
 
   const assembled = await assembleClientEmail({
     mode: 'template',
@@ -196,7 +201,7 @@ async function composeAndSendCsatEmail(
     text: assembled.text,
     html: assembled.html,
     headers: { messageId },
-    inlineImages: assembled.inlineImages,
+    inlineImages: [...assembled.inlineImages, ...starInlineImages],
   });
 
   if (!result.sent) {
