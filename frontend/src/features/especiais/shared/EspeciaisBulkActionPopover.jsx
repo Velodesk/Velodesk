@@ -1,35 +1,31 @@
 /**
- * BulkActionPopover — monta e dispara ações (status, atribuir agente) aplicadas em
- * massa aos tickets selecionados na fila (checkboxes de mesclagem reaproveitados).
- * "Feito" chama PUT /tickets/:id pra cada ticket selecionado — mesmo endpoint genérico
- * usado pelo Desk pra salvar status/responsável de um ticket por vez.
+ * EspeciaisBulkActionPopover — versão do BulkActionPopover do Desk (src/features/desk/
+ * components/BulkActionPopover.jsx) pros 4 canais de casos especiais (Reclame Aqui, Bacen,
+ * Procon, Consumidor.Gov). Não reaproveita o componente do Desk porque os itens selecionados
+ * aqui são documentos de `chamados_reclamacoes` (reclamacoesApi.patch), não tickets de
+ * `chamados` (ticketsApi.update) — coleções e endpoints diferentes.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDeskColaboradores } from '../../../hooks/useDeskColaboradores';
 import { useNotifications } from '../../../context/NotificationContext';
-import { usePermissions } from '../../../context/PermissionContext';
-import { getAgentName } from '../../../services/clientDb';
-import { ticketsApi } from '../../../api/client';
-import { findTicketEntry } from '../../../services/ticketsStorage';
-import { getTicketProtocolLabel } from '../../../services/desk/utils';
+import { reclamacoesApi } from '../../../api/client';
+import { CHANNEL_CONFIG } from './especiaisTicketCommitService';
+import { RA_STATUS_LABELS } from '../../../services/especiais/reclameAquiData';
+import { BC_STATUS_LABELS } from '../../../services/especiais/bacenData';
+import { PC_STATUS_LABELS } from '../../../services/especiais/proconData';
+import { CG_STATUS_LABELS } from '../../../services/especiais/consumidorGovData';
 
-// Mesmo limite do backend (permission.service.ts: MIN_NIVEL_ATRIBUIR_A_OUTROS) — nível de
-// "Suporte" em Central de configurações → Funções e Permissões. Isso é só pra não oferecer
-// uma opção que o backend vai recusar; a trava de verdade é lá.
-const MIN_NIVEL_ATRIBUIR_A_OUTROS = 3;
+const STATUS_LABELS_BY_CHANNEL = {
+  ra: RA_STATUS_LABELS,
+  bc: BC_STATUS_LABELS,
+  pc: PC_STATUS_LABELS,
+  gov: CG_STATUS_LABELS,
+};
 
 const ACTION_OPTIONS = [
-  { value: 'status', label: 'Salvar o ticket com status' },
-  { value: 'agente', label: 'Associar ticket a um agente' },
-];
-
-const STATUS_OPTIONS = [
-  { value: 'novos', label: 'Novo' },
-  { value: 'em-andamento', label: 'Em andamento' },
-  { value: 'pendente', label: 'Pendente' },
-  { value: 'resolvidos', label: 'Resolvido' },
-  { value: 'cancelado', label: 'Cancelado' },
+  { value: 'status', label: 'Salvar o item com status' },
+  { value: 'agente', label: 'Associar item a um agente' },
 ];
 
 const POPOVER_WIDTH = 280;
@@ -47,8 +43,6 @@ function useAnchoredPosition(open, anchorRef) {
       const el = anchorRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      // Ancorar pelo left do botão deixa o popover vazar pra fora da tela quando o botão
-      // está perto da borda direita — trava entre a margem e o espaço que realmente sobra.
       const maxLeft = window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN;
       const left = Math.max(VIEWPORT_MARGIN, Math.min(rect.left, maxLeft));
       setStyle({
@@ -69,18 +63,22 @@ function useAnchoredPosition(open, anchorRef) {
   return style;
 }
 
-export default function BulkActionPopover({ open, onClose, anchorRef, selectedTicketIds, onApplied }) {
+function itemLabel(item, id) {
+  if (!item) return `#${id}`;
+  const protocolo = item.protocoloRa || item.protocoloBc || item.protocoloPc || item.protocoloGov
+    || item.idReclamacaoRa || item.idDemanda || '';
+  const nome = item.consumidor || item.demandante || '';
+  if (nome && protocolo) return `${nome} (${protocolo})`;
+  return nome || protocolo || `#${id}`;
+}
+
+export default function EspeciaisBulkActionPopover({ open, onClose, anchorRef, channelId, selectedIds, items, onApplied }) {
   const [actions, setActions] = useState([{ id: 1, type: '', value: '', done: false, failures: [] }]);
   const [applyingId, setApplyingId] = useState(null);
   const popRef = useRef(null);
   const style = useAnchoredPosition(open, anchorRef);
   const { agentOptions, loading: loadingAgents } = useDeskColaboradores();
   const { showNotification } = useNotifications();
-  const { permissions } = usePermissions();
-  // Enquanto as permissões ainda não carregaram, assume o nível mais baixo (falha fechado —
-  // não oferece "atribuir a outro agente" antes de saber se a pessoa realmente pode).
-  const canAssignToOthers = (permissions?.nivel ?? 0) >= MIN_NIVEL_ATRIBUIR_A_OUTROS;
-  const ownAgentName = getAgentName();
 
   useEffect(() => {
     if (!open) {
@@ -104,6 +102,10 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
 
   if (!open || !style) return null;
 
+  const config = CHANNEL_CONFIG[channelId] || CHANNEL_CONFIG.ra;
+  const statusLabels = STATUS_LABELS_BY_CHANNEL[channelId] || RA_STATUS_LABELS;
+  const statusOptions = Object.entries(statusLabels).map(([value, label]) => ({ value, label }));
+
   const handleTypeChange = (id, type) => {
     setActions((prev) => prev.map((action) => (action.id === id ? { ...action, type, value: '' } : action)));
   };
@@ -120,52 +122,55 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
   };
 
   const secondOptionsFor = (type) => {
-    if (type === 'status') return STATUS_OPTIONS;
-    if (type === 'agente') {
-      // Atendimento (nível < Suporte) só pode atribuir em massa pra si mesmo — a lista fica
-      // restrita ao próprio nome. Gestão/Suporte continuam vendo todo mundo.
-      if (!canAssignToOthers) {
-        return ownAgentName ? [{ value: ownAgentName, label: ownAgentName }] : [];
-      }
-      return agentOptions.map((value) => ({ value, label: value }));
-    }
+    if (type === 'status') return statusOptions;
+    if (type === 'agente') return agentOptions.map((value) => ({ value, label: value }));
     return null;
   };
 
   const handleMarkDone = async (action) => {
-    const ticketIds = Array.from(selectedTicketIds || []);
-    if (!ticketIds.length) {
-      showNotification('Selecione ao menos um ticket na fila antes de concluir a ação.', 'warning');
+    const ids = Array.from(selectedIds || []);
+    if (!ids.length) {
+      showNotification('Selecione ao menos um item na tabela antes de concluir a ação.', 'warning');
       return;
     }
 
     setApplyingId(action.id);
     try {
-      const payload = action.type === 'status'
-        ? { status: action.value }
-        : { responsibleAgent: action.value };
       const results = await Promise.allSettled(
-        ticketIds.map((id) => ticketsApi.update(id, payload)),
+        ids.map(async (id) => {
+          const original = (items || []).find((it) => String(it.id) === String(id));
+          const payload = action.type === 'status'
+            ? { statusCanal: action.value }
+            : { responsavel: action.value };
+          const persisted = await reclamacoesApi.patch(config.orgao, id, payload);
+          if (original) {
+            const patch = action.type === 'status'
+              ? { [config.statusField]: action.value }
+              : { responsavel: action.value };
+            config.patchItem({ ...original, ...(persisted || {}), ...patch });
+          }
+          return id;
+        }),
       );
       const failures = [];
       results.forEach((result, index) => {
         if (result.status !== 'rejected') return;
-        const id = ticketIds[index];
-        const ticket = findTicketEntry(id)?.ticket;
+        const id = ids[index];
+        const original = (items || []).find((it) => String(it.id) === String(id));
         failures.push({
           id,
-          protocol: getTicketProtocolLabel(ticket) || `#${id}`,
+          label: itemLabel(original, id),
           message: result.reason?.response?.data?.message || result.reason?.message || 'Falha desconhecida',
         });
       });
       const ok = results.length - failures.length;
 
       if (ok && !failures.length) {
-        showNotification(`${ok} ticket(s) atualizado(s) com sucesso.`, 'success');
+        showNotification(`${ok} item(ns) atualizado(s) com sucesso.`, 'success');
       } else if (ok && failures.length) {
-        showNotification(`${ok} ticket(s) atualizado(s); ${failures.length} falharam.`, 'warning');
+        showNotification(`${ok} item(ns) atualizado(s); ${failures.length} falharam.`, 'warning');
       } else {
-        showNotification('Não foi possível aplicar a ação em nenhum ticket selecionado.', 'error');
+        showNotification('Não foi possível aplicar a ação em nenhum item selecionado.', 'error');
       }
 
       setActions((prev) => prev.map((a) => (
@@ -181,10 +186,10 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
     <div ref={popRef} className="bulk-action-popover" style={style} role="dialog" aria-label="Atuação em massa">
       {actions.map((action) => {
         const failuresBlock = action.failures?.length ? (
-          <ul className="bulk-action-popover__failures" aria-label="Tickets que falharam">
+          <ul className="bulk-action-popover__failures" aria-label="Itens que falharam">
             {action.failures.map((f) => (
               <li key={f.id}>
-                <strong>#{f.protocol}</strong> — {f.message}
+                <strong>{f.label}</strong> — {f.message}
               </li>
             ))}
           </ul>

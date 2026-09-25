@@ -1,8 +1,11 @@
 /**
- * ConsultaProductWorkspace v1.0.0 — sidebar de produtos ativos + detalhe (métricas, linha do tempo, resumo)
- * VERSION: v1.0.0 | DATE: 2026-09-22
+ * ConsultaProductWorkspace v2.0.0 — sidebar de produtos ativos + detalhe genérico com
+ * seleção de contrato (Empréstimo Pessoal/Antecipação de Salário); IRPF/Clube Velotax
+ * continuam no formato simples (métricas + linha do tempo), sem estrutura de contratos/
+ * parcelas na API real.
+ * VERSION: v2.0.0 | DATE: 2026-09-24
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   CONSULTA_PRODUCT_LABELS,
   CONSULTA_PRODUCT_SLUGS,
@@ -11,79 +14,461 @@ import {
   formatConsultaDate,
   formatConsultaDateTime,
   formatConsultaMoney,
+  formatConsultaTime,
+  formatInstallmentStatus,
+  getInstallmentStatusTone,
   getOverviewProductFlags,
-  pickPrimaryContract,
   summarizeConsultaProduct,
 } from '../../../services/desk/consultaFormatters';
 import { ICON_BY_STATE, StatusChip } from './ConsultaStatusChip';
 
-function buildEpAsView(data) {
-  const contracts = Array.isArray(data?.contracts) ? data.contracts : [];
-  if (!contracts.length) return null;
+const CONTRACT_PRODUCT_SLUGS = ['emprestimo-pessoal', 'antecipacao-salario'];
+const ROTULO_VALOR_BY_SLUG = {
+  'emprestimo-pessoal': 'Valor contratado',
+  'antecipacao-salario': 'Valor antecipado',
+};
 
-  const contract = pickPrimaryContract(contracts);
-  const installments = Array.isArray(contract.installments) ? contract.installments : [];
-  const paidCount = installments.filter((item) => String(item.status).toLowerCase() === 'paid').length;
-  const statusLabel = contract.contractStatusLabel || contract.contractStatus || '—';
-  const statusTone = CONSULTA_STATUS_TONE[classifyConsultaStatusLabel(statusLabel)] || 'gray';
+const PAYMENT_METHOD_LABEL = { PAGARME: 'Pagar.me' };
+function formatPaymentMethod(raw) {
+  if (!raw) return '';
+  const key = String(raw).trim().toUpperCase();
+  return PAYMENT_METHOD_LABEL[key] || raw;
+}
 
-  const metrics = [
-    { key: 'principal', label: 'Valor antecipado', value: formatConsultaMoney(contract.principal) },
-    {
-      key: 'next',
-      label: 'Próxima parcela',
-      value: contract.nextInstallment
-        ? formatConsultaDate(contract.nextInstallment.dueDate)
-        : (installments.length ? 'Quitado' : '—'),
-    },
-    {
-      key: 'installments',
-      label: 'Parcelas pagas',
-      value: installments.length ? `${paidCount} de ${installments.length}` : '—',
-    },
-    { key: 'disbursed', label: 'Contratação', value: formatConsultaDate(contract.disbursedAt) },
-  ];
+const ELIGIBILITY_REASON_LABEL = {
+  not_available: 'Crédito não disponível no momento',
+};
 
-  const timeline = [];
-  if (contract.nextInstallment) {
-    timeline.push({
-      id: 'next',
-      dateLabel: formatConsultaDate(contract.nextInstallment.dueDate),
-      sortValue: new Date(contract.nextInstallment.dueDate || 0).getTime(),
-      label: `Próxima parcela prevista · ${formatConsultaMoney(contract.nextInstallment.amountDue)}`,
-      tone: 'upcoming',
-    });
-  }
-  installments
-    .filter((item) => String(item.status).toLowerCase() === 'paid')
-    .forEach((item) => {
-      timeline.push({
-        id: `paid-${item.number}`,
-        dateLabel: formatConsultaDate(item.dueDate),
-        sortValue: new Date(item.dueDate || 0).getTime(),
-        label: `Parcela ${item.number} paga · ${formatConsultaMoney(item.amountDue)}`,
-        tone: 'paid',
-      });
-    });
-  if (contract.disbursedAt) {
-    timeline.push({
-      id: 'contract',
-      dateLabel: formatConsultaDate(contract.disbursedAt),
-      sortValue: new Date(contract.disbursedAt).getTime(),
-      label: `Antecipação contratada · ${formatConsultaMoney(contract.principal)}`,
-      tone: 'contract',
-    });
-  }
-  timeline.sort((a, b) => b.sortValue - a.sortValue);
+const ELIGIBILITY_PRODUCT_PHRASE = {
+  'emprestimo-pessoal': 'um novo empréstimo pessoal',
+  'antecipacao-salario': 'uma nova antecipação de salário',
+};
+
+function buildEligibilidade(eligibility, slug) {
+  if (!eligibility) return null;
+  const disponivel = Boolean(eligibility.available);
+  const mensagem = ELIGIBILITY_REASON_LABEL[eligibility.reasonCode]
+    || (disponivel ? 'Crédito disponível' : 'Crédito não disponível no momento');
+  const productPhrase = ELIGIBILITY_PRODUCT_PHRASE[slug] || 'um novo crédito';
 
   return {
-    statusLabel,
-    statusTone,
-    metrics,
-    timeline,
-    note: contracts.length > 1 ? `+${contracts.length - 1} outro(s) contrato(s) não exibido(s)` : '',
+    disponivel,
+    badgeLabel: disponivel ? 'Disponível' : 'Indisponível',
+    mensagem,
+    detalhe: disponivel
+      ? `Cliente pode contratar ${productPhrase} agora.`
+      : `Cliente não pode contratar ${productPhrase} agora.`,
+    expiraEmLabel: eligibility.expiresAt ? `Nova checagem em ${formatConsultaDate(eligibility.expiresAt)}` : '',
   };
 }
+
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const target = new Date(dateStr);
+  if (Number.isNaN(target.getTime())) return null;
+  const diffMs = target.setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0);
+  return Math.round(diffMs / 86400000);
+}
+
+/** "Em dia" | "Atrasada" | "Paga" (via formatInstallmentStatus) — nunca lança, sempre retorna algo exibível. */
+function normalizeParcela(raw) {
+  return {
+    numero: raw?.number ?? null,
+    vencimento: raw?.dueDate ?? null,
+    valorDevido: raw?.amountDue ?? null,
+    pago: Boolean(raw?.paid),
+    valorPago: raw?.amountPaid ?? null,
+    pagoEm: raw?.paidAt ?? null,
+    formaPagamento: raw?.paymentType ?? null,
+    situacao: formatInstallmentStatus(raw?.status),
+    situacaoTone: getInstallmentStatusTone(raw?.status),
+  };
+}
+
+/** "vigencia" (em aberto) | "quitado" | "atrasado" — deriva de label + fallback pelas parcelas. */
+function classifyContractStatusKind(label, parcelas) {
+  const text = String(label ?? '').toLowerCase();
+  if (/quita/.test(text)) return 'quitado';
+  if (parcelas.length && parcelas.every((p) => p.pago)) return 'quitado';
+  if (/atras/.test(text)) return 'atrasado';
+  if (parcelas.some((p) => p.situacao === 'Atrasada')) return 'atrasado';
+  return 'vigencia';
+}
+
+function normalizeContrato(raw, sequencia, totalContratos) {
+  const parcelas = (Array.isArray(raw?.installments) ? raw.installments : [])
+    .map(normalizeParcela)
+    .sort((a, b) => Number(a.numero) - Number(b.numero));
+
+  const statusLabel = raw?.contractStatusLabel || raw?.contractStatus || '—';
+  const statusKind = classifyContractStatusKind(statusLabel, parcelas);
+
+  const valorContratado = Number(raw?.principal) || 0;
+  const valorTotalDevido = Number(raw?.totalAmountDue) || 0;
+  const totalPago = parcelas.reduce((sum, p) => sum + (Number(p.valorPago) || 0), 0);
+  const encargos = valorTotalDevido - valorContratado;
+
+  const pagas = parcelas.filter((p) => p.pago);
+  const ultimoPagamento = pagas
+    .slice()
+    .sort((a, b) => new Date(b.pagoEm || b.vencimento || 0) - new Date(a.pagoEm || a.vencimento || 0))[0] || null;
+
+  const proximaParcelaRaw = statusKind !== 'quitado'
+    ? (raw?.nextInstallment || parcelas.find((p) => !p.pago) || null)
+    : null;
+  const proximaParcelaDias = proximaParcelaRaw ? daysUntil(proximaParcelaRaw.dueDate ?? proximaParcelaRaw.vencimento) : null;
+
+  return {
+    id: raw?.contractNumber ? String(raw.contractNumber) : `contrato-${sequencia}`,
+    sequencia,
+    totalContratos,
+    status: statusLabel,
+    statusKind,
+    valorContratado,
+    valorTotalDevido,
+    totalPago,
+    seguro: Boolean(raw?.hasInsurance),
+    encargos,
+    dataPedido: raw?.disbursedAt ?? null,
+    ccb: { numero: raw?.contractNumber ?? '', status: raw?.contractNumber ? 'Emitido' : '' },
+    totalParcelas: parcelas.length,
+    valorParcela: parcelas[0]?.valorDevido ?? null,
+    parcelas,
+    proximaParcela: proximaParcelaRaw ? {
+      vencimento: proximaParcelaRaw.dueDate ?? proximaParcelaRaw.vencimento,
+      valor: proximaParcelaRaw.amountDue ?? proximaParcelaRaw.valorDevido,
+      dias: proximaParcelaDias,
+      numero: proximaParcelaRaw.number ?? proximaParcelaRaw.numero,
+    } : null,
+    quitadoEm: ultimoPagamento ? { data: ultimoPagamento.pagoEm, formaPagamento: ultimoPagamento.formaPagamento } : null,
+  };
+}
+
+const STATUS_KIND_LABEL = { vigencia: 'em vigência', quitado: 'quitado', atrasado: 'atrasado' };
+
+function buildSubtitle(contratos) {
+  const total = contratos.length;
+  if (total === 1) return `1 contrato · ${STATUS_KIND_LABEL[contratos[0].statusKind]}`;
+  const counts = { vigencia: 0, quitado: 0, atrasado: 0 };
+  contratos.forEach((c) => { counts[c.statusKind] = (counts[c.statusKind] || 0) + 1; });
+  const parts = Object.entries(counts)
+    .filter(([, n]) => n > 0)
+    .map(([kind, n]) => `${n} ${STATUS_KIND_LABEL[kind]}`);
+  return `${total} contratos · ${parts.join(' · ')}`;
+}
+
+function buildHistorico(contratos) {
+  const quitados = contratos.filter((c) => c.statusKind === 'quitado').length;
+  const totalPago = contratos.reduce((sum, c) => sum + c.totalPago, 0);
+  const datasPedido = contratos.map((c) => c.dataPedido).filter(Boolean).map((d) => new Date(d).getTime());
+  const primeiroPedido = datasPedido.length ? new Date(Math.min(...datasPedido)).toISOString() : null;
+
+  return {
+    totalContratos: contratos.length,
+    quitados,
+    totalPagoLabel: formatConsultaMoney(totalPago),
+    primeiroPedidoLabel: primeiroPedido ? formatConsultaDate(primeiroPedido) : '—',
+  };
+}
+
+function pickDefaultContratoId(contratos) {
+  const aberto = contratos.find((c) => c.statusKind === 'vigencia' || c.statusKind === 'atrasado');
+  return (aberto || contratos[0])?.id ?? null;
+}
+
+/** Converte a resposta bruta (contracts[]) num Produto normalizado — único ponto específico por produto. */
+function normalizeContractProduct(data, slug) {
+  const rawContracts = Array.isArray(data?.contracts) ? data.contracts : [];
+  if (!rawContracts.length) return null;
+
+  const total = rawContracts.length;
+  const chronological = rawContracts
+    .slice()
+    .sort((a, b) => new Date(a.disbursedAt || 0) - new Date(b.disbursedAt || 0));
+  const bySequencia = chronological.map((raw, idx) => normalizeContrato(raw, idx + 1, total));
+  // exibição: mais recente primeiro
+  const contratos = bySequencia.slice().sort((a, b) => new Date(b.dataPedido || 0) - new Date(a.dataPedido || 0));
+
+  return {
+    id: slug,
+    nome: CONSULTA_PRODUCT_LABELS[slug] || slug,
+    rotuloValor: ROTULO_VALOR_BY_SLUG[slug] || 'Valor contratado',
+    elegibilidade: buildEligibilidade(data?.eligibility, slug),
+    contratos,
+    subtitle: buildSubtitle(contratos),
+    historico: buildHistorico(contratos),
+  };
+}
+
+function buildContractNavMeta(produto) {
+  const total = produto.contratos.length;
+  const countLabel = `${total} contrato${total > 1 ? 's' : ''}`;
+  const proximo = produto.contratos
+    .map((c) => c.proximaParcela)
+    .filter(Boolean)
+    .sort((a, b) => new Date(a.vencimento || 0) - new Date(b.vencimento || 0))[0];
+  if (proximo) return `${countLabel} · próx. parcela ${formatConsultaDate(proximo.vencimento)}`;
+  if (produto.contratos.every((c) => c.statusKind === 'quitado')) return `${countLabel} · quitado`;
+  return countLabel;
+}
+
+// ---------------------------------------------------------------------------
+// ContractTabs
+// ---------------------------------------------------------------------------
+
+const STATUS_KIND_DOT = { vigencia: '#F59E0B', quitado: '#16A34A', atrasado: '#dc3545' };
+
+function ContractTabs({ contratos, selectedId, onSelect }) {
+  if (contratos.length < 2) return null;
+  return (
+    <div className="crm-consultas-detail__contract-tabs" role="tablist" aria-label="Contratos do produto">
+      {contratos.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          role="tab"
+          aria-selected={c.id === selectedId}
+          className={'crm-consultas-detail__contract-tab' + (c.id === selectedId ? ' is-active' : '')}
+          onClick={() => onSelect(c.id)}
+        >
+          <span
+            className="crm-consultas-detail__contract-tab-dot"
+            style={{ background: STATUS_KIND_DOT[c.statusKind] }}
+            aria-hidden="true"
+          />
+          Contrato {c.sequencia} de {c.totalContratos} · {c.status}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ContractProductDetail — detalhe genérico (Empréstimo Pessoal / Antecipação de Salário)
+// ---------------------------------------------------------------------------
+
+function ContractProductDetail({ produto, selectedContractId, onSelectContract, isTicketProduct }) {
+  useEffect(() => {
+    const exists = produto.contratos.some((c) => c.id === selectedContractId);
+    if (!exists) onSelectContract(pickDefaultContratoId(produto.contratos));
+  }, [produto, selectedContractId, onSelectContract]);
+
+  const contrato = produto.contratos.find((c) => c.id === selectedContractId) || produto.contratos[0];
+  if (!contrato) return null;
+
+  const badgeTone = contrato.statusKind === 'quitado' ? 'green' : contrato.statusKind === 'atrasado' ? 'red' : 'amber';
+
+  const metrics = [
+    {
+      key: 'valor',
+      label: produto.rotuloValor,
+      value: formatConsultaMoney(contrato.valorContratado),
+      sub: contrato.dataPedido ? `Pedido em ${formatConsultaDate(contrato.dataPedido)}` : '',
+    },
+    {
+      key: 'total',
+      label: 'Valor total devido',
+      value: formatConsultaMoney(contrato.valorTotalDevido),
+      sub: contrato.totalParcelas ? `${contrato.totalParcelas}x de ${formatConsultaMoney(contrato.valorParcela)}` : '',
+    },
+    {
+      key: 'pagas',
+      label: 'Parcelas pagas',
+      value: contrato.totalParcelas ? `${contrato.parcelas.filter((p) => p.pago).length} de ${contrato.totalParcelas}` : '—',
+      sub: `${formatConsultaMoney(contrato.totalPago)} pago`,
+    },
+    contrato.statusKind === 'quitado'
+      ? {
+        key: 'quitado',
+        label: 'Quitado em',
+        value: contrato.quitadoEm?.data ? formatConsultaDate(contrato.quitadoEm.data) : '—',
+        sub: contrato.quitadoEm?.data
+          ? `às ${formatConsultaTime(contrato.quitadoEm.data)}${contrato.quitadoEm.formaPagamento ? ` · via ${formatPaymentMethod(contrato.quitadoEm.formaPagamento)}` : ''}`
+          : '',
+        highlightTone: 'green',
+      }
+      : {
+        key: 'proxima',
+        label: 'Próxima parcela',
+        value: contrato.proximaParcela ? formatConsultaDate(contrato.proximaParcela.vencimento) : '—',
+        sub: contrato.proximaParcela
+          ? `${formatConsultaMoney(contrato.proximaParcela.valor)}${contrato.proximaParcela.dias != null ? (
+            contrato.proximaParcela.dias >= 0
+              ? ` · em ${contrato.proximaParcela.dias} dias`
+              : ` · atrasada há ${Math.abs(contrato.proximaParcela.dias)} dia(s)`
+          ) : ''}`
+          : '',
+        highlightTone: 'amber',
+      },
+  ];
+
+  const progressPct = contrato.valorTotalDevido > 0
+    ? Math.round((contrato.totalPago / contrato.valorTotalDevido) * 100)
+    : 0;
+
+  const contractInfo = [
+    { key: 'pedido', label: 'Data do pedido', value: contrato.dataPedido ? formatConsultaDate(contrato.dataPedido) : '—' },
+    { key: 'ccb', label: 'CCB', value: contrato.ccb.numero ? `${contrato.ccb.status} · nº ${contrato.ccb.numero}` : '—' },
+    { key: 'status', label: 'Status do contrato', value: contrato.status || '—' },
+    {
+      key: 'parcelas',
+      label: 'Total de parcelas',
+      value: contrato.totalParcelas ? `${contrato.totalParcelas}x de ${formatConsultaMoney(contrato.valorParcela)}` : '—',
+    },
+    { key: 'seguro', label: 'Seguro', value: contrato.seguro ? 'Contratado' : 'Sem seguro' },
+    { key: 'encargos', label: 'Encargos', value: formatConsultaMoney(contrato.encargos) },
+  ];
+
+  return (
+    <div className="crm-consultas-detail">
+      <div className="crm-consultas-detail__header">
+        <div>
+          <p className="crm-consultas-detail__eyebrow">Produto ativo</p>
+          <h3 className="crm-consultas-detail__title">
+            {produto.nome}
+            {isTicketProduct ? <span className="crm-consultas-product__badge">Produto do ticket</span> : null}
+          </h3>
+          <p className="crm-consultas-detail__subtitle">{produto.subtitle}</p>
+        </div>
+        <StatusChip label={contrato.status} tone={badgeTone} />
+      </div>
+
+      <ContractTabs contratos={produto.contratos} selectedId={contrato.id} onSelect={onSelectContract} />
+
+      <div className="crm-consultas-detail__metrics">
+        {metrics.map((metric) => (
+          <div
+            className={'crm-consultas-detail__metric' + (metric.highlightTone ? ` crm-consultas-detail__metric--${metric.highlightTone}` : '')}
+            key={metric.key}
+          >
+            <strong>{metric.label}</strong>
+            <span className="crm-consultas-detail__metric-value">{metric.value}</span>
+            {metric.sub ? <span className="crm-consultas-detail__metric-sub">{metric.sub}</span> : null}
+          </div>
+        ))}
+      </div>
+
+      <div className="crm-consultas-detail__progress">
+        <div className="crm-consultas-detail__progress-head">
+          <span>Progresso de pagamento</span>
+          <strong>{formatConsultaMoney(contrato.totalPago)} de {formatConsultaMoney(contrato.valorTotalDevido)} ({progressPct}%)</strong>
+        </div>
+        <div className="crm-consultas-detail__progress-track">
+          <div
+            className="crm-consultas-detail__progress-fill"
+            style={{ width: `${Math.min(100, Math.max(0, progressPct))}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="crm-consultas-detail__info-grid">
+        <div className="crm-consultas-detail__info-card">
+          <h4 className="crm-consultas-detail__info-card-title">
+            Dados do contrato · Contrato {contrato.sequencia} de {contrato.totalContratos}
+          </h4>
+          <div className="crm-consultas-detail__info-rows">
+            {contractInfo.map((row) => (
+              <div className="crm-consultas-detail__info-row" key={row.key}>
+                <strong>{row.label}</strong>
+                <span>{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="crm-consultas-detail__info-col-right">
+          <div className="crm-consultas-detail__info-card">
+            <h4 className="crm-consultas-detail__info-card-title">Histórico no produto</h4>
+            <div className="crm-consultas-detail__info-rows crm-consultas-detail__info-rows--2col">
+              <div className="crm-consultas-detail__info-row">
+                <strong>Contratos</strong>
+                <span>{produto.historico.totalContratos}</span>
+              </div>
+              <div className="crm-consultas-detail__info-row">
+                <strong>Quitados</strong>
+                <span>{produto.historico.quitados}</span>
+              </div>
+              <div className="crm-consultas-detail__info-row">
+                <strong>Total já pago</strong>
+                <span>{produto.historico.totalPagoLabel}</span>
+              </div>
+              <div className="crm-consultas-detail__info-row">
+                <strong>Primeiro pedido</strong>
+                <span>{produto.historico.primeiroPedidoLabel}</span>
+              </div>
+            </div>
+          </div>
+
+          {produto.elegibilidade ? (
+            <div
+              className={'crm-consultas-detail__eligibility'
+                + (produto.elegibilidade.disponivel ? ' crm-consultas-detail__eligibility--available' : ' crm-consultas-detail__eligibility--unavailable')}
+            >
+              <div className="crm-consultas-detail__eligibility-head">
+                <h4 className="crm-consultas-detail__info-card-title">Elegibilidade</h4>
+                <span className={`crm-consultas-product__status-pill crm-consultas-product__status-pill--${produto.elegibilidade.disponivel ? 'green' : 'red'}`}>
+                  {produto.elegibilidade.badgeLabel}
+                </span>
+              </div>
+              <p className="crm-consultas-detail__eligibility-message">{produto.elegibilidade.mensagem}</p>
+              <p className="crm-consultas-detail__eligibility-detail">{produto.elegibilidade.detalhe}</p>
+              {produto.elegibilidade.expiraEmLabel ? (
+                <p className="crm-consultas-detail__eligibility-expires">{produto.elegibilidade.expiraEmLabel}</p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div>
+        <h4 className="crm-consultas__section-title">
+          Parcelas · Contrato {contrato.sequencia} de {contrato.totalContratos}
+        </h4>
+        <div className="crm-consultas-detail__table-wrap">
+          <table className="crm-consultas-detail__table">
+            <thead>
+              <tr>
+                <th>Parcela</th>
+                <th>Vencimento</th>
+                <th>Valor devido</th>
+                <th>Situação</th>
+                <th>Valor pago</th>
+                <th>Pago em</th>
+                <th>Forma de pagamento</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contrato.parcelas.map((parcela) => {
+                const isProxima = contrato.proximaParcela && parcela.numero === contrato.proximaParcela.numero;
+                return (
+                  <tr key={parcela.numero} className={isProxima ? 'crm-consultas-detail__table-row--next' : ''}>
+                    <td>{parcela.numero}/{contrato.totalParcelas}</td>
+                    <td>{parcela.vencimento ? formatConsultaDate(parcela.vencimento) : '—'}</td>
+                    <td>{formatConsultaMoney(parcela.valorDevido)}</td>
+                    <td>
+                      {parcela.situacaoTone ? (
+                        <span className={`crm-consultas-product__status-pill crm-consultas-product__status-pill--${parcela.situacaoTone}`}>
+                          {parcela.situacao}
+                        </span>
+                      ) : parcela.situacao}
+                    </td>
+                    <td>{parcela.pago ? formatConsultaMoney(parcela.valorPago) : '—'}</td>
+                    <td>{parcela.pago && parcela.pagoEm ? formatConsultaDateTime(parcela.pagoEm) : '—'}</td>
+                    <td>{parcela.pago && parcela.formaPagamento ? formatPaymentMethod(parcela.formaPagamento) : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Views legadas (IRPF / Clube Velotax) — sem estrutura real de contratos/parcelas
+// ---------------------------------------------------------------------------
 
 function buildIrpfView(data) {
   const years = Array.isArray(data?.years) ? data.years : [];
@@ -155,16 +540,15 @@ function buildClubeView(data) {
   return { statusLabel: 'Disponível', statusTone: 'green', metrics, timeline, note: '' };
 }
 
-function buildProductView(slug, entry) {
+function buildLegacyProductView(slug, entry) {
   if (!entry?.loaded || !entry?.data) return null;
-  if (slug === 'emprestimo-pessoal' || slug === 'antecipacao-salario') return buildEpAsView(entry.data);
   if (slug === 'antecipacao-irpf') return buildIrpfView(entry.data);
   if (slug === 'clube-velotax') return buildClubeView(entry.data);
   return null;
 }
 
-function ProductDetail({ slug, entry, isTicketProduct }) {
-  const view = useMemo(() => buildProductView(slug, entry), [slug, entry]);
+function LegacyProductDetail({ slug, entry, isTicketProduct }) {
+  const view = useMemo(() => buildLegacyProductView(slug, entry), [slug, entry]);
 
   if (!view) {
     return (
@@ -193,7 +577,7 @@ function ProductDetail({ slug, entry, isTicketProduct }) {
         {view.metrics.map((metric) => (
           <div className="crm-consultas-detail__metric" key={metric.key}>
             <strong>{metric.label}</strong>
-            <span>{metric.value}</span>
+            <span className="crm-consultas-detail__metric-value">{metric.value}</span>
           </div>
         ))}
       </div>
@@ -219,17 +603,47 @@ function ProductDetail({ slug, entry, isTicketProduct }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Workspace — sidebar (produtos ativos / sem relação) + detalhe
+// ---------------------------------------------------------------------------
+
+function isContractSlug(slug) {
+  return CONTRACT_PRODUCT_SLUGS.includes(slug);
+}
+
 export default function ConsultaProductWorkspace({ data }) {
   const [manualSlug, setManualSlug] = useState(null);
+  const [manualInactiveKey, setManualInactiveKey] = useState(null);
   const [semRelacaoOpen, setSemRelacaoOpen] = useState(false);
+  const [selectedContractByProduct, setSelectedContractByProduct] = useState({});
 
   const activeEntries = useMemo(() => (
     CONSULTA_PRODUCT_SLUGS
       .map((slug) => {
         const entry = data?.products?.[slug];
-        return { slug, entry, summary: summarizeConsultaProduct(slug, entry) };
+        if (isContractSlug(slug)) {
+          const produto = entry?.loaded ? normalizeContractProduct(entry.data, slug) : null;
+          if (!produto) return null;
+          const abertos = produto.contratos.some((c) => c.statusKind !== 'quitado');
+          return {
+            slug,
+            entry,
+            produto,
+            iconState: abertos ? 'pending' : 'done',
+            navMeta: buildContractNavMeta(produto),
+          };
+        }
+        const summary = summarizeConsultaProduct(slug, entry);
+        if (summary.iconState === 'none') return null;
+        return {
+          slug,
+          entry,
+          summary,
+          iconState: summary.iconState,
+          navMeta: [summary.titleExtra, summary.subtitle].filter(Boolean).join(' · '),
+        };
       })
-      .filter(({ summary }) => summary.iconState !== 'none')
+      .filter(Boolean)
   ), [data]);
 
   const inactiveFlags = useMemo(
@@ -237,11 +651,30 @@ export default function ConsultaProductWorkspace({ data }) {
     [data],
   );
 
+  const selectedInactive = manualInactiveKey
+    ? inactiveFlags.find((flag) => flag.key === manualInactiveKey) || null
+    : null;
+
   const defaultSlug = activeEntries.find((item) => item.slug === data?.ticketProductSlug)?.slug
     || activeEntries[0]?.slug
     || null;
-  const selectedSlug = activeEntries.some((item) => item.slug === manualSlug) ? manualSlug : defaultSlug;
+  const selectedSlug = !selectedInactive && activeEntries.some((item) => item.slug === manualSlug)
+    ? manualSlug
+    : (!selectedInactive ? defaultSlug : null);
   const selected = activeEntries.find((item) => item.slug === selectedSlug) || null;
+
+  const handleSelectActive = (slug) => {
+    setManualInactiveKey(null);
+    setManualSlug(slug);
+  };
+
+  const handleSelectInactive = (key) => {
+    setManualInactiveKey(key);
+  };
+
+  const handleSelectContract = (slug) => (contractId) => {
+    setSelectedContractByProduct((prev) => ({ ...prev, [slug]: contractId }));
+  };
 
   return (
     <div className="crm-consultas-workspace">
@@ -250,27 +683,26 @@ export default function ConsultaProductWorkspace({ data }) {
           <h3 className="crm-consultas__section-title">Produtos ativos ({activeEntries.length})</h3>
           {activeEntries.length ? (
             <ul className="crm-consultas-nav">
-              {activeEntries.map(({ slug, entry, summary }) => {
+              {activeEntries.map(({ slug, iconState, navMeta }) => {
                 const isTicketProduct = data?.ticketProductSlug === slug;
-                const meta = [summary.titleExtra, summary.subtitle].filter(Boolean).join(' · ');
                 return (
                   <li key={slug}>
                     <button
                       type="button"
                       className={'crm-consultas-nav-item' + (slug === selectedSlug ? ' is-active' : '')}
-                      onClick={() => setManualSlug(slug)}
+                      onClick={() => handleSelectActive(slug)}
                       aria-pressed={slug === selectedSlug}
                     >
                       <span className="crm-consultas-nav-item__row">
                         <span className="crm-consultas-nav-item__title">
-                          <span className={`crm-consultas-product__icon crm-consultas-product__icon--${summary.iconState}`} aria-hidden="true">
-                            <i className={'ti ' + (ICON_BY_STATE[summary.iconState] || ICON_BY_STATE.none)} />
+                          <span className={`crm-consultas-product__icon crm-consultas-product__icon--${iconState}`} aria-hidden="true">
+                            <i className={'ti ' + (ICON_BY_STATE[iconState] || ICON_BY_STATE.none)} />
                           </span>
                           {CONSULTA_PRODUCT_LABELS[slug] || slug}
                           {isTicketProduct ? <span className="crm-consultas-product__badge">Ticket</span> : null}
                         </span>
                       </span>
-                      <span className="crm-consultas-nav-item__meta">{meta || '—'}</span>
+                      <span className="crm-consultas-nav-item__meta">{navMeta || '—'}</span>
                     </button>
                   </li>
                 );
@@ -297,7 +729,15 @@ export default function ConsultaProductWorkspace({ data }) {
           {semRelacaoOpen ? (
             <div className="crm-consultas__flags">
               {inactiveFlags.map((flag) => (
-                <span className="crm-consultas__flag" key={flag.key}>{flag.label}</span>
+                <button
+                  type="button"
+                  key={flag.key}
+                  className={'crm-consultas__flag' + (flag.key === manualInactiveKey ? ' is-active' : '')}
+                  onClick={() => handleSelectInactive(flag.key)}
+                  aria-pressed={flag.key === manualInactiveKey}
+                >
+                  {flag.label}
+                </button>
               ))}
             </div>
           ) : null}
@@ -305,8 +745,20 @@ export default function ConsultaProductWorkspace({ data }) {
       </aside>
 
       <section className="crm-consultas-workspace__main" aria-label="Detalhe do produto selecionado">
-        {selected ? (
-          <ProductDetail
+        {selectedInactive ? (
+          <div className="crm-consultas__empty crm-consultas__empty--inline">
+            <i className="ti ti-package-off" aria-hidden="true" />
+            <p>Cliente não possui <strong>{selectedInactive.label}</strong>.</p>
+          </div>
+        ) : selected && isContractSlug(selected.slug) ? (
+          <ContractProductDetail
+            produto={selected.produto}
+            selectedContractId={selectedContractByProduct[selected.slug] ?? null}
+            onSelectContract={handleSelectContract(selected.slug)}
+            isTicketProduct={data?.ticketProductSlug === selected.slug}
+          />
+        ) : selected ? (
+          <LegacyProductDetail
             slug={selected.slug}
             entry={selected.entry}
             isTicketProduct={data?.ticketProductSlug === selected.slug}

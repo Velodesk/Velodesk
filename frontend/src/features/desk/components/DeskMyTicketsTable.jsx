@@ -50,6 +50,9 @@ function renderTicketRows(sectionEntries, onSelectTicket, mergeSelectedIds, onTo
         <td className="desk-my-tickets-table__title-cell">
           <span className="desk-my-tickets-table__title-inner">
             <span className="desk-my-tickets-table__subject" title={title}>{title}</span>
+            <span className="desk-my-tickets-table__name-inner" title={ticket.clientName}>
+              {ticket.clientName}
+            </span>
             {workflowIcon ? (
               <span
                 className={`client360-workflow-icon client360-workflow-icon--${workflowIcon.modifier}`}
@@ -59,11 +62,6 @@ function renderTicketRows(sectionEntries, onSelectTicket, mergeSelectedIds, onTo
                 <i className={`ti ${workflowIcon.icon}`} aria-hidden="true" />
               </span>
             ) : null}
-          </span>
-        </td>
-        <td className="desk-my-tickets-table__name">
-          <span className="desk-my-tickets-table__name-inner" title={ticket.clientName}>
-            {ticket.clientName}
           </span>
         </td>
         <td className="desk-my-tickets-table__sla">
@@ -101,7 +99,6 @@ function TicketGrid({ id, sectionEntries, mergeSelectedIds, onToggleMergeSelect,
           </th>
           <th className="desk-my-tickets-table__th-num">Número</th>
           <th className="desk-my-tickets-table__th-title">Título</th>
-          <th className="desk-my-tickets-table__th-name">Nome</th>
           <th className="desk-my-tickets-table__th-sla">SLA</th>
         </tr>
       </thead>
