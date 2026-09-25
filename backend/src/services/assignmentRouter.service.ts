@@ -4,7 +4,7 @@ import { env } from '../config/env';
 import type { AuthPayload } from '../middleware/auth';
 import { ChamadoN1 } from '../models/ChamadoN1';
 import type { IChamadoN1 } from '../models/ChamadoN1';
-import { listOnlineEligibleEmails } from './agentPresence.service';
+import { listOnlineEligibleEmails } from './agentSession.service';
 import { listAgentesDeskLive } from './agenteDesk.service';
 import { listColaboradoresDesk } from './colaboradoresCadastro.service';
 import { loadParticipanteOverrides } from './roletaParticipantes.service';
@@ -41,7 +41,13 @@ function emailLocalPart(email?: string): string {
 }
 
 /** Identificador do agente — alias ou primeiro+último; nunca e-mail/login. */
-export function provisionalResponsavelFromUser(user: { name?: string; email?: string }): string {
+export function provisionalResponsavelFromUser(
+  user: { name?: string; email?: string; displayName?: string },
+): string {
+  const displayName = String(user.displayName ?? '').trim();
+  if (displayName && isRealResponsavel(displayName) && !looksLikeNonDisplayResponsavelToken(displayName)) {
+    return displayName;
+  }
   const name = String(user.name ?? '').trim();
   if (name && isRealResponsavel(name) && !looksLikeNonDisplayResponsavelToken(name)) {
     const resolved = resolveResponsavelDisplayNameSync(name);
@@ -54,7 +60,11 @@ export function provisionalResponsavelFromUser(user: { name?: string; email?: st
 }
 
 export function provisionalResponsavelFromAuth(authUser: AuthPayload): string {
-  return provisionalResponsavelFromUser({ name: authUser.name, email: authUser.email });
+  return provisionalResponsavelFromUser({
+    name: authUser.name,
+    email: authUser.email,
+    displayName: authUser.displayName,
+  });
 }
 
 export function buildAgentCandidates(user: { name?: string; email?: string; _id?: { toString(): string } }): string[] {

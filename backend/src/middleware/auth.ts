@@ -2,12 +2,18 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
+import { getCachedDisplayName } from '../services/agentSession.service';
 
 export interface AuthPayload {
   userId: string;
   email: string;
   role: string;
   name?: string;
+  /** Nome de exibição (alias ou nome completo), mantido fresco pelo heartbeat da sessão —
+   * preferir sempre este campo a `name` (que é só o snapshot do momento do login). Populado
+   * pelo middleware a partir do cache em memória de agentSession.service, nunca pelo próprio
+   * JWT (não é assinado — cai pra `undefined` quando a sessão ainda não fez heartbeat). */
+  displayName?: string;
 }
 
 declare global {
@@ -26,6 +32,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
   try {
     const token = header.slice(7);
     req.user = jwt.verify(token, env.jwtSecret) as AuthPayload;
+    req.user.displayName = getCachedDisplayName(req.user.userId) || req.user.name;
     next();
   } catch {
     return res.status(401).json({ message: 'Token inválido' });
@@ -48,6 +55,7 @@ export function authFromHeaderOrBody(req: Request, res: Response, next: NextFunc
   }
   try {
     req.user = jwt.verify(token, env.jwtSecret) as AuthPayload;
+    req.user.displayName = getCachedDisplayName(req.user.userId) || req.user.name;
     next();
   } catch {
     return res.status(401).json({ message: 'Token inválido' });

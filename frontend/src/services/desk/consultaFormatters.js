@@ -3,7 +3,7 @@
  * VERSION: v1.1.0 | DATE: 2026-08-18
  */
 import { isDraftTicket } from '../../api/adapters/ticketAdapter';
-import { formatDateBr, formatDateTimeBr } from '../../utils/dateTimeBr';
+import { formatDateBr, formatDateTimeBr, formatTimeBr } from '../../utils/dateTimeBr';
 
 export const CONSULTA_PRODUCT_SLUGS = [
   'emprestimo-pessoal',
@@ -53,6 +53,10 @@ export function formatConsultaDate(value) {
 
 export function formatConsultaDateTime(value) {
   return formatDateTimeBr(value);
+}
+
+export function formatConsultaTime(value) {
+  return formatTimeBr(value);
 }
 
 export function formatAccountStatus(status) {

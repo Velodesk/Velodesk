@@ -16,6 +16,8 @@ export default function BcTicketSide({
   onCloseChat,
   onSave,
   onFinalize,
+  sendStatus,
+  onCommitStatus,
   saving = false,
   disabled = false,
   finalized = false,
@@ -52,6 +54,8 @@ export default function BcTicketSide({
           onCloseChat={onCloseChat}
           onSave={onSave}
           onFinalize={onFinalize}
+          sendStatus={sendStatus}
+          onCommitStatus={onCommitStatus}
           saving={saving}
           disabled={disabled}
           finalized={finalized}

@@ -29,7 +29,7 @@ import {
   resolvePeriodRange,
   type GestaoInsightsQuery,
 } from './gestaoInsights.service';
-import { listOnlineEligiblePresenceKeys } from './agentPresence.service';
+import { listOnlineEligiblePresenceKeys } from './agentSession.service';
 
 const CACHE_TTL_MS = 60_000;
 const SLA_LIMIT_HOURS_BY_STATUS: Record<string, number> = {
