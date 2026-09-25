@@ -1,9 +1,10 @@
 /**
  * ConsumidorGovTableView — tabela agrupada por status ConsumidorGov
  */
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { getStatusLabel } from '../../../services/especiais/consumidorGovData';
 import { formatPrazoLegal } from '../../../services/especiais/consumidorGovStore';
+import EspeciaisBulkActionPopover from '../shared/EspeciaisBulkActionPopover';
 
 function RespostaButton({ action, item, onAction, disabled = false }) {
   if (action === 'responder') {
@@ -53,9 +54,13 @@ export default function ConsumidorGovTableView({
   onToggleSelect,
   onToggleSelectAll,
   onRowAction,
+  onBulkApplied,
 }) {
-  const allIds = groups.flatMap((g) => g.items.map((i) => i.id));
+  const allItems = groups.flatMap((g) => g.items);
+  const allIds = allItems.map((i) => i.id);
   const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const bulkBtnRef = useRef(null);
 
   return (
     <div className="ra-table-wrap">
@@ -63,12 +68,35 @@ export default function ConsumidorGovTableView({
         <thead>
           <tr>
             <th className="ra-table__th-check">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={() => onToggleSelectAll?.(allIds, !allSelected)}
-                aria-label="Selecionar todas"
-              />
+              <span className="ra-table__th-check-inner">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={() => onToggleSelectAll?.(allIds, !allSelected)}
+                  aria-label="Selecionar todas"
+                />
+                <button
+                  ref={bulkBtnRef}
+                  type="button"
+                  className={'ra-table__bulk-btn' + (bulkOpen ? ' is-active' : '')}
+                  title="Atuação em massa"
+                  aria-label="Atuação em massa"
+                  aria-expanded={bulkOpen}
+                  aria-haspopup="dialog"
+                  onClick={() => setBulkOpen((prev) => !prev)}
+                >
+                  <i className="ti ti-pencil" aria-hidden="true" />
+                </button>
+                <EspeciaisBulkActionPopover
+                  open={bulkOpen}
+                  onClose={() => setBulkOpen(false)}
+                  anchorRef={bulkBtnRef}
+                  channelId="gov"
+                  selectedIds={selectedIds}
+                  items={allItems}
+                  onApplied={() => { setBulkOpen(false); onBulkApplied?.(); }}
+                />
+              </span>
             </th>
             <th>Consumidor / Assunto</th>
             <th>Status ConsumidorGov</th>

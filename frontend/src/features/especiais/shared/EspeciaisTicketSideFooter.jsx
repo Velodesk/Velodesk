@@ -1,17 +1,18 @@
 /**
- * EspeciaisTicketSideFooter — Abrir conversa, Salvar ticket e Finalizar
+ * EspeciaisTicketSideFooter — Abrir conversa, Salvar ticket e Enviar como (status)
  */
 import React from 'react';
+import { DeskStatusCommitButton } from '../../desk/components/DeskComposePanel';
 
 export default function EspeciaisTicketSideFooter({
   waChatOpen = false,
   onOpenChat,
   onCloseChat,
   onSave,
-  onFinalize,
+  sendStatus,
+  onCommitStatus,
   saving = false,
   disabled = false,
-  finalized = false,
   initialMessagePrompt = null,
 }) {
   const actionsDisabled = disabled || saving;
@@ -47,15 +48,13 @@ export default function EspeciaisTicketSideFooter({
         <i className="ti ti-device-floppy" aria-hidden="true" />
         {saving ? 'Salvando…' : 'Salvar ticket'}
       </button>
-      <button
-        type="button"
-        className="ra-ticket__finalize-btn"
-        onClick={onFinalize}
-        disabled={actionsDisabled || finalized}
-      >
-        <i className="ti ti-circle-check" aria-hidden="true" />
-        {saving ? 'Processando…' : 'Finalizar'}
-      </button>
+      <DeskStatusCommitButton
+        sendStatus={sendStatus}
+        onCommitStatus={onCommitStatus}
+        variant="panel"
+        disabled={actionsDisabled}
+        menuDisabledReason="Ticket fechado ou em processamento — aguarde."
+      />
     </div>
   );
 }

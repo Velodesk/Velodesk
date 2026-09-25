@@ -13533,6 +13533,40 @@ body.desk-v2-mode #aiChatbotModal {
     white-space: nowrap;
 }
 
+.ra-table__th-check-inner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ra-table__bulk-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 0.5px solid #cbd5e1;
+    border-radius: 6px;
+    background: #fff;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.ra-table__bulk-btn:hover {
+    background: #eef2ff;
+    color: #1634FF;
+    border-color: #c7d2fe;
+}
+
+.ra-table__bulk-btn.is-active {
+    background: rgba(22, 52, 255, 0.08);
+    color: #1634FF;
+    border-color: rgba(22, 52, 255, 0.25);
+}
+
 .ra-table__group td {
     padding: 0.45rem 0.65rem;
     font-size: 0.75rem;
@@ -14964,29 +14998,6 @@ label[for$="-classificacao-motivo3"] {
     cursor: not-allowed;
 }
 
-.ra-ticket__finalize-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.45rem;
-    width: 100%;
-    border: 1.5px solid var(--especiais-accent);
-    border-radius: 10px;
-    padding: 0.75rem 1rem;
-    background: transparent;
-    color: var(--especiais-accent);
-    font-weight: 700;
-    font-size: 0.88rem;
-    cursor: pointer;
-    font-family: inherit;
-}
-
-.ra-ticket__finalize-btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
-
 /* Reclame Aqui ? shell CRM (fila + lista + ticket + sidebar) */
 #especiais-reclame-aqui, #especiais-procon, #especiais-consumidor-gov, #especiais-bacen {
     --ra-crm-col-queue: 168px;
@@ -15600,10 +15611,6 @@ label[for$="-classificacao-motivo3"] {
     margin-top: 0;
 }
 
-#especiais-reclame-aqui .ra-ticket__side-footer .ra-ticket__finalize-btn , #especiais-procon .ra-ticket__side-footer .ra-ticket__finalize-btn, #especiais-consumidor-gov .ra-ticket__side-footer .ra-ticket__finalize-btn, #especiais-bacen .ra-ticket__side-footer .ra-ticket__finalize-btn {
-    margin-top: 0;
-}
-
 #especiais-reclame-aqui .especiais-initial-message-prompt__btn--send, #especiais-procon .especiais-initial-message-prompt__btn--send, #especiais-consumidor-gov .especiais-initial-message-prompt__btn--send, #especiais-bacen .especiais-initial-message-prompt__btn--send {
     display: flex;
     align-items: center;
@@ -15655,6 +15662,92 @@ label[for$="-classificacao-motivo3"] {
     background: #E8F5E9;
     border: 1.5px solid #15A237;
     color: #15A237;
+}
+
+#especiais-reclame-aqui .rp-footer-btn--primary , #especiais-procon .rp-footer-btn--primary, #especiais-consumidor-gov .rp-footer-btn--primary, #especiais-bacen .rp-footer-btn--primary {
+    background: #1634FF;
+    border: none;
+    color: #fff;
+}
+
+#especiais-reclame-aqui .rp-footer-btn.is-disabled , #especiais-procon .rp-footer-btn.is-disabled, #especiais-consumidor-gov .rp-footer-btn.is-disabled, #especiais-bacen .rp-footer-btn.is-disabled,
+#especiais-reclame-aqui .crm-send-status--disabled .crm-send-status__trigger-panel , #especiais-procon .crm-send-status--disabled .crm-send-status__trigger-panel, #especiais-consumidor-gov .crm-send-status--disabled .crm-send-status__trigger-panel, #especiais-bacen .crm-send-status--disabled .crm-send-status__trigger-panel {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+#especiais-reclame-aqui .crm-send-status , #especiais-procon .crm-send-status, #especiais-consumidor-gov .crm-send-status, #especiais-bacen .crm-send-status {
+    position: relative;
+    width: 100%;
+}
+
+#especiais-reclame-aqui .crm-send-status--panel .crm-send-status__trigger-panel , #especiais-procon .crm-send-status--panel .crm-send-status__trigger-panel, #especiais-consumidor-gov .crm-send-status--panel .crm-send-status__trigger-panel, #especiais-bacen .crm-send-status--panel .crm-send-status__trigger-panel {
+    width: 100%;
+}
+
+#especiais-reclame-aqui .crm-send-status__menu , #especiais-procon .crm-send-status__menu, #especiais-consumidor-gov .crm-send-status__menu, #especiais-bacen .crm-send-status__menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 6px);
+    min-width: 0;
+    background: #fff;
+    border: 0.5px solid #E4E6EA;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 40;
+}
+
+#especiais-reclame-aqui .crm-send-status__menu[hidden] , #especiais-procon .crm-send-status__menu[hidden], #especiais-consumidor-gov .crm-send-status__menu[hidden], #especiais-bacen .crm-send-status__menu[hidden] {
+    display: none;
+}
+
+#especiais-reclame-aqui .crm-send-status__option , #especiais-procon .crm-send-status__option, #especiais-consumidor-gov .crm-send-status__option, #especiais-bacen .crm-send-status__option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+#especiais-reclame-aqui .crm-send-status__option--andamento , #especiais-procon .crm-send-status__option--andamento, #especiais-consumidor-gov .crm-send-status__option--andamento, #especiais-bacen .crm-send-status__option--andamento {
+    background: #E8F8ED;
+    color: #0F6E31;
+}
+
+#especiais-reclame-aqui .crm-send-status__option--andamento:hover , #especiais-procon .crm-send-status__option--andamento:hover, #especiais-consumidor-gov .crm-send-status__option--andamento:hover, #especiais-bacen .crm-send-status__option--andamento:hover {
+    background: #15A237;
+    color: #fff;
+}
+
+#especiais-reclame-aqui .crm-send-status__option--pendente , #especiais-procon .crm-send-status__option--pendente, #especiais-consumidor-gov .crm-send-status__option--pendente, #especiais-bacen .crm-send-status__option--pendente {
+    background: #FFF8E1;
+    color: #92400e;
+}
+
+#especiais-reclame-aqui .crm-send-status__option--pendente:hover , #especiais-procon .crm-send-status__option--pendente:hover, #especiais-consumidor-gov .crm-send-status__option--pendente:hover, #especiais-bacen .crm-send-status__option--pendente:hover {
+    background: #FCC200;
+    color: #78350f;
+}
+
+#especiais-reclame-aqui .crm-send-status__option--resolvido , #especiais-procon .crm-send-status__option--resolvido, #especiais-consumidor-gov .crm-send-status__option--resolvido, #especiais-bacen .crm-send-status__option--resolvido {
+    background: #F3F4F6;
+    color: #4b5563;
+}
+
+#especiais-reclame-aqui .crm-send-status__option--resolvido:hover , #especiais-procon .crm-send-status__option--resolvido:hover, #especiais-consumidor-gov .crm-send-status__option--resolvido:hover, #especiais-bacen .crm-send-status__option--resolvido:hover {
+    background: #9ca3af;
+    color: #fff;
 }
 
 #especiais-reclame-aqui .ra-ticket__main--wa , #especiais-procon .ra-ticket__main--wa, #especiais-consumidor-gov .ra-ticket__main--wa, #especiais-bacen .ra-ticket__main--wa {
