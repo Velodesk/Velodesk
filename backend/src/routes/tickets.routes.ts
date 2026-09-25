@@ -321,7 +321,7 @@ router.put('/:id', authMiddleware, async (req, res: Response) => {
   }
 
   if (!String(req.body.author ?? '').trim() && req.user) {
-    req.body.author = req.user.name || req.user.email || '';
+    req.body.author = req.user.displayName || req.user.name || req.user.email || '';
   }
 
   try {
@@ -402,7 +402,7 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
   }
 
   if (!String(req.body.author ?? '').trim() && req.user) {
-    req.body.author = req.user.name || req.user.email || '';
+    req.body.author = req.user.displayName || req.user.name || req.user.email || '';
   }
 
   /** Ticket sem 1ª msg do cliente e sem nota interna prévia: esta será a nota que dá contexto ao Agente 1. */
@@ -438,7 +438,7 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
       if (sentPublicContent) {
         await finishWorkflowAfterPublicReply(
           chamado,
-          req.user?.name || req.user?.email || 'Agente',
+          req.user?.displayName || req.user?.name || req.user?.email || 'Agente',
         );
       }
     }
@@ -555,7 +555,7 @@ router.post('/:id/messages', authMiddleware, async (req, res: Response) => {
   if (isAgentPublicReply) {
     await finishWorkflowAfterPublicReply(
       chamado,
-      req.user?.name || req.user?.email || 'Agente',
+      req.user?.displayName || req.user?.name || req.user?.email || 'Agente',
     );
   }
 
@@ -698,7 +698,7 @@ router.post('/:id/whatsapp/messages', authMiddleware, async (req, res: Response)
   if (sendResult.sent) {
     await finishWorkflowAfterPublicReply(
       chamado,
-      req.user?.name || req.user?.email || 'Agente',
+      req.user?.displayName || req.user?.name || req.user?.email || 'Agente',
     );
   }
 

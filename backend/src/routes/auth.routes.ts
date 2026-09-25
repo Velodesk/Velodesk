@@ -2,7 +2,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { User } from '../models/User';
-import { signToken } from '../middleware/auth';
+import { authMiddleware, signToken } from '../middleware/auth';
 import { isFuncionariosConnected, isMongoConnected } from '../config/database';
 import { verifyGoogleIdToken } from '../services/googleAuth.service';
 import {
@@ -14,6 +14,7 @@ import {
   verifyColaboradorPassword,
   resolveColaboradorDisplayName,
 } from '../services/colaboradoresCadastro.service';
+import { closeAgentSession, openAgentSession } from '../services/agentSession.service';
 import { env } from '../config/env';
 
 const router = Router();
@@ -59,6 +60,13 @@ router.post('/login', async (req: Request, res: Response) => {
       user.name = name;
       await user.save();
     }
+
+    await openAgentSession({
+      userId: user.id,
+      email: user.email,
+      colaborador: access.colaborador,
+      fallbackName: name,
+    });
 
     const token = signToken({
       userId: user.id,
@@ -127,6 +135,13 @@ router.post('/auth/google', async (req: Request, res: Response) => {
       await user.save();
     }
 
+    await openAgentSession({
+      userId: user.id,
+      email: user.email,
+      colaborador: access.colaborador,
+      fallbackName: name,
+    });
+
     const token = signToken({
       userId: user.id,
       email: user.email,
@@ -151,6 +166,16 @@ router.post('/auth/google', async (req: Request, res: Response) => {
     console.error('Erro no login Google:', err);
     const message = err instanceof Error ? err.message : 'Erro no login Google';
     res.status(401).json({ message });
+  }
+});
+
+router.post('/auth/logout', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    await closeAgentSession(req.user!.userId, req.user!.email);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Erro no logout:', err);
+    res.status(500).json({ message: 'Erro no logout' });
   }
 });
 

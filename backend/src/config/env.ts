@@ -92,7 +92,7 @@ export const env = {
   /** VeloHubCentral — console_config.module_status (mesmo status dos serviços do VeloHub, leitura via MONGO_ENV) */
   mongoConsoleConfigDbName: process.env.MONGODB_CONSOLE_CONFIG_DB_NAME || 'console_config',
   jwtSecret: process.env.JWT_SECRET || 'velodesk-dev-secret',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '5h',
   /** Diretório com os .docx dos POPs, um subdiretório por produto (quadro de Processos) */
   popsSourceDir: (
     process.env.POPS_SOURCE_DIR || path.resolve(__dirname, '..', '..', 'source file', 'POPs')

@@ -421,7 +421,14 @@ function sanitizeTicketDetailFlags(ticket) {
   };
 }
 
-function mergePreservedDetails(prevCols, nextCols) {
+/**
+ * `fetchStartedAt` marca quando a requisição /boxes que gerou `nextCols` começou. Se um patch
+ * local (resolve/commit via patchTicketInCache) aconteceu DEPOIS disso, `nextCols` é uma foto
+ * antiga do servidor — pegar o status dela sobrescreveria um resolve recém-aplicado com o
+ * estado velho (ex.: ticket "resolvido" voltando a aparecer como "novo"). Nesse caso o status/
+ * boxId/datas do preservado prevalecem; do contrário, o servidor é a fonte da verdade.
+ */
+function mergePreservedDetails(prevCols, nextCols, fetchStartedAt = 0) {
   const preserved = new Map();
   (prevCols || []).forEach((box) => {
     (box.tickets || []).forEach((ticket) => {
@@ -431,18 +438,20 @@ function mergePreservedDetails(prevCols, nextCols) {
   });
   if (!preserved.size) return nextCols;
 
+  const relocate = [];
   const merged = nextCols.map((box) => ({
     ...box,
     tickets: (box.tickets || []).map((ticket) => {
       const id = String(ticket.id || ticket._id);
       const prev = preserved.get(id);
       if (!prev) return ticket;
-      return {
+      const localPatchIsNewer = Boolean(prev._localPatchAt) && prev._localPatchAt > fetchStartedAt;
+      const mergedTicket = {
         ...prev,
-        status: ticket.status,
-        updatedAt: ticket.updatedAt,
+        status: localPatchIsNewer ? prev.status : ticket.status,
+        updatedAt: localPatchIsNewer ? prev.updatedAt : ticket.updatedAt,
         createdAt: ticket.createdAt,
-        boxId: ticket.boxId,
+        boxId: localPatchIsNewer ? prev.boxId : ticket.boxId,
         clientName: ticket.clientName ?? prev.clientName,
         clientEmail: prev.clientEmail || ticket.clientEmail,
         clientPhone: prev.clientPhone || ticket.clientPhone,
@@ -478,7 +487,15 @@ function mergePreservedDetails(prevCols, nextCols) {
         listOnly: false,
         _detailLoaded: true,
       };
-    }),
+      // nextCols já posicionou o ticket na caixa do status "velho" (box.id atual). Se o status
+      // local mais recente aponta pra outra caixa, ele precisa sair daqui e ser realocado —
+      // senão o resolve fica com o campo status certo mas preso fisicamente em "novos".
+      if (localPatchIsNewer && resolveBoxIdForTicketStatus(mergedTicket.status) !== box.id) {
+        relocate.push(mergedTicket);
+        return null;
+      }
+      return mergedTicket;
+    }).filter(Boolean),
   }));
 
   const presentIds = new Set();
@@ -491,6 +508,17 @@ function mergePreservedDetails(prevCols, nextCols) {
   preserved.forEach((ticket, id) => {
     if (presentIds.has(id)) return;
     if (!shouldReinsertPreservedTicket(ticket)) return;
+    const boxId = resolveBoxIdForTicketStatus(ticket.status);
+    const box = merged.find((col) => col.id === boxId) || merged[0];
+    if (!box) return;
+    if (!box.tickets) box.tickets = [];
+    box.tickets.unshift(ticket);
+    presentIds.add(id);
+  });
+
+  relocate.forEach((ticket) => {
+    const id = String(ticket.id || ticket._id);
+    if (presentIds.has(id)) return;
     const boxId = resolveBoxIdForTicketStatus(ticket.status);
     const box = merged.find((col) => col.id === boxId) || merged[0];
     if (!box) return;
@@ -568,11 +596,28 @@ function insertTicketIntoColumnsIfMissing(ticket, userEmail = '') {
 export function patchTicketInCache(ticketId, nextTicket, userEmail = '') {
   const entry = findInColumns(ticketId);
   if (!entry) return false;
-  // Substitui o item no array — entry.ticket = x só muda o wrapper local e não atualiza columns.
-  entry.box.tickets[entry.index] = nextTicket;
+  // _localPatchAt marca este patch como a versão mais recente conhecida do ticket — usado por
+  // mergePreservedDetails pra não deixar uma resposta de /boxes desatualizada (ex.: um poll que
+  // começou antes deste commit) sobrescrever o status recém-salvo (ex.: "resolvido" voltando a
+  // "novo"). Também realoca pra caixa certa: sem isso o ticket fica com o status novo mas preso
+  // fisicamente no array da caixa antiga até o próximo full reload.
+  const patched = { ...nextTicket, _localPatchAt: Date.now() };
+  const targetBoxId = resolveBoxIdForTicketStatus(patched.status);
+  if (targetBoxId !== entry.box.id) {
+    entry.box.tickets.splice(entry.index, 1);
+    const targetBox = columns.find((col) => col.id === targetBoxId);
+    if (targetBox) {
+      if (!targetBox.tickets) targetBox.tickets = [];
+      targetBox.tickets.unshift(patched);
+    } else {
+      entry.box.tickets.splice(entry.index, 0, patched);
+    }
+  } else {
+    entry.box.tickets[entry.index] = patched;
+  }
   persistColumnsToStorage(columns, userEmail);
   try {
-    syncEspeciaisGroupFromTicket(nextTicket);
+    syncEspeciaisGroupFromTicket(patched);
   } catch {
     /* ignore sync errors */
   }
@@ -726,6 +771,7 @@ async function loadBoxesFromApiOnce(userEmail = '') {
     return columns;
   }
   const draftsBeforeFetch = collectDraftTickets(columns);
+  const fetchStartedAt = Date.now();
   deskLog.tickets('loadBoxesFromApi → início', { userEmail, drafts: draftsBeforeFetch.length });
   try {
     const profileId = readDeskProfileId();
@@ -741,7 +787,7 @@ async function loadBoxesFromApiOnce(userEmail = '') {
     // carregado via GET /:id enquanto a listagem /boxes ainda estava em voo.
     columns = filterColumnsForAgent(
       pruneTicketsAbsentFromApi(
-        mergePreservedDetails(columns, nextCols),
+        mergePreservedDetails(columns, nextCols, fetchStartedAt),
         nextCols,
       ),
     );

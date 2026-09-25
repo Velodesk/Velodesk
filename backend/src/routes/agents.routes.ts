@@ -32,7 +32,13 @@ import {
 } from '../services/agents/agentFeedback.service';
 import { validateTicketAiInput } from '../services/openaiTicketSuggest.service';
 import type { RevisaoOrigem, TicketAiTabulationResult } from '../services/agents/agentTypes';
-import { recordAgentHeartbeat, recordAgentOffline } from '../services/agentPresence.service';
+import {
+  touchAgentSession,
+  closeAgentSession,
+  listOnlineAgentsForBoard,
+  requestForceLogoff,
+  requestForceLogoffAll,
+} from '../services/agentSession.service';
 import { isTicketPresenceConfigured, mintTicketPresenceToken } from '../services/presence/ticketPresenceToken.service';
 import { rebalanceAgentToCap, provisionalResponsavelFromAuth } from '../services/assignmentRouter.service';
 import { requireGestaoOrPermission } from '../middleware/permission';
@@ -48,9 +54,9 @@ router.post('/presence/heartbeat', authFromHeaderOrBody, async (req: Request, re
   if (!req.user) return res.status(401).json({ success: false, error: 'Não autenticado' });
 
   try {
-    const result = await recordAgentHeartbeat(req.user);
+    const result = await touchAgentSession(req.user.userId, req.user.email);
 
-    if (result.wasOffline && env.assignmentRouterEnabled) {
+    if (result.wasOffline && !result.forceLogoff && env.assignmentRouterEnabled) {
       const key = provisionalResponsavelFromAuth(req.user);
       if (key) {
         void rebalanceAgentToCap(key).catch((err) => {
@@ -69,13 +75,46 @@ router.post('/presence/heartbeat', authFromHeaderOrBody, async (req: Request, re
 router.post('/presence/offline', authFromHeaderOrBody, async (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ success: false, error: 'Não autenticado' });
   try {
-    await recordAgentOffline(req.user);
+    await closeAgentSession(req.user.userId, req.user.email);
     return res.json({ success: true, online: false, source: 'agents_presence_offline' });
   } catch (err) {
     console.error('[agents/presence/offline] falhou', err);
     return res.status(500).json({ success: false, error: (err as Error).message });
   }
 });
+
+/** Quadro de "usuários online" do painel de gestão — mesma permissão do 360 de equipe. */
+router.get(
+  '/sessions/online',
+  authMiddleware,
+  requireGestaoOrPermission('workspace', 'painel_360_equipe'),
+  async (_req: Request, res: Response) => {
+    const agents = await listOnlineAgentsForBoard();
+    return res.json({ success: true, agents });
+  },
+);
+
+/** Força logoff de um colaborador específico — efeito no próximo heartbeat dele (até 60s). */
+router.post(
+  '/sessions/:userId/force-logoff',
+  authMiddleware,
+  requireGestaoOrPermission('workspace', 'painel_360_equipe'),
+  async (req: Request, res: Response) => {
+    const ok = await requestForceLogoff(req.params.userId, req.user!.email);
+    return res.json({ success: ok });
+  },
+);
+
+/** Força logoff de todo mundo que está online agora. */
+router.post(
+  '/sessions/force-logoff-all',
+  authMiddleware,
+  requireGestaoOrPermission('workspace', 'painel_360_equipe'),
+  async (req: Request, res: Response) => {
+    const count = await requestForceLogoffAll(req.user!.email);
+    return res.json({ success: true, count });
+  },
+);
 
 /**
  * Gestão manual de quem participa da roleta — ainda sem tela no front (ver
