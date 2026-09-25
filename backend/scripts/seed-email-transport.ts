@@ -24,12 +24,20 @@ function loadServiceAccountJson(): Record<string, unknown> | null {
   return JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
 }
 
+function loadTransportMode(): 'gmail_api' | 'smtp' {
+  const raw = String(process.env.DESK_EMAIL_TRANSPORT_MODE ?? 'gmail_api').trim().toLowerCase();
+  if (raw !== 'gmail_api' && raw !== 'smtp') {
+    console.error(`DESK_EMAIL_TRANSPORT_MODE inválido: "${raw}" (use "gmail_api" ou "smtp")`);
+    process.exit(1);
+  }
+  return raw;
+}
+
 async function main() {
   const fromEmail = String(process.env.DESK_EMAIL_FROM ?? '').trim().toLowerCase();
   const delegated = String(process.env.DESK_EMAIL_DELEGATED ?? fromEmail).trim().toLowerCase();
+  const transportMode = loadTransportMode();
   const sa = loadServiceAccountJson();
-  const transportModeRaw = String(process.env.DESK_EMAIL_TRANSPORT_MODE ?? 'gmail_api').trim().toLowerCase();
-  const transportMode = transportModeRaw === 'smtp' ? 'smtp' : 'gmail_api';
 
   if (!fromEmail.includes('@') || !delegated.includes('@') || !sa) {
     process.exit(1);
@@ -53,7 +61,7 @@ async function main() {
   );
 
   console.log(`OK — desk_config.${env.deskEmailTransportCollection} / ${env.deskEmailTransportDocumentId}`);
-  console.log(`  from=${fromEmail} delegated=${delegated} transportMode=${transportMode}`);
+  console.log(`  transportMode=${transportMode} from=${fromEmail} delegated=${delegated}`);
 
   await disconnectDatabase();
   await mongoose.disconnect();

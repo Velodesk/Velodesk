@@ -18,6 +18,18 @@
  * vez, a checagem custa 1 chamada rápida (compara só o item mais recente); só pagina
  * mais fundo quando há novidade de verdade.
  *
+ * PRIORIDADE: o mais novo da Página sempre vence. Sem cursor conhecido (ex.: logo
+ * após o processo reiniciar), `buscarNovosFilhosDe` não desce o histórico inteiro de
+ * um post só — isso tomaria o ciclo inteiro e atrasaria comentário novo de OUTRO post.
+ * Por isso existe `MAX_PAGINAS_POR_CONTAINER_POR_CICLO`, e por isso o resultado final
+ * do ciclo (`itensNovos`) é reordenado por `dataHora` antes de ser devolvido: comentário
+ * mais recente entra pra fila de classificação primeiro, não importa se o post-pai é
+ * antigo ou recente. Aceita-se, em troca, que — só no cenário de cursor perdido (reinício
+ * do processo) — um comentário muito antigo, além da janela de páginas do ciclo, fique
+ * pra trás: o cursor daquele container avança até o item mais novo já visto, então essa
+ * lacuna antiga não é revisitada depois. É a troca deliberada: newest-first sempre, em
+ * vez de garantir cobertura eterna de comentário antigo enterrado.
+ *
  * Pré-requisito: Usuário do Sistema "Velodesk - Leitura", com a Página e o App
  * "Velodesk" atribuídos, e um token com as 4 permissões: pages_show_list,
  * pages_read_engagement, pages_read_user_content, pages_manage_engagement.
@@ -127,6 +139,11 @@ function graphApiBase(): string {
 
 const TAMANHO_DE_PAGINA = 100;
 
+/** Trava de segurança: sem essa trava, um post antigo sem cursor conhecido faria
+ * `buscarNovosFilhosDe` paginar até o comentário mais antigo dele antes de liberar o
+ * ciclo pro próximo container — atrasando comentário de verdade novo de outro post. */
+const MAX_PAGINAS_POR_CONTAINER_POR_CICLO = 3;
+
 async function chamarGraphAPI<T>(url: URL): Promise<T> {
   const resposta = await fetch(url.toString());
   const corpo = (await resposta.json()) as T | GraphErroResponse;
@@ -212,12 +229,15 @@ export async function buscarNovosFilhosDe(
   url.searchParams.set('limit', String(TAMANHO_DE_PAGINA));
   url.searchParams.set('access_token', pageAccessToken);
 
+  let paginasVisitadas = 0;
   paginacao: while (url) {
     const corpo: GraphFilhosResponse = await chamarGraphAPI<GraphFilhosResponse>(url);
     for (const item of corpo.data) {
       if (item.id === ultimoConhecidoId) break paginacao;
       novos.push(item);
     }
+    paginasVisitadas += 1;
+    if (paginasVisitadas >= MAX_PAGINAS_POR_CONTAINER_POR_CICLO) break;
     url = corpo.paging?.next ? new URL(corpo.paging.next) : null;
   }
 
@@ -287,6 +307,10 @@ export async function executarCicloDeCaptacaoFacebook(
 
     estado.ultimoFilhoConhecidoPorContainer.set(comentarioId, novasRespostas[0].id);
   }
+
+  // Comentário mais novo primeiro, independente de qual post/comentário é o pai —
+  // garante que a fila de classificação prioriza o que aconteceu por último na Página.
+  itensNovos.sort((a, b) => new Date(b.dataHora).getTime() - new Date(a.dataHora).getTime());
 
   return { itensNovos, estadoAtualizado: estado };
 }

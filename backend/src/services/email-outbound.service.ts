@@ -43,13 +43,14 @@ let sendQueueTail: Promise<void> = Promise.resolve();
 let lastSendAt = 0;
 
 function isRateLimitError(err: unknown): boolean {
-  const message = String((err as Error)?.message || '');
-  return (
-    /rate limit exceeded/i.test(message) ||
-    /daily .*(relay|sending) limit exceeded/i.test(message) ||
-    /peak .*relay limit exceeded/i.test(message) ||
-    /quota exceeded/i.test(message)
-  );
+  // Gmail API (googleapis): mensagem literal "User-rate limit exceeded (Mail sending)".
+  if (/rate limit exceeded/i.test(String((err as Error)?.message || ''))) return true;
+
+  // SMTP relay (nodemailer): usa o código de resposta SMTP estruturado, não o
+  // texto — evita reclassificar erro permanente (ex.: EHLO malformado, auth
+  // inválida) como rate limit só porque a mensagem contém "421"/"too many"/etc.
+  const responseCode = (err as { responseCode?: number })?.responseCode;
+  return responseCode === 421 || responseCode === 454;
 }
 
 function throttleSend<T>(fn: () => Promise<T>): Promise<T> {

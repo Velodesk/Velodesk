@@ -61,11 +61,18 @@ function renderTicketRows(sectionEntries, onSelectTicket, mergeSelectedIds, onTo
             ) : null}
           </span>
         </td>
-        <td className="desk-my-tickets-table__sla">
-          <span className={'desk-my-tickets-table__sla-badge desk-my-tickets-table__sla-badge--' + slaClass}>
-            {slaStatus}
+        <td className="desk-my-tickets-table__name">
+          <span className="desk-my-tickets-table__name-inner" title={ticket.clientName}>
+            {ticket.clientName}
           </span>
-          <span className="desk-my-tickets-table__sla-time">{slaLabel}</span>
+        </td>
+        <td className="desk-my-tickets-table__sla">
+          <span className="desk-my-tickets-table__sla-inner">
+            <span className={'desk-my-tickets-table__sla-badge desk-my-tickets-table__sla-badge--' + slaClass}>
+              {slaStatus}
+            </span>
+            <span className="desk-my-tickets-table__sla-time">{slaLabel}</span>
+          </span>
         </td>
       </tr>
     );
@@ -94,6 +101,7 @@ function TicketGrid({ id, sectionEntries, mergeSelectedIds, onToggleMergeSelect,
           </th>
           <th className="desk-my-tickets-table__th-num">Número</th>
           <th className="desk-my-tickets-table__th-title">Título</th>
+          <th className="desk-my-tickets-table__th-name">Nome</th>
           <th className="desk-my-tickets-table__th-sla">SLA</th>
         </tr>
       </thead>

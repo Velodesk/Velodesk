@@ -34,30 +34,29 @@ function testBuildRawRfc822() {
 }
 
 function testSmtpMessageMapping() {
-  const message = buildNodemailerMessage({
+  const msg = buildNodemailerMessage({
     from: 'chamados@test.com',
     to: 'cliente@test.com',
     subject: 'Teste',
-    html: '<p>oi <img src="cid:logo@velodesk"></p>',
+    html: '<p>oi</p>',
     messageId: '<desk.test@velotax.com.br>',
     inReplyTo: '<desk.root@velotax.com.br>',
     references: ['<desk.root@velotax.com.br>'],
     inlineImages: [
-      { cid: 'logo@velodesk', filename: 'logo.png', contentType: 'image/png', buffer: Buffer.from('fake-png') },
+      { cid: 'logo@velodesk', filename: 'logo.png', contentType: 'image/png', buffer: Buffer.from('img') },
     ],
     attachments: [
-      { filename: 'anexo.pdf', contentType: 'application/pdf', buffer: Buffer.from('fake-pdf') },
+      { filename: 'anexo.pdf', contentType: 'application/pdf', buffer: Buffer.from('pdf') },
     ],
   });
 
-  assert(message.messageId === '<desk.test@velotax.com.br>', 'messageId ausente/errado');
-  assert(message.inReplyTo === '<desk.root@velotax.com.br>', 'inReplyTo ausente/errado');
-  assert(Array.isArray(message.references) && message.references.length === 1, 'references ausente/errado');
-
-  const attachments = message.attachments as Array<{ cid?: string; filename?: string }>;
-  assert(Array.isArray(attachments) && attachments.length === 2, 'attachments deveria ter 2 itens (inline + arquivo)');
-  assert(attachments[0].cid === 'logo@velodesk', 'cid da imagem inline ausente/errado');
-  assert(attachments[1].filename === 'anexo.pdf', 'filename do anexo ausente/errado');
+  assert(msg.messageId === '<desk.test@velotax.com.br>', 'messageId ausente');
+  assert(msg.inReplyTo === '<desk.root@velotax.com.br>', 'inReplyTo ausente');
+  assert(Array.isArray(msg.references) && msg.references[0] === '<desk.root@velotax.com.br>', 'references ausente');
+  const attachments = msg.attachments as Array<{ cid?: string; filename?: string }>;
+  assert(attachments?.length === 2, `esperado 2 attachments, veio ${attachments?.length}`);
+  assert(attachments?.[0]?.cid === 'logo@velodesk', 'cid da imagem inline ausente');
+  assert(attachments?.[1]?.filename === 'anexo.pdf', 'filename do anexo ausente');
 }
 
 function testComposeHtmlToEmailHtml() {
@@ -67,9 +66,11 @@ function testComposeHtmlToEmailHtml() {
 }
 
 function testBuildThreadSubject() {
+  // buildThreadSubject sempre usa "Re:" (assunto único por chamado, ver
+  // comentário em emailThread.service.ts) — isReply é ignorado de propósito.
   const first = buildThreadSubject('0100177678', 'Dúvida', false);
   const reply = buildThreadSubject('0100177678', 'Dúvida', true);
-  assert(first === '[0100177678] Atendimento Velotax Numero 0100177678', `first: ${first}`);
+  assert(first === 'Re: [0100177678] Atendimento Velotax Numero 0100177678', `first: ${first}`);
   assert(reply === 'Re: [0100177678] Atendimento Velotax Numero 0100177678', `reply: ${reply}`);
 }
 

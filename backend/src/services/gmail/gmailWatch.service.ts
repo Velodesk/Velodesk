@@ -1,26 +1,12 @@
-/** gmailWatch.service v1.3.0 — suporta watch legado (mailbox antigo, somente inbound) em paralelo */
+/** gmailWatch.service v1.3.0 — preserva historyId ao renovar, reseta ao trocar de mailbox */
 import { env } from '../../config/env';
 import { isDeskConfigConnected } from '../../config/database';
-import { getGmailWatchStateModel, findGmailWatchStateByKey } from '../../models/GmailWatchState';
+import { getGmailWatchStateModel, findGmailWatchSingleton } from '../../models/GmailWatchState';
 import { createGmailClient, getGmailTopicName, GMAIL_SCOPE_READONLY } from './gmailAuth';
 import { getDelegatedUserEmail, isEmailTransportReady } from '../emailTransport.service';
 
 const RENEWAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const RENEW_BEFORE_MS = 24 * 60 * 60 * 1000;
-
-interface GmailWatchTarget {
-  configKey: string;
-  mailbox: string;
-}
-
-function primaryTarget(): GmailWatchTarget {
-  return { configKey: env.gmailWatchStateDocumentId, mailbox: getDelegatedUserEmail() };
-}
-
-function legacyTarget(): GmailWatchTarget | null {
-  if (!env.gmailLegacyInboundEnabled || !env.gmailLegacyDelegatedUserEmail.includes('@')) return null;
-  return { configKey: env.gmailLegacyWatchStateDocumentId, mailbox: env.gmailLegacyDelegatedUserEmail };
-}
 
 let renewalTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -36,46 +22,66 @@ export interface GmailWatchHealth {
 }
 
 /**
- * Grava o registro do watch sem tocar no historyId já existente: sobrescrever o ponteiro
- * descartaria silenciosamente todo o backlog ainda não processado.
+ * Grava o registro do watch. Renovação da MESMA caixa preserva o historyId já
+ * existente (sobrescrever descartaria silenciosamente backlog ainda não
+ * processado). Troca de caixa é o oposto: o historyId antigo não tem nenhum
+ * significado pro histórico da caixa nova, então é resetado pro valor fresco
+ * retornado por este próprio watch() — sem isso, a primeira notificação real
+ * bate num historyId inválido e o realinhamento automático em
+ * gmailInbound.service.ts pula, sem processar, tudo que chegou entre o
+ * registro do watch e essa notificação (mesma classe de perda de e-mail do
+ * incidente do watch duplo).
  */
-async function persistWatchState(target: GmailWatchTarget, historyId: string, expiration: number) {
+async function persistWatchState(mailbox: string, historyId: string, expiration: number) {
   const Model = getGmailWatchStateModel();
+  const previous = await findGmailWatchSingleton();
+  const mailboxChanged = !!previous?.mailbox && previous.mailbox !== mailbox;
+
+  const setFields: Record<string, unknown> = {
+    configKey: env.gmailWatchStateDocumentId,
+    mailbox,
+    expiration,
+    lastWatchAt: new Date(),
+  };
+  const setOnInsert: Record<string, unknown> = {};
+
+  if (mailboxChanged) {
+    setFields.historyId = String(historyId);
+    console.warn(
+      `[gmailWatch] mailbox mudou (${previous?.mailbox} -> ${mailbox}) — historyId resetado pro valor fresco ${historyId}`
+    );
+  } else {
+    setOnInsert.historyId = String(historyId);
+  }
+
   await Model.findOneAndUpdate(
-    { configKey: target.configKey },
-    {
-      $set: {
-        configKey: target.configKey,
-        mailbox: target.mailbox,
-        expiration,
-        lastWatchAt: new Date(),
-      },
-      $setOnInsert: { historyId: String(historyId) },
-    },
+    { configKey: env.gmailWatchStateDocumentId },
+    { $set: setFields, $setOnInsert: setOnInsert },
     { upsert: true, new: true }
   );
 
-  const current = await findGmailWatchStateByKey(target.configKey);
+  const current = await findGmailWatchSingleton();
   if (!current?.historyId) {
     await Model.updateOne(
-      { configKey: target.configKey },
+      { configKey: env.gmailWatchStateDocumentId },
       { $set: { historyId: String(historyId) } }
     );
   }
 }
 
-async function setupGmailWatchFor(target: GmailWatchTarget): Promise<{ historyId: string; expiration: number } | null> {
+export async function setupGmailWatch(): Promise<{ historyId: string; expiration: number } | null> {
   if (!env.gmailInboundEnabled || !isEmailTransportReady()) {
     return null;
   }
 
-  if (!target.mailbox.includes('@')) {
-    console.warn(`[gmailWatch] mailbox inválido para configKey=${target.configKey}`);
+  const mailbox = getDelegatedUserEmail();
+  if (!mailbox.includes('@')) {
+    console.warn('[gmailWatch] delegatedUserEmail inválido');
     return null;
   }
 
   try {
-    const gmail = await createGmailClient([GMAIL_SCOPE_READONLY], target.mailbox);
+    const gmail = await createGmailClient([GMAIL_SCOPE_READONLY]);
     const topicName = getGmailTopicName();
 
     const res = await gmail.users.watch({
@@ -91,48 +97,29 @@ async function setupGmailWatchFor(target: GmailWatchTarget): Promise<{ historyId
     const expiration = Number(res.data.expiration ?? 0);
     if (!historyId) throw new Error('historyId ausente na resposta watch');
 
-    await persistWatchState(target, historyId, expiration);
-    console.log(`[gmailWatch] watch ativo — mailbox=${target.mailbox} historyId=${historyId} exp=${expiration}`);
+    await persistWatchState(mailbox, historyId, expiration);
+    console.log(`[gmailWatch] watch ativo — mailbox=${mailbox} historyId=${historyId} exp=${expiration}`);
     return { historyId, expiration };
   } catch (err) {
-    console.error(`[gmailWatch] setup falhou (mailbox=${target.mailbox}):`, (err as Error).message);
+    console.error('[gmailWatch] setup falhou:', (err as Error).message);
     return null;
   }
 }
 
-async function ensureGmailWatchFreshFor(target: GmailWatchTarget): Promise<void> {
+export async function ensureGmailWatchFresh(): Promise<void> {
   try {
     if (!env.gmailInboundEnabled || !isDeskConfigConnected()) return;
 
-    const state = await findGmailWatchStateByKey(target.configKey);
+    const state = await findGmailWatchSingleton();
     const now = Date.now();
     const needsRenew = !state?.expiration || state.expiration - now < RENEW_BEFORE_MS;
 
     if (needsRenew) {
-      await setupGmailWatchFor(target);
+      await setupGmailWatch();
     }
   } catch (err) {
-    console.error(`[gmailWatch] ensureGmailWatchFresh falhou (mailbox=${target.mailbox}):`, (err as Error).message);
+    console.error('[gmailWatch] ensureGmailWatchFresh:', (err as Error).message);
   }
-}
-
-export async function setupGmailWatch(): Promise<{ historyId: string; expiration: number } | null> {
-  return setupGmailWatchFor(primaryTarget());
-}
-
-export async function setupLegacyGmailWatch(): Promise<{ historyId: string; expiration: number } | null> {
-  const target = legacyTarget();
-  if (!target) {
-    console.warn('[gmailWatch] watch legado não configurado (GMAIL_LEGACY_INBOUND_ENABLED/GMAIL_LEGACY_DELEGATED_USER_EMAIL)');
-    return null;
-  }
-  return setupGmailWatchFor(target);
-}
-
-export async function ensureGmailWatchFresh(): Promise<void> {
-  await ensureGmailWatchFreshFor(primaryTarget());
-  const target = legacyTarget();
-  if (target) await ensureGmailWatchFreshFor(target);
 }
 
 export function startGmailWatchRenewalLoop(): void {
@@ -142,16 +129,15 @@ export function startGmailWatchRenewalLoop(): void {
     void ensureGmailWatchFresh();
   }, RENEWAL_INTERVAL_MS);
 
-  console.log('[gmailWatch] renovação automática a cada 24h (inclui watch legado, se habilitado)');
+  console.log('[gmailWatch] renovação automática a cada 24h');
 }
 
-async function watchHealthFor(target: GmailWatchTarget | null): Promise<GmailWatchHealth | null> {
-  if (!target) return null;
-  let state: Awaited<ReturnType<typeof findGmailWatchStateByKey>> = null;
+export async function getGmailWatchHealth(): Promise<GmailWatchHealth> {
+  let state: Awaited<ReturnType<typeof findGmailWatchSingleton>> = null;
 
   try {
     if (isDeskConfigConnected()) {
-      state = await findGmailWatchStateByKey(target.configKey);
+      state = await findGmailWatchSingleton();
     }
   } catch (err) {
     console.warn('[gmailWatch] health — desk_config:', (err as Error).message);
@@ -165,7 +151,7 @@ async function watchHealthFor(target: GmailWatchTarget | null): Promise<GmailWat
     enabled: env.gmailInboundEnabled,
     emailTransportReady: transportReady,
     ready: transportReady && watchActive,
-    mailbox: (state?.mailbox ?? target.mailbox) || null,
+    mailbox: (state?.mailbox ?? getDelegatedUserEmail()) || null,
     historyId: state?.historyId ?? null,
     expiration,
     expiresInMs: expiration ? expiration - Date.now() : null,
@@ -173,46 +159,8 @@ async function watchHealthFor(target: GmailWatchTarget | null): Promise<GmailWat
   };
 }
 
-export async function getGmailWatchHealth(): Promise<GmailWatchHealth> {
-  const health = await watchHealthFor(primaryTarget());
-  return (
-    health ?? {
-      enabled: env.gmailInboundEnabled,
-      emailTransportReady: isEmailTransportReady(),
-      ready: false,
-      mailbox: null,
-      historyId: null,
-      expiration: null,
-      expiresInMs: null,
-      lastWatchAt: null,
-    }
-  );
-}
-
-export async function getLegacyGmailWatchHealth(): Promise<GmailWatchHealth & { enabled: boolean }> {
-  const target = legacyTarget();
-  const health = await watchHealthFor(target);
-  return (
-    health ?? {
-      enabled: env.gmailLegacyInboundEnabled,
-      emailTransportReady: isEmailTransportReady(),
-      ready: false,
-      mailbox: env.gmailLegacyDelegatedUserEmail || null,
-      historyId: null,
-      expiration: null,
-      expiresInMs: null,
-      lastWatchAt: null,
-    }
-  );
-}
-
 export async function getStoredHistoryId(): Promise<string | null> {
-  const state = await findGmailWatchStateByKey(env.gmailWatchStateDocumentId);
-  return state?.historyId ? String(state.historyId) : null;
-}
-
-export async function getStoredHistoryIdFor(configKey: string): Promise<string | null> {
-  const state = await findGmailWatchStateByKey(configKey);
+  const state = await findGmailWatchSingleton();
   return state?.historyId ? String(state.historyId) : null;
 }
 
@@ -230,11 +178,11 @@ function toHistoryNumber(value: unknown): bigint | null {
  * Avança o ponteiro apenas para frente. Retorna true quando houve avanço real.
  * Retroceder reprocessaria histórico já consumido e geraria duplicidade.
  */
-export async function updateStoredHistoryIdFor(configKey: string, historyId: string): Promise<boolean> {
+export async function updateStoredHistoryId(historyId: string): Promise<boolean> {
   const next = String(historyId ?? '').trim();
   if (!next) return false;
 
-  const current = await getStoredHistoryIdFor(configKey);
+  const current = await getStoredHistoryId();
   const nextNum = toHistoryNumber(next);
   const currentNum = toHistoryNumber(current);
 
@@ -243,21 +191,9 @@ export async function updateStoredHistoryIdFor(configKey: string, historyId: str
 
   const Model = getGmailWatchStateModel();
   await Model.findOneAndUpdate(
-    { configKey },
+    { configKey: env.gmailWatchStateDocumentId },
     { $set: { historyId: next } },
     { upsert: true }
   );
   return true;
-}
-
-export async function updateStoredHistoryId(historyId: string): Promise<boolean> {
-  return updateStoredHistoryIdFor(env.gmailWatchStateDocumentId, historyId);
-}
-
-export function getPrimaryWatchConfigKey(): string {
-  return env.gmailWatchStateDocumentId;
-}
-
-export function getLegacyWatchTarget(): GmailWatchTarget | null {
-  return legacyTarget();
 }
