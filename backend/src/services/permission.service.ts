@@ -802,6 +802,38 @@ export function isResponsavelSelfClaimBody(
   return normalizeText(nextResp) !== normalizeText(current);
 }
 
+/**
+ * Nome do responsável quando o corpo pede explicitamente atribuir o ticket a ALGUÉM DIFERENTE
+ * do próprio requisitante — '' se o corpo não toca em responsável, ou se o alvo é o próprio
+ * usuário (self-claim ou resalvar o que já é seu, já coberto por isResponsavelSelfClaimBody).
+ * Usado pra travar atribuição-pra-outra-pessoa (ação em massa, reatribuição manual) por nível
+ * de função, sem interferir no fluxo normal de assumir/resalvar o próprio ticket.
+ */
+export function resolveExplicitReassignmentTarget(
+  body: Record<string, unknown>,
+  authUser: AuthPayload,
+): string {
+  const bodyLf = body.lateralForm && typeof body.lateralForm === 'object' && !Array.isArray(body.lateralForm)
+    ? (body.lateralForm as Record<string, unknown>)
+    : {};
+  const nextResp = sanitizeResponsavel(
+    String(body.responsibleAgent ?? bodyLf.responsavel ?? ''),
+  );
+  if (!nextResp) return '';
+  const authResp = provisionalResponsavelFromAuth(authUser);
+  if (authResp && normalizeText(nextResp) === normalizeText(authResp)) return '';
+  return nextResp;
+}
+
+/** Nível mínimo (ver Central de configurações → Funções e Permissões) pra atribuir ticket a
+ * outro agente — hoje é o nível configurado pra "Suporte". Atendimento (nível 1) fica de fora;
+ * atribuir pra si mesmo nunca passa por aqui (ver resolveExplicitReassignmentTarget acima). */
+const MIN_NIVEL_ATRIBUIR_A_OUTROS = 3;
+
+export function canAssignResponsavelToOthers(resolved: ResolvedUserPermissions): boolean {
+  return resolved.nivel >= MIN_NIVEL_ATRIBUIR_A_OUTROS;
+}
+
 export async function assertCanActOnTicket(
   authUser: AuthPayload,
   chamado: IChamadoN1,
