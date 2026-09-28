@@ -1675,7 +1675,7 @@ export default function DeskV2Root() {
       return;
     }
 
-    const waUi = getWhatsAppDeskUiState(ticket);
+    const waUi = getWhatsAppDeskUiState(ticket, resolveWhatsAppChatId());
     if (!waUi.composeEnabled) {
       showNotification('Envie a mensagem inicial ou aguarde a resposta do cliente.', 'warning');
       return;
@@ -1977,8 +1977,8 @@ export default function DeskV2Root() {
   );
   // Timeline exibe um balão único da conversa WhatsApp; IA continua lendo convMsgs completo
   const displayMsgs = collapseWhatsAppThreadToBalloon(convMsgs);
-  const waConvMsgs = ticket ? buildWhatsAppConvMsgs(ticket) : [];
-  const waUiState = ticket ? getWhatsAppDeskUiState(ticket) : null;
+  const waConvMsgs = ticket ? buildWhatsAppConvMsgs(ticket, resolveWhatsAppChatId()) : [];
+  const waUiState = ticket ? getWhatsAppDeskUiState(ticket, resolveWhatsAppChatId()) : null;
   const threadLen = convMsgs.length;
   const activeTicketId = ticket?.id ? String(ticket.id) : '';
 
