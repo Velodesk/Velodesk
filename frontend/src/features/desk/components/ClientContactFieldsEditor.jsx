@@ -36,6 +36,7 @@ export default function ClientContactFieldsEditor({
   onPhonesChange,
   whatsappPhone,
   onWhatsappPhoneChange,
+  cadastroPhones = [],
   idPrefix = 'clientContact',
   showName = true,
   showCpf = false,
@@ -72,6 +73,7 @@ export default function ClientContactFieldsEditor({
   };
 
   const updatePhone = (index, value) => {
+    if (isFromCadastro(phoneRows[index])) return;
     const masked = maskPhoneInput(value);
     const next = [...phoneRows];
     const prev = next[index];
@@ -84,7 +86,19 @@ export default function ClientContactFieldsEditor({
 
   const addPhone = () => onPhonesChange([...phoneRows, '']);
 
+  /**
+   * Telefone vindo do cadastro do app (b2c_cadastros) — precisa ficar igual ao que o app traz;
+   * só muda se o cliente alterar por lá. O agente só pode adicionar outro número e escolher
+   * qual usar no WhatsApp, nunca editar ou apagar o do cadastro.
+   */
+  const isFromCadastro = (phone) => {
+    const trimmed = String(phone || '').trim();
+    if (!trimmed) return false;
+    return (cadastroPhones || []).some((item) => phoneMatches(item, trimmed));
+  };
+
   const removePhone = (index) => {
+    if (isFromCadastro(phoneRows[index])) return;
     const removed = phoneRows[index];
     const next = phoneRows.length <= 1 ? [''] : phoneRows.filter((_, i) => i !== index);
     onPhonesChange(next);
@@ -212,6 +226,7 @@ export default function ClientContactFieldsEditor({
         {phoneRows.map((phone, index) => {
           const trimmed = String(phone || '').trim();
           const radioName = `${idPrefix}-whatsapp`;
+          const locked = isFromCadastro(phone);
           return (
             <div className="client-contact-fields__row client-contact-fields__row--phone" key={`phone-${index}`}>
               <input
@@ -224,6 +239,8 @@ export default function ClientContactFieldsEditor({
                 autoComplete={index === 0 ? 'tel' : 'off'}
                 inputMode="numeric"
                 maxLength={15}
+                readOnly={locked}
+                title={locked ? 'Telefone do cadastro do app — só muda se o cliente alterar por lá.' : undefined}
               />
               <label
                 className={'client-contact-fields__wa' + (!trimmed ? ' is-disabled' : '')}
@@ -239,20 +256,29 @@ export default function ClientContactFieldsEditor({
                 <i className="ti ti-brand-whatsapp" aria-hidden="true" />
                 <span>WhatsApp</span>
               </label>
-              <button
-                type="button"
-                className="client-contact-fields__remove-btn"
-                onClick={() => removePhone(index)}
-                aria-label="Remover telefone"
-                title="Remover"
-              >
-                <i className="ti ti-trash" aria-hidden="true" />
-              </button>
+              {locked ? (
+                <i
+                  className="ti ti-lock client-contact-fields__phone-locked"
+                  aria-hidden="true"
+                  title="Telefone do cadastro do app — não pode ser removido aqui."
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="client-contact-fields__remove-btn"
+                  onClick={() => removePhone(index)}
+                  aria-label="Remover telefone"
+                  title="Remover"
+                >
+                  <i className="ti ti-trash" aria-hidden="true" />
+                </button>
+              )}
             </div>
           );
         })}
         <p className="client-contact-fields__hint">
-          Marque qual número será usado para iniciar conversas no WhatsApp.
+          Marque qual número será usado para iniciar conversas no WhatsApp. O telefone do
+          cadastro do app não pode ser editado nem removido aqui — só adicionar outro.
         </p>
       </div>
     </div>

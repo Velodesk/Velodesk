@@ -295,6 +295,7 @@ export default function DeskClientProfileBar({
                     onPhonesChange={(phones) => setDraft((d) => ({ ...d, phones }))}
                     whatsappPhone={draft.whatsappPhone}
                     onWhatsappPhoneChange={(whatsappPhone) => setDraft((d) => ({ ...d, whatsappPhone }))}
+                    cadastroPhones={client?.phones || []}
                     emailErrors={emailErrors}
                     onEmailBlur={(index, value) => {
                       const trimmed = String(value || '').trim();

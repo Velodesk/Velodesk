@@ -2395,6 +2395,21 @@
     background: #F3F4F8;
 }
 
+#velodeskDeskV2Root .client-contact-fields__phone-locked,
+.queue-box-modal .client-contact-fields__phone-locked {
+    color: #9ca3af;
+    font-size: var(--desk-fs-caption);
+    padding: 4px 6px;
+    flex-shrink: 0;
+}
+
+#velodeskDeskV2Root .client-contact-fields__input[readonly],
+.queue-box-modal .client-contact-fields__input[readonly] {
+    background: #F3F4F8;
+    color: #6b7280;
+    cursor: not-allowed;
+}
+
 #velodeskDeskV2Root .client-contact-fields__row--email,
 .queue-box-modal .client-contact-fields__row--email {
     grid-template-columns: minmax(0, 1fr) auto auto;
