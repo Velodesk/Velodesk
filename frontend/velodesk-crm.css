@@ -5410,6 +5410,18 @@
     color: #8696a0;
 }
 
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .wa-chat__char-counter {
+    align-self: flex-end;
+    font-size: 10px;
+    line-height: 1;
+    color: #8696a0;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .wa-chat__char-counter--over {
+    color: #d32f2f;
+    font-weight: 600;
+}
+
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .wa-chat__send {
     min-width: 44px;
     height: 44px;

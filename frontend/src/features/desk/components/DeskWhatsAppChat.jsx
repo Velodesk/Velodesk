@@ -21,6 +21,11 @@ import {
 } from '../../../services/desk/attachmentPreview';
 import DeskAttachmentPreviewModal from './DeskAttachmentPreviewModal';
 
+/** Limite de caracteres por mensagem de texto livre do WhatsApp (Twilio/Meta). */
+export const WA_TEXT_MAX_LENGTH = 1600;
+/** Contador só aparece perto do limite — abaixo disso fica oculto, sem poluir a tela. */
+const WA_TEXT_COUNTER_SHOW_AT = 1500;
+
 function attachmentLabel(url) {
   return attachmentLabelFromUrl(url);
 }
@@ -369,6 +374,7 @@ export default function DeskWhatsAppChat({
   const composeEnabled = waUiState?.composeEnabled !== false;
   const needsInitial = Boolean(waUiState?.needsInitial);
   const awaitingClient = Boolean(waUiState?.awaitingClient);
+  const isOverTextLimit = composeText.length > WA_TEXT_MAX_LENGTH;
 
   useEffect(() => {
     setIaVisible(true);
@@ -422,7 +428,7 @@ export default function DeskWhatsAppChat({
   };
 
   const handleSend = async () => {
-    if (!composeEnabled || sendBusy) return;
+    if (!composeEnabled || sendBusy || isOverTextLimit) return;
     if (!composeText.trim() && !hasPendingAttachments) return;
     const result = onSend?.();
     if (result && typeof result.then === 'function') {
@@ -719,6 +725,13 @@ export default function DeskWhatsAppChat({
                 }
               }}
             />
+            {composeText.length > WA_TEXT_COUNTER_SHOW_AT ? (
+              <span
+                className={'wa-chat__char-counter' + (isOverTextLimit ? ' wa-chat__char-counter--over' : '')}
+              >
+                {composeText.length}/{WA_TEXT_MAX_LENGTH}
+              </span>
+            ) : null}
           </div>
           <button
             type="button"
@@ -745,7 +758,8 @@ export default function DeskWhatsAppChat({
           type="button"
           className="wa-chat__send"
           aria-label="Enviar mensagem"
-          disabled={!composeEnabled || sendBusy || attachUploading || (!composeText.trim() && !hasPendingAttachments)}
+          disabled={!composeEnabled || sendBusy || attachUploading || isOverTextLimit || (!composeText.trim() && !hasPendingAttachments)}
+          title={isOverTextLimit ? `Reduza o texto para até ${WA_TEXT_MAX_LENGTH} caracteres para enviar.` : undefined}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => { void handleSend(); }}
         >
