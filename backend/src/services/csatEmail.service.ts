@@ -76,9 +76,20 @@ function loadCsatStarDataUri(): string | null {
   return cachedCsatStarDataUri;
 }
 
+/**
+ * Quebra a sequência de dígitos com um marcador invisível — sem isso, Gmail e outros
+ * webmails detectam o protocolo (10 dígitos) como se fosse telefone e o transformam num
+ * link clicável sozinhos, sem nenhum <a> nosso. Ainda não temos página de destino pra
+ * esse link (ver conversa da Nathalia em 28/09) — remover esta quebra quando tiver.
+ */
+function semAutoLinkDeTelefone(digitos: string): string {
+  const meio = Math.ceil(digitos.length / 2);
+  return `${digitos.slice(0, meio)}<span style="display:none">&#8203;</span>${digitos.slice(meio)}`;
+}
+
 /** Linha discreta "Avaliação referente ao protocolo X." — formato compacto, não o card grande padrão. */
 export function buildCsatProtocoloLineHtml(protocolo: string): string {
-  const safeProtocolo = escapeHtmlAttribute(protocolo);
+  const safeProtocolo = semAutoLinkDeTelefone(escapeHtmlAttribute(protocolo));
   return `<p style="margin:0 0 16px 0;font-size:13px;color:#5A6472;font-family:Arial,sans-serif;">Avaliação referente ao protocolo <strong style="color:#1634FF;">${safeProtocolo}</strong>.</p>`;
 }
 
