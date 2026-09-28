@@ -373,6 +373,7 @@ export default function DeskWhatsAppChat({
 
   const composeEnabled = waUiState?.composeEnabled !== false;
   const needsInitial = Boolean(waUiState?.needsInitial);
+  const needsReopen = Boolean(waUiState?.needsReopen);
   const awaitingClient = Boolean(waUiState?.awaitingClient);
   const isOverTextLimit = composeText.length > WA_TEXT_MAX_LENGTH;
 
@@ -577,7 +578,29 @@ export default function DeskWhatsAppChat({
           </div>
         )}
 
-        {awaitingClient && !needsInitial && (
+        {needsReopen && (
+          <div className="wa-chat__initial-card" role="region" aria-label="Reabrir conversa WhatsApp">
+            <div className="wa-chat__initial-card-icon" aria-hidden="true">
+              <i className="ti ti-brand-whatsapp" />
+            </div>
+            <h3 className="wa-chat__initial-card-title">Reabrir conversa WhatsApp</h3>
+            <p className="wa-chat__initial-card-text">
+              Já se passaram mais de 24h desde a última resposta de <strong>{clientLabel}</strong> — o
+              WhatsApp exige uma nova mensagem de template (aprovada pela Meta) pra reabrir a conversa
+              antes de liberar o texto livre de novo.
+            </p>
+            <button
+              type="button"
+              className="wa-chat__initial-card-btn"
+              onClick={onSendInitial}
+              disabled={initialSendBusy || sendBusy}
+            >
+              {initialSendBusy ? 'Enviando…' : 'Reabrir Conversa'}
+            </button>
+          </div>
+        )}
+
+        {awaitingClient && !needsInitial && !needsReopen && (
           <div className="wa-chat__awaiting-banner" role="status">
             Mensagem inicial enviada. Aguardando resposta de <strong>{clientLabel}</strong> para liberar o texto livre (janela 24h).
           </div>
@@ -680,7 +703,9 @@ export default function DeskWhatsAppChat({
           <p className="wa-chat__session-hint" role="status">
             {needsInitial
               ? 'Use o botão acima para enviar a mensagem inicial. O campo de texto será liberado após a resposta do cliente.'
-              : 'Aguardando resposta do cliente para continuar a conversa.'}
+              : needsReopen
+                ? 'Janela de 24h fechada. Use o botão acima para reabrir a conversa.'
+                : 'Aguardando resposta do cliente para continuar a conversa.'}
           </p>
         )}
         <div className="wa-chat__input-bar">
