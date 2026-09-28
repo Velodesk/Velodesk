@@ -16020,6 +16020,18 @@ label[for$="-classificacao-motivo3"] {
     color: #8696a0;
 }
 
+#especiais-reclame-aqui .wa-chat__char-counter , #especiais-procon .wa-chat__char-counter, #especiais-consumidor-gov .wa-chat__char-counter, #especiais-bacen .wa-chat__char-counter {
+    align-self: flex-end;
+    font-size: 10px;
+    line-height: 1;
+    color: #8696a0;
+}
+
+#especiais-reclame-aqui .wa-chat__char-counter--over , #especiais-procon .wa-chat__char-counter--over, #especiais-consumidor-gov .wa-chat__char-counter--over, #especiais-bacen .wa-chat__char-counter--over {
+    color: #d32f2f;
+    font-weight: 600;
+}
+
 #especiais-reclame-aqui .wa-chat__send , #especiais-procon .wa-chat__send, #especiais-consumidor-gov .wa-chat__send, #especiais-bacen .wa-chat__send {
     width: 44px;
     height: 44px;

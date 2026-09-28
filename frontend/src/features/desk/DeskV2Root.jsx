@@ -111,7 +111,7 @@ import TicketFusaoStatusControls from './components/TicketFusaoStatusControls';
 import DeskConversation from './components/DeskConversation';
 import TicketWorkflowInfoRequestCallout from './components/TicketWorkflowInfoRequestCallout';
 import { markWorkflowInfoRequestsReadForTicket, resolveWorkflowInfoRequest } from '../../services/workflow/workflowInfoNotifications';
-import DeskWhatsAppChat from './components/DeskWhatsAppChat';
+import DeskWhatsAppChat, { WA_TEXT_MAX_LENGTH } from './components/DeskWhatsAppChat';
 import DeskComposePanel from './components/DeskComposePanel';
 import DeskInternalNotesPanel from './components/DeskInternalNotesPanel';
 import DeskEventsPanel from './components/DeskEventsPanel';
@@ -1684,6 +1684,10 @@ export default function DeskV2Root() {
     const messageText = String(composeText || '').trim();
     const hasAttachments = (composeAttachments || []).length > 0;
     if (!messageText && !hasAttachments) return;
+    if (messageText.length > WA_TEXT_MAX_LENGTH) {
+      showNotification(`Mensagem acima de ${WA_TEXT_MAX_LENGTH} caracteres — reduza o texto para enviar.`, 'warning');
+      return;
+    }
 
     await runWhatsAppSend({ text: messageText });
   };
