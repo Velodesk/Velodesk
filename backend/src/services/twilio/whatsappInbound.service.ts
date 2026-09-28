@@ -151,7 +151,11 @@ function appendInboundWhatsAppToChamado(
   const mediaContentTypes = storedMedia.map((item) => item.contentType);
   const anexosScanStatus = storedMedia.map((item) => item.scanStatus);
   const hasAudio = mediaContentTypes.some((value) => value.toLowerCase().startsWith('audio/'));
-  const waChatId = normalizeWaChatId(payload.waId || payload.from);
+  // `from` primeiro: o `WaId` da Meta às vezes vem sem o 9º dígito do celular pra números BR
+  // (formato legado do JID do WhatsApp), enquanto `from` é o telefone de roteamento real da
+  // Twilio — sempre correto. Preferir `waId` fazia a mesma cliente cair em duas "conversas"
+  // com tag ligeiramente diferente, forçando a saudação de template em toda resposta.
+  const waChatId = normalizeWaChatId(payload.from || payload.waId);
   appendWhatsAppMensagemToChamado(chamado, {
     origin: 'cliente',
     autor: payload.profileName || waChatId,
