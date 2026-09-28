@@ -1782,11 +1782,18 @@ export function hasWhatsAppAgentOutbound(ticket, phoneFilter) {
   return buildWhatsAppConvMsgs(ticket, phoneFilter).some((m) => m.type === 'agent');
 }
 
+/** Cliente já respondeu ao menos uma vez nessa thread (mesmo que a janela de 24h já tenha fechado). */
+export function hasWhatsAppClienteReply(ticket, phoneFilter) {
+  return buildWhatsAppConvMsgs(ticket, phoneFilter).some((m) => m.type === 'client');
+}
+
 /**
  * Estado UX do chat WhatsApp no Desk, para o telefone selecionado (`phoneFilter`) — sem ele,
  * olha o ticket inteiro (comportamento antigo).
- * - needsInitial: exibir botão "Enviar Mensagem Inicial" (template)
- * - awaitingClient: template enviado, aguardando resposta
+ * - needsInitial: exibir botão "Enviar Mensagem Inicial" (template) — nunca mandou nada ainda
+ * - needsReopen: cliente já respondeu antes, mas a janela de 24h fechou de novo — precisa
+ *   reenviar o template pra reabrir a conversa (senão fica travado esperando pra sempre)
+ * - awaitingClient: template enviado, cliente nunca respondeu, ainda dentro do razoável esperar
  * - composeEnabled: sessão 24h aberta — texto livre
  */
 export function getWhatsAppDeskUiState(ticket, phoneFilter) {
@@ -1797,6 +1804,7 @@ export function getWhatsAppDeskUiState(ticket, phoneFilter) {
       mode: 'session',
       composeEnabled: true,
       needsInitial: false,
+      needsReopen: false,
       awaitingClient: false,
     };
   }
@@ -1805,6 +1813,16 @@ export function getWhatsAppDeskUiState(ticket, phoneFilter) {
       mode: 'needsInitial',
       composeEnabled: false,
       needsInitial: true,
+      needsReopen: false,
+      awaitingClient: false,
+    };
+  }
+  if (hasWhatsAppClienteReply(ticket, phoneFilter)) {
+    return {
+      mode: 'needsReopen',
+      composeEnabled: false,
+      needsInitial: false,
+      needsReopen: true,
       awaitingClient: false,
     };
   }
@@ -1812,6 +1830,7 @@ export function getWhatsAppDeskUiState(ticket, phoneFilter) {
     mode: 'awaitingClient',
     composeEnabled: false,
     needsInitial: false,
+    needsReopen: false,
     awaitingClient: true,
   };
 }
