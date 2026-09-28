@@ -1724,24 +1724,49 @@ export function collapseWhatsAppThreadToBalloon(msgs) {
   return [...rest.slice(0, insertAt), balloon, ...rest.slice(insertAt)];
 }
 
-/** Mensagens exclusivas da conversa WhatsApp (thread contínua, sem e-mail/outros canais). */
-export function buildWhatsAppConvMsgs(ticket) {
+/**
+ * Últimos N dígitos de um telefone — mesma convenção de tolerância a formatação/DDI/9º dígito
+ * já usada no backend (waActiveConversation.service.ts) pra casar números.
+ */
+function phoneSuffixDigits(value, n = 8) {
+  const digits = normalizePhone(value);
+  return digits.length >= n ? digits.slice(-n) : digits;
+}
+
+/** waChatId gravado no registro que originou essa mensagem (metadados.waChatId), se houver. */
+function waChatIdOfMessage(ticket, message) {
+  if (message?.registroIndex == null) return '';
+  const reg = (ticket?.registroHistorico || []).find((r) => r.registroIndex === message.registroIndex);
+  return String(reg?.metadados?.waChatId || '').trim();
+}
+
+/**
+ * Mensagens exclusivas da conversa WhatsApp (thread contínua, sem e-mail/outros canais).
+ * `phoneFilter` (opcional) restringe às mensagens do telefone selecionado agora — sem ele,
+ * mantém o comportamento antigo (todas as conversas de WhatsApp do ticket misturadas), usado
+ * pelos módulos de casos especiais e pela sugestão de IA, que não têm seletor de telefone.
+ */
+export function buildWhatsAppConvMsgs(ticket, phoneFilter) {
   if (!ticket) return [];
-  const waOnly = (ticket.messages || []).filter((m) => {
+  let waOnly = (ticket.messages || []).filter((m) => {
     if (!m || m.type === 'internal') return false;
     if (m.channel === 'whatsapp') return true;
     const metaSource = String(m.source || m.metadados?.source || '').toLowerCase();
     return metaSource === 'whatsapp-thread';
   });
+  const targetSuffix = phoneFilter ? phoneSuffixDigits(phoneFilter) : '';
+  if (targetSuffix) {
+    waOnly = waOnly.filter((m) => phoneSuffixDigits(waChatIdOfMessage(ticket, m)) === targetSuffix);
+  }
   if (!waOnly.length) return [];
   return buildRegistroThread({ ...ticket, messages: waOnly });
 }
 
 export const WHATSAPP_SESSION_MS = 24 * 60 * 60 * 1000;
 
-/** True se o cliente enviou WhatsApp nas últimas 24h (texto livre permitido). */
-export function isWhatsAppCustomerSessionOpen(ticket) {
-  const msgs = buildWhatsAppConvMsgs(ticket);
+/** True se o cliente enviou WhatsApp nas últimas 24h (texto livre permitido) NESSE telefone. */
+export function isWhatsAppCustomerSessionOpen(ticket, phoneFilter) {
+  const msgs = buildWhatsAppConvMsgs(ticket, phoneFilter);
   let lastClienteAt = 0;
   for (const m of msgs) {
     if (m.type !== 'client') continue;
@@ -1752,20 +1777,21 @@ export function isWhatsAppCustomerSessionOpen(ticket) {
   return Date.now() - lastClienteAt < WHATSAPP_SESSION_MS;
 }
 
-/** Agente já enviou ao menos uma mensagem na thread WhatsApp. */
-export function hasWhatsAppAgentOutbound(ticket) {
-  return buildWhatsAppConvMsgs(ticket).some((m) => m.type === 'agent');
+/** Agente já enviou ao menos uma mensagem na thread WhatsApp desse telefone. */
+export function hasWhatsAppAgentOutbound(ticket, phoneFilter) {
+  return buildWhatsAppConvMsgs(ticket, phoneFilter).some((m) => m.type === 'agent');
 }
 
 /**
- * Estado UX do chat WhatsApp no Desk.
+ * Estado UX do chat WhatsApp no Desk, para o telefone selecionado (`phoneFilter`) — sem ele,
+ * olha o ticket inteiro (comportamento antigo).
  * - needsInitial: exibir botão "Enviar Mensagem Inicial" (template)
  * - awaitingClient: template enviado, aguardando resposta
  * - composeEnabled: sessão 24h aberta — texto livre
  */
-export function getWhatsAppDeskUiState(ticket) {
-  const sessionOpen = isWhatsAppCustomerSessionOpen(ticket);
-  const agentOutbound = hasWhatsAppAgentOutbound(ticket);
+export function getWhatsAppDeskUiState(ticket, phoneFilter) {
+  const sessionOpen = isWhatsAppCustomerSessionOpen(ticket, phoneFilter);
+  const agentOutbound = hasWhatsAppAgentOutbound(ticket, phoneFilter);
   if (sessionOpen) {
     return {
       mode: 'session',
