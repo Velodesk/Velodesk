@@ -6,7 +6,7 @@ import { persistClienteContact } from '../../../api/adapters/clienteAdapter';
 import { isValidEmailFormat, isTicketReadOnly, normalizeCpf } from '../../../services/desk/utils';
 import { updateTicketInCache } from '../../../services/ticketsStorage';
 
-export async function saveEspeciaisTicketContact(ticket, draft) {
+export async function saveEspeciaisTicketContact(ticket, draft, client) {
   if (!ticket) throw new Error('Ticket não encontrado');
   if (isTicketReadOnly(ticket)) throw new Error('Ticket fechado');
 
@@ -29,11 +29,18 @@ export async function saveEspeciaisTicketContact(ticket, draft) {
   }
   if (phoneList.length > 1 && !whatsappPhone) throw new Error('WhatsApp obrigatório');
 
+  // O cadastro (b2c_cadastros) só reflete o telefone que o próprio app trouxe — nunca ganha
+  // número que o atendente só incluiu no ticket (mesma regra do Desk padrão).
+  const cadastroPhones = Array.isArray(client?.phones)
+    ? client.phones.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+  const phonesForCadastro = cadastroPhones.length ? cadastroPhones : phoneList;
+
   const clienteDoc = await persistClienteContact(clientsApi, {
     cpf,
     nome,
     emails: emailList,
-    phones: phoneList,
+    phones: phonesForCadastro,
     whatsappPhone,
     clienteId: draft?.clienteId || ticket.clienteId || ticket.lateralForm?.clienteId,
   });
