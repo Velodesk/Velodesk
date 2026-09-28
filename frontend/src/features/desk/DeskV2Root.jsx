@@ -1863,12 +1863,20 @@ export default function DeskV2Root() {
       throw new Error('E-mail de resposta obrigatório');
     }
 
+    // O cadastro (b2c_cadastros) só reflete o telefone que o próprio app trouxe — nunca ganha
+    // número que o atendente só incluiu no ticket. Sem cadastro de telefone ainda (cliente
+    // novo), usa a lista do ticket mesmo, não tem outra fonte.
+    const cadastroPhones = Array.isArray(client?.phones)
+      ? client.phones.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const phonesForCadastro = cadastroPhones.length ? cadastroPhones : phoneList;
+
     try {
       const clienteDoc = await persistClienteContact(clientsApi, {
         cpf,
         nome,
         emails: emailList,
-        phones: phoneList,
+        phones: phonesForCadastro,
         whatsappPhone,
         replyEmail,
         clienteId: draft?.clienteId || ticket.clienteId || ticket.lateralForm?.clienteId,

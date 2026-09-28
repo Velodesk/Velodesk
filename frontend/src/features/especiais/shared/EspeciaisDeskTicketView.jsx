@@ -83,7 +83,7 @@ export default function EspeciaisDeskTicketView({
   const handleSaveContact = useCallback(async (draft) => {
     if (!ticket) return;
     try {
-      const updated = await saveEspeciaisTicketContact(ticket, draft);
+      const updated = await saveEspeciaisTicketContact(ticket, draft, client);
       onTicketUpdated?.(updated);
       showNotification('Contato atualizado.', 'success');
     } catch (err) {
@@ -91,7 +91,7 @@ export default function EspeciaisDeskTicketView({
       showNotification(msg, 'error');
       throw err;
     }
-  }, [ticket, onTicketUpdated, showNotification]);
+  }, [ticket, client, onTicketUpdated, showNotification]);
 
   if (!ticketId) {
     return (
