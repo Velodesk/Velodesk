@@ -20,11 +20,34 @@ import {
   shouldOpenPreviewModal,
 } from '../../../services/desk/attachmentPreview';
 import DeskAttachmentPreviewModal from './DeskAttachmentPreviewModal';
+import { compressImageFilesIfNeeded } from '../../../utils/imageCompression.util';
 
 /** Limite de caracteres por mensagem de texto livre do WhatsApp (Twilio/Meta). */
 export const WA_TEXT_MAX_LENGTH = 1600;
 /** Contador só aparece perto do limite — abaixo disso fica oculto, sem poluir a tela. */
 const WA_TEXT_COUNTER_SHOW_AT = 1500;
+
+/**
+ * O que o WhatsApp de fato aceita via Twilio (docs.twilio.com/whatsapp/guidance-whatsapp-media-messages)
+ * — image/webp NÃO entra aqui: no WhatsApp isso é reservado pra figurinha (sticker), com
+ * requisitos próprios, não serve pra mandar foto normal. Imagem tem limite próprio de 5MB,
+ * bem mais apertado que o limite genérico de anexo do resto do sistema (12MB).
+ */
+const WA_ATTACHMENT_SUPPORTED_TYPES = new Set([
+  'image/png', 'image/jpeg', 'image/gif',
+  'video/mp4', 'video/webm',
+  'application/pdf',
+]);
+const WA_ATTACHMENT_SUPPORTED_LABEL = 'imagens (PNG, JPG, GIF), áudio, vídeo (MP4, WebM) e PDF';
+const WA_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+function isSupportedWaAttachment(file) {
+  const type = String(file?.type || '').toLowerCase();
+  // Sem MIME detectável pelo navegador (raro) — deixa passar; o backend ainda valida de verdade.
+  if (!type) return true;
+  if (type.startsWith('audio/')) return true;
+  return WA_ATTACHMENT_SUPPORTED_TYPES.has(type);
+}
 
 function attachmentLabel(url) {
   return attachmentLabelFromUrl(url);
@@ -496,13 +519,33 @@ export default function DeskWhatsAppChat({
       showNotification('Salve o ticket antes de anexar arquivos.', 'warning');
       return;
     }
+    const supportedFiles = files.filter(isSupportedWaAttachment);
+    const unsupportedFiles = files.filter((file) => !isSupportedWaAttachment(file));
+    unsupportedFiles.forEach((file) => {
+      showNotification(
+        `Tipo de arquivo não suportado: ${file.name}. Tipos suportados: ${WA_ATTACHMENT_SUPPORTED_LABEL}.`,
+        'error',
+      );
+    });
+    if (!supportedFiles.length) return;
+
     setAttachUploading(true);
     try {
-      const result = await uploadsApi.uploadSent(ticketKey, files);
+      const compressed = await compressImageFilesIfNeeded(supportedFiles);
+      const filesToUpload = compressed.filter((file) => {
+        if (!file.type.startsWith('image/') || file.size <= WA_IMAGE_MAX_BYTES) return true;
+        showNotification(
+          `Imagem muito grande: ${file.name}. O WhatsApp aceita no máximo 5MB por imagem.`,
+          'error',
+        );
+        return false;
+      });
+      if (!filesToUpload.length) return;
+      const result = await uploadsApi.uploadSent(ticketKey, filesToUpload);
       const uploaded = Array.isArray(result?.attachments) ? result.attachments : [];
       const nextItems = uploaded.map((item, index) => ({
         url: String(item?.url || result?.urls?.[index] || '').trim(),
-        name: String(item?.filename || files[index]?.name || 'Anexo').trim(),
+        name: String(item?.filename || filesToUpload[index]?.name || 'Anexo').trim(),
       })).filter((item) => item.url);
       if (!nextItems.length) {
         showNotification('Não foi possível enviar o anexo.', 'error');
@@ -775,7 +818,7 @@ export default function DeskWhatsAppChat({
             className="crm-compose-toolbar__file-input"
             tabIndex={-1}
             aria-hidden="true"
-            accept="image/png,image/jpeg,image/gif,image/webp,audio/*,video/mp4,video/webm,application/pdf"
+            accept="image/png,image/jpeg,image/gif,audio/*,video/mp4,video/webm,application/pdf"
             onChange={handleFileChange}
           />
         </div>
