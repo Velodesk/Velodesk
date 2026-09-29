@@ -88,6 +88,29 @@ const cases: Array<{ name: string; chamado: IChamadoN1; expect: { triggered: boo
     expect: { triggered: true, fastPath: false },
   },
   {
+    name: 'Assunto padronizado do Bacen (área=assunto, literal) — dispara E faz fast-path',
+    chamado: mockChamado({
+      chamadoTitulo: 'Notificação Bacen - Processo nº 987654/2026',
+      registro: [{
+        data: new Date(),
+        origin: 'cliente',
+        autor: 'Cliente',
+        mensagemPublica: 'Segue anexo o processo aberto.',
+        anexosMensagemPublica: [],
+        anotacaoInterna: '',
+        anexosAnotacaoInterna: [],
+        alteracoes: [],
+        metadados: { source: 'email-inbound', emailFrom: 'cliente@gmail.com' },
+        status: 'novo',
+      }],
+    }),
+    // Assunto de e-mail institucional é padronizado pelo próprio órgão (só o nº do processo
+    // varia) — diferente do corpo (texto livre do cliente), então um match de ÁREA=ASSUNTO
+    // com órgão definido é um fato verificável e pode pular direto pro fast-path, mesmo com
+    // o Agente 4 (LLM) desligado.
+    expect: { triggered: true, fastPath: true },
+  },
+  {
     name: 'Falso positivo — proconcurso',
     chamado: mockChamado({
       registro: [{
@@ -143,10 +166,11 @@ const cases: Array<{ name: string; chamado: IChamadoN1; expect: { triggered: boo
   },
 ];
 
-// Simula uma regra cadastrada em Config > E-mail > Assuntos Prioritários (área=corpo,
-// critério=contém) com órgão definido, sem precisar de conexão real ao desk_config.
+// Simula regras cadastradas em Config > E-mail > Assuntos Prioritários, sem precisar de
+// conexão real ao desk_config.
 setMailPrioritySubjectSnapshotForTests([
   { area: 'corpo', matchType: 'contem', value: 'banco central', orgao: 'bacen' },
+  { area: 'assunto', matchType: 'contem', value: 'notificação bacen - processo', orgao: 'bacen' },
 ]);
 
 let failed = 0;
