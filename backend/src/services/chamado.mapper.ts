@@ -1318,8 +1318,9 @@ export async function createChamadoFromBody(
       source: 'reclame-aqui',
       reclameAqui: raData,
     };
+    const raReclamacaoDate = raData.dataReclamacao ? new Date(String(raData.dataReclamacao)) : null;
     const clienteRegistro: IRegistro = {
-      data: new Date(),
+      data: raReclamacaoDate && !Number.isNaN(raReclamacaoDate.getTime()) ? raReclamacaoDate : new Date(),
       origin: 'cliente',
       autor: clientName || String(raData.consumidor ?? '').trim() || 'Consumidor',
       mensagemPublica: internal ? '' : complaintText,

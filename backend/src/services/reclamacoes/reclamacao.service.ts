@@ -262,6 +262,7 @@ function buildReclamacaoPayload(
       : meta.prazoRa
         ? new Date(String(meta.prazoRa))
         : undefined,
+    dataReclamacao: meta.dataReclamacao ? new Date(String(meta.dataReclamacao)) : undefined,
     orgaoInstituicao: String(
       meta.orgaoProcon ?? meta.orgaoGov ?? meta.orgaoInstituicao ?? '',
     ).trim() || undefined,

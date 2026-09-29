@@ -59,6 +59,13 @@ function asIso(value: string | Date | undefined): string | undefined {
   return raw || undefined;
 }
 
+function parseReclamacaoDate(value: string | Date | undefined): Date | null {
+  const iso = asIso(value);
+  if (!iso) return null;
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function normalizeProdutoLabel(value: string): string {
   return String(value || '')
     .normalize('NFD')
@@ -141,9 +148,18 @@ function buildReclameAquiMeta(source: RaTicketSource) {
   };
 }
 
-export function buildTicketPayloadFromRaSource(source: RaTicketSource, author = 'sistema') {
+export function buildTicketPayloadFromRaSource(
+  source: RaTicketSource,
+  author = 'sistema',
+  origemEntrada = 'manual',
+) {
   const meta = buildReclameAquiMeta(source);
   const cpf = String(source.cpf ?? '').replace(/\D/g, '');
+  // Import em massa da planilha (hugme-import) não representa atendimento real de quem faz o
+  // upload — atribuir o uploader como responsável de milhares de tickets históricos é falso.
+  // A planilha não traz um responsável real, então o campo fica vazio (decisão explícita do
+  // usuário) em vez de usar o autor do upload.
+  const responsavel = origemEntrada === 'hugme-import' ? '' : author;
 
   return {
     chamadoTitulo: String(source.assunto || '').trim() || 'Reclamação Reclame Aqui',
@@ -161,7 +177,7 @@ export function buildTicketPayloadFromRaSource(source: RaTicketSource, author = 
       motivo: source.motivo || '',
       detalhe: 'Reclamação Reclame Aqui',
       canal: 'Reclame Aqui',
-      responsavel: author,
+      responsavel,
       clienteCpf: cpf,
       cpf,
       clienteNome: source.consumidor || '',
@@ -298,7 +314,7 @@ export async function upsertRaTicketFromSource(
       throw new Error(`Chamado ${existing.chamadoId} não encontrado para Id Origem ${idOrigem}`);
     }
 
-    const payload = buildTicketPayloadFromRaSource(sourced, author);
+    const payload = buildTicketPayloadFromRaSource(sourced, author, origemEntrada);
     const lf = payload.lateralForm as Record<string, unknown>;
     chamado.chamadoTitulo = payload.chamadoTitulo;
     const raMeta = lf.reclameAqui;
@@ -306,6 +322,7 @@ export async function upsertRaTicketFromSource(
     const raIdx = registros.findIndex(
       (reg) => String(reg.metadados?.source ?? '').toLowerCase() === 'reclame-aqui',
     );
+    const reclamacaoDate = parseReclamacaoDate(sourced.dataReclamacao);
     if (raIdx >= 0) {
       const existingMeta = registros[raIdx].metadados && typeof registros[raIdx].metadados === 'object'
         ? registros[raIdx].metadados
@@ -315,7 +332,22 @@ export async function upsertRaTicketFromSource(
         source: 'reclame-aqui',
         reclameAqui: raMeta,
       };
+      // Reupload da planilha (enriquecida/corrigida) deve corrigir a data da mensagem do cliente
+      // no ticket já existente, não só na criação — senão um reimport nunca corrige histórico.
+      if (reclamacaoDate) {
+        registros[raIdx].data = reclamacaoDate;
+      }
       chamado.markModified('registro');
+    }
+    // chamado.createdAt é immutable por padrão no schema (timestamps: true do Mongoose 8) —
+    // atribuição direta no documento é silenciosamente ignorada no save(). overwriteImmutable
+    // é obrigatório para o reimport da planilha corrigir a data de criação retroativamente.
+    if (reclamacaoDate) {
+      await ChamadoN1.updateOne(
+        { _id: chamado._id },
+        { $set: { createdAt: reclamacaoDate } },
+        { overwriteImmutable: true },
+      );
     }
     const lastIdx = chamado.tabulacao?.length ? chamado.tabulacao.length - 1 : -1;
     if (lastIdx >= 0) {
@@ -339,12 +371,18 @@ export async function upsertRaTicketFromSource(
     };
   }
 
-  const payload = buildTicketPayloadFromRaSource(sourced, author);
+  const payload = buildTicketPayloadFromRaSource(sourced, author, origemEntrada);
   // Sempre cria com status "novo" — createChamadoFromBody usa o 2º parâmetro pra decidir se
   // exige tabulação completa (assertTabulacaoForStatus), e boa parte da base histórica do RA
   // nunca teve produto/motivo classificados no Desk mesmo já estando fechada na plataforma RA.
   // Passar "resolvido" aqui bloquearia a importação dessas linhas com "Preencha a tabulação".
   const partial = await createChamadoFromBody(payload, 'novo');
+  // Sem isto, o Mongoose (timestamps: true) grava createdAt como "agora" na importação em lote,
+  // fazendo milhares de reclamações históricas parecerem ter chegado todas hoje.
+  const reclamacaoDateForCreate = parseReclamacaoDate(sourced.dataReclamacao);
+  if (reclamacaoDateForCreate) {
+    (partial as Record<string, unknown>).createdAt = reclamacaoDateForCreate;
+  }
   const chamado = await ChamadoN1.create(partial) as IChamadoN1;
 
   // Ajusta o status real do registro DEPOIS da criação, sem passar pela validação de
