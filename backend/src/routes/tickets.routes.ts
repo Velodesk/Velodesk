@@ -62,9 +62,11 @@ import {
   assertCanResolveTicketWithOpenWorkflow,
   assertCanWorkflowComunicacao,
   canApproveWorkflow,
+  canAssignResponsavelToOthers,
   canClaimTicketResponsavel,
   isResponsavelSelfClaimBody,
   PermissionDeniedError,
+  resolveExplicitReassignmentTarget,
   resolveUserPermissions,
 } from '../services/permission.service';
 import {
@@ -101,6 +103,21 @@ const router = Router();
 async function loadBoxes() {
   // Cache TTL curto — boxes mudam raramente e são resolvidas muitas vezes por requisição.
   return getCachedBoxes();
+}
+
+/**
+ * true quando o corpo da requisição pede explicitamente um responsável (atribuição manual —
+ * ação em massa, reatribuição na tela do ticket, etc.). Usado pra não deixar o auto-claim de
+ * "1ª interação" (applyManualResponsavelClaim) sobrescrever uma escolha explícita de outro
+ * agente com quem está fazendo a requisição — ver applyManualResponsavelClaim em
+ * assignmentRouter.service.ts: ela reivindica pra req.user sempre que o ticket está "novo" sem
+ * interação prévia de agente, sem saber que o corpo já pediu outra pessoa.
+ */
+function hasExplicitResponsavelInBody(body: Record<string, unknown>): boolean {
+  const fromTop = String(body.responsibleAgent ?? '').trim();
+  if (fromTop) return true;
+  const lateralForm = body.lateralForm as Record<string, unknown> | undefined;
+  return Boolean(String(lateralForm?.responsavel ?? '').trim());
 }
 
 function handleTicketMutationError(err: unknown, res: Response): boolean {
@@ -284,6 +301,13 @@ router.put('/:id', authMiddleware, async (req, res: Response) => {
         throw new PermissionDeniedError('Sem permissão para assumir este ticket');
       }
     } else {
+      const reassignTarget = resolveExplicitReassignmentTarget(req.body, req.user!);
+      if (reassignTarget) {
+        const resolved = await resolveUserPermissions(req.user!);
+        if (!canAssignResponsavelToOthers(resolved)) {
+          throw new PermissionDeniedError('Sem permissão para atribuir ticket a outro agente');
+        }
+      }
       await assertCanActOnTicket(req.user!, chamado);
     }
   } catch (err) {
@@ -307,9 +331,14 @@ router.put('/:id', authMiddleware, async (req, res: Response) => {
         await assertCanResolveTicketWithOpenWorkflow(req.user!, chamado);
       }
     }
+    const explicitResponsavel = hasExplicitResponsavelInBody(req.body);
     applyManualResponsavelClaim(chamado, req.user);
     await applyBodyToChamado(chamado, req.body, req.user);
-    applyManualResponsavelClaim(chamado, req.user);
+    // Corpo já pediu um responsável específico (ex.: atribuição em massa pra outro agente) —
+    // não deixar o auto-claim de 1ª interação sobrescrever essa escolha com quem fez a requisição.
+    if (!explicitResponsavel) {
+      applyManualResponsavelClaim(chamado, req.user);
+    }
     await chamado.save();
     if (chamado.chamadoTitulo !== titleBefore) {
       await ChamadoIaAnalise.updateOne(
@@ -357,7 +386,11 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
 
   try {
     assertChamadoModifiable(chamado);
-    await assertCanCommitTicket(req.user!, chamado, req.body);
+    const resolvedForCommit = await assertCanCommitTicket(req.user!, chamado, req.body);
+    const reassignTarget = resolveExplicitReassignmentTarget(req.body, req.user!);
+    if (reassignTarget && !canAssignResponsavelToOthers(resolvedForCommit)) {
+      throw new PermissionDeniedError('Sem permissão para atribuir ticket a outro agente');
+    }
   } catch (err) {
     if (handleTicketMutationError(err, res)) return;
     throw err;
@@ -389,9 +422,14 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
         await assertCanResolveTicketWithOpenWorkflow(req.user!, chamado);
       }
     }
+    const explicitResponsavel = hasExplicitResponsavelInBody(req.body);
     applyManualResponsavelClaim(chamado, req.user);
     const commitResult = await commitChamadoFromAgent(chamado, req.body, req.user);
-    applyManualResponsavelClaim(chamado, req.user);
+    // Mesma ressalva do PUT /:id acima — corpo já pediu um responsável específico, não
+    // deixar o auto-claim de 1ª interação sobrescrever essa escolha.
+    if (!explicitResponsavel) {
+      applyManualResponsavelClaim(chamado, req.user);
+    }
     if (commitResult.messageResult.public) {
       const sentPublicContent = Boolean(
         commitResult.publicText.trim()

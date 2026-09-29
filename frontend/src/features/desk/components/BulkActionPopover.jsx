@@ -8,9 +8,16 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDeskColaboradores } from '../../../hooks/useDeskColaboradores';
 import { useNotifications } from '../../../context/NotificationContext';
+import { usePermissions } from '../../../context/PermissionContext';
+import { getAgentName } from '../../../services/clientDb';
 import { ticketsApi } from '../../../api/client';
 import { findTicketEntry } from '../../../services/ticketsStorage';
 import { getTicketProtocolLabel } from '../../../services/desk/utils';
+
+// Mesmo limite do backend (permission.service.ts: MIN_NIVEL_ATRIBUIR_A_OUTROS) — nível de
+// "Suporte" em Central de configurações → Funções e Permissões. Isso é só pra não oferecer
+// uma opção que o backend vai recusar; a trava de verdade é lá.
+const MIN_NIVEL_ATRIBUIR_A_OUTROS = 3;
 
 const ACTION_OPTIONS = [
   { value: 'status', label: 'Salvar o ticket com status' },
@@ -69,6 +76,11 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
   const style = useAnchoredPosition(open, anchorRef);
   const { agentOptions, loading: loadingAgents } = useDeskColaboradores();
   const { showNotification } = useNotifications();
+  const { permissions } = usePermissions();
+  // Enquanto as permissões ainda não carregaram, assume o nível mais baixo (falha fechado —
+  // não oferece "atribuir a outro agente" antes de saber se a pessoa realmente pode).
+  const canAssignToOthers = (permissions?.nivel ?? 0) >= MIN_NIVEL_ATRIBUIR_A_OUTROS;
+  const ownAgentName = getAgentName();
 
   useEffect(() => {
     if (!open) {
@@ -109,7 +121,14 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
 
   const secondOptionsFor = (type) => {
     if (type === 'status') return STATUS_OPTIONS;
-    if (type === 'agente') return agentOptions.map((value) => ({ value, label: value }));
+    if (type === 'agente') {
+      // Atendimento (nível < Suporte) só pode atribuir em massa pra si mesmo — a lista fica
+      // restrita ao próprio nome. Gestão/Suporte continuam vendo todo mundo.
+      if (!canAssignToOthers) {
+        return ownAgentName ? [{ value: ownAgentName, label: ownAgentName }] : [];
+      }
+      return agentOptions.map((value) => ({ value, label: value }));
+    }
     return null;
   };
 
