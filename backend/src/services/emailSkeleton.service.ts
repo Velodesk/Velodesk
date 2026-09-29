@@ -1,7 +1,7 @@
 /** emailSkeleton.service v1.4.0 — showTicketBox opcional (CSAT usa linha compacta própria) */
 import type { IChamadoN1 } from '../models/ChamadoN1';
 import { EMAIL_BRAND_COLORS, buildStandardEmailHeaderHtml, emailHeaderStatusLabel, loadVelotaxHeaderLogoInline } from './emailBrand.util';
-import { composeHtmlToEmailHtml, escapeHtmlAttribute, htmlToPlainTextForEmail } from './emailHtml.util';
+import { composeHtmlToEmailHtml, escapeHtmlAttribute, htmlToPlainTextForEmail, semAutoLinkDeTelefone } from './emailHtml.util';
 import { EMAIL_FAREWELL_REPLY_HINT, EMAIL_FAREWELL_SIGN_OFF, EMAIL_FAREWELL_TEXT } from './emailOutbound.constants';
 import { getEmailAssinaturaModel } from '../models/EmailAssinatura';
 import { readSignatureImageFromGcs } from './emailSignatureStorage.service';
@@ -60,7 +60,7 @@ export function plainTextToEmailHtml(raw: string): string {
 }
 
 export function buildTicketBoxHtml(ticket: EmailSkeletonTicket): string {
-  const protocolo = escapeHtmlAttribute(ticket.protocolo || '—');
+  const protocolo = semAutoLinkDeTelefone(escapeHtmlAttribute(ticket.protocolo || '—'));
   return `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px 0;border-collapse:collapse;">
   <tr>
