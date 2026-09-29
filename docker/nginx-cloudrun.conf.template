@@ -8,6 +8,11 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Default do nginx é 1MB — bloqueava silenciosamente qualquer upload maior (ex.: planilha
+    # Hugme do Reclame Aqui) com 413 antes mesmo da requisição chegar no Node. O multer da rota
+    # de import já limita em 50MB; aqui só precisa não ser mais restritivo que isso.
+    client_max_body_size 60m;
+
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
 
