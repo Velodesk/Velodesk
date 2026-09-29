@@ -1,5 +1,6 @@
 /**
- * casosEspeciaisExtracao.service v1.0.0 — Agente 5: extração de campos (Procon/Bacen/Consumidor.gov)
+ * casosEspeciaisExtracao.service v1.1.0 — Agente 5 também associa cliente por CPF e preenche
+ * tabulacao.produto/motivo do chamado (catálogo ativo)
  *
  * Roda DEPOIS que o Agente 4 (classificação) já decidiu que o ticket é um caso formal de um
  * desses 3 órgãos e o registro já foi criado/atualizado em reclamacoes_* (upsertFromChamado).
@@ -24,6 +25,9 @@ import { getCasosEspeciaisExtracaoProconPersona } from './personas/casosEspeciai
 import { getCasosEspeciaisExtracaoBacenPersona } from './personas/casosEspeciaisExtracaoBacenPersona';
 import { getCasosEspeciaisExtracaoConsumidorGovPersona } from './personas/casosEspeciaisExtracaoConsumidorGovPersona';
 import { logAiUsage } from '../aiUsage.service';
+import { resolveClienteRefFromBody } from '../cliente.service';
+import { readTabulacaoSnapshot } from '../chamado.mapper';
+import { loadTabulationConfig, validateTabulationResult } from './agentTabulation.util';
 
 export type CasoEspecialExtracaoOrgao = 'procon' | 'bacen' | 'consumidor_gov';
 
@@ -85,6 +89,26 @@ function normalizeCpfDigits(value: string): string {
   return String(value ?? '').replace(/\D/g, '');
 }
 
+/** Mesmo algoritmo de `consultaCpfResolver.service.ts`/`chamado.mapper.ts` — evita associar
+ * cliente a partir de uma sequência de dígitos alucinada pela LLM que nem chega a ser um CPF
+ * matematicamente válido. */
+function isValidCpfDigits(cpf: string): boolean {
+  if (cpf.length !== 11) return false;
+  if (/^(\d)\1+$/.test(cpf)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i += 1) sum += parseInt(cpf[i], 10) * (10 - i);
+  let check = (sum * 10) % 11;
+  if (check === 10) check = 0;
+  if (check !== parseInt(cpf[9], 10)) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i += 1) sum += parseInt(cpf[i], 10) * (11 - i);
+  check = (sum * 10) % 11;
+  if (check === 10) check = 0;
+  return check === parseInt(cpf[10], 10);
+}
+
 /** Só aceita AAAA-MM-DD explícito da LLM — nunca deixa ela "inventar" um formato ambíguo. */
 function parseIsoDateOnly(value: string | undefined): Date | undefined {
   const raw = String(value ?? '').trim();
@@ -103,6 +127,83 @@ function buildUserBlock(chamado: IChamadoN1, canalLabel: string): string {
     'Texto do ticket (mensagem original + histórico):',
     texto,
   ].join('\n');
+}
+
+/**
+ * Aplica ao CHAMADO (não ao doc de reclamação) o que a extração encontrou: associação de
+ * cliente por CPF e preenchimento de tabulacao.produto/motivo. Sempre "não sobrescreve" o que já
+ * está identificado — exceção única: `motivo` pode substituir o placeholder que
+ * `updateTabulacaoCanal` grava ali antes do Agente 5 rodar (o nome do próprio canal/órgão,
+ * ex.: "Bacen"), porque isso não é uma tabulação de verdade, é só um fallback pra não deixar o
+ * campo vazio até algo melhor aparecer.
+ */
+async function applyExtractedFieldsToChamado(
+  chamado: IChamadoN1,
+  parsed: ExtracaoParsed,
+  canalLabel: string,
+): Promise<string[]> {
+  const filled: string[] = [];
+
+  const currentCliente = chamado.cliente?.[0] ?? null;
+  const extractedCpf = normalizeCpfDigits(parsed.cpf ?? '');
+  if (!String(currentCliente?.clienteCpf ?? '').trim() && extractedCpf && isValidCpfDigits(extractedCpf)) {
+    const clienteRefs = await resolveClienteRefFromBody({ clientCPF: extractedCpf }, currentCliente);
+    if (clienteRefs.length > 0) {
+      chamado.cliente = clienteRefs;
+      filled.push('chamado.cliente');
+    }
+  }
+
+  const produtoExtraido = String(parsed.produto ?? '').trim();
+  const motivoExtraido = String(parsed.assunto ?? '').trim();
+  if (produtoExtraido || motivoExtraido) {
+    const idx = chamado.tabulacao?.length ? chamado.tabulacao.length - 1 : 0;
+    const snapshot = readTabulacaoSnapshot(chamado.tabulacao?.[idx]);
+
+    const produtoVazio = !snapshot.produto.trim();
+    const motivoEhPlaceholder = !snapshot.motivo.trim()
+      || snapshot.motivo.trim().toLowerCase() === canalLabel.trim().toLowerCase();
+
+    if (produtoVazio || motivoEhPlaceholder) {
+      const tabConfig = await loadTabulationConfig();
+      // Motivo só é validado pelo catálogo DENTRO do produto — se o chamado já tem um produto
+      // (não vazio), resolve o motivo extraído contra ESSE produto, não contra o que a LLM
+      // eventualmente também tenha citado (que pode divergir do que já está tabulado).
+      const produtoParaContexto = produtoVazio ? produtoExtraido : snapshot.produto;
+      const resolved = validateTabulationResult(
+        { produto: produtoParaContexto, motivo: motivoExtraido },
+        tabConfig,
+      );
+
+      // `validateTabulationResult` só valida motivo contra o catálogo DENTRO do produto já
+      // resolvido (é uma árvore produto→motivo) — sem produto resolvido, o motivo devolvido
+      // é só o texto bruto da LLM sem checagem nenhuma, então não é seguro gravar.
+      const next = { ...snapshot };
+      if (produtoVazio && resolved.produto) {
+        next.produto = resolved.produto;
+        filled.push('chamado.tabulacao.produto');
+      }
+      if (motivoEhPlaceholder && resolved.produto && resolved.motivo) {
+        next.motivo = resolved.motivo;
+        filled.push('chamado.tabulacao.motivo');
+      }
+
+      if (next.produto !== snapshot.produto || next.motivo !== snapshot.motivo) {
+        if (!chamado.tabulacao?.length) {
+          chamado.tabulacao = [next];
+        } else {
+          chamado.tabulacao[idx] = next;
+        }
+        chamado.markModified('tabulacao');
+      }
+    }
+  }
+
+  if (filled.length > 0) {
+    await chamado.save();
+  }
+
+  return filled;
 }
 
 /**
@@ -218,11 +319,19 @@ export async function extractCasosEspeciaisFields(params: {
       }
     }
 
-    if (!Object.keys(set).length) {
-      return { ran: true, filledFields: [] };
+    if (Object.keys(set).length) {
+      await Model.updateOne({ _id: reclamacaoId }, { $set: set }).exec();
     }
 
-    await Model.updateOne({ _id: reclamacaoId }, { $set: set }).exec();
+    // Cliente (CPF) e tabulação (produto/motivo) vivem no CHAMADO, não no doc de reclamação —
+    // roda independente de `set` ter algo pro doc de reclamação (ex.: doc já veio todo
+    // preenchido pelo parser determinístico, mas o chamado ainda não tem cliente identificado).
+    const chamadoFilled = await applyExtractedFieldsToChamado(chamado, parsed, canalLabel);
+    filled.push(...chamadoFilled);
+
+    if (!filled.length) {
+      return { ran: true, filledFields: [] };
+    }
 
     console.info('[casos-especiais-extracao]', {
       protocolo: chamado.chamadoProtocolo,
