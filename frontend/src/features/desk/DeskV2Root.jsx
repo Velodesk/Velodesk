@@ -1151,6 +1151,37 @@ export default function DeskV2Root() {
     showNotification(getDeskSearchSuccessMessage(q, results.length), 'success');
   };
 
+  // Busca ao vivo (a cada tecla, sem apertar Enter) só enxerga o cache local — que é
+  // carregado/paginado por fila, então um ticket antigo de Resolvidos/Pendente pode nunca ter
+  // sido baixado pro cache enquanto o agente navega em Novos, e o card nunca aparece (parece
+  // "só busca dentro da aba atual" mesmo a busca não sendo restrita a fila nenhuma). Mesmo
+  // fallback pro backend que o Enter já usa (resolveDeskSearchEntriesAsync busca por CPF/
+  // protocolo independente de status/fila), só que disparado também durante a digitação —
+  // ao achar algo, injeta no cache local e força a lista a recalcular.
+  useEffect(() => {
+    const q = appliedSearch.trim();
+    if (!q) return undefined;
+    const localResults = resolveDeskSearchEntries(q, activeSort, entrySortOldestFirst);
+    if (localResults.length) return undefined;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const apiResults = await resolveDeskSearchEntriesAsync(q, activeSort, entrySortOldestFirst);
+        if (!cancelled && apiResults.length) {
+          bumpTicketCacheView();
+        }
+      } catch {
+        /* CPF/protocolo não encontrado — mantém a lista vazia da busca */
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [appliedSearch, activeSort, entrySortOldestFirst, bumpTicketCacheView]);
+
   const handleQueueCollapse = (collapsed) => {
     localStorage.setItem('velodeskCrmQueueCollapsed', collapsed ? '1' : '0');
     setQueueCollapsed(collapsed);
