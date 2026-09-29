@@ -49,7 +49,17 @@ function readAll() {
 }
 
 function writeAll(items) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  } catch (err) {
+    // Fail-soft: lista grande (ex.: milhares de itens após import Hugme) pode estourar a cota
+    // do localStorage. Sem isto, a exceção sobe até loadReclameAquiTicketsFromApi() e aborta
+    // ANTES do dispatch de 'velodesk:ra-sync' — a lista já teria os dados certos em memória
+    // (memoryCache já foi atualizado antes desta chamada), mas a tela nunca é avisada pra
+    // re-renderizar. O cache em memória continua funcionando normalmente; só o cache
+    // persistido em disco (usado no próximo carregamento da página) fica desatualizado.
+    console.warn('reclameAquiStore: não foi possível persistir cache local (localStorage)', err?.message || err);
+  }
 }
 
 function normalizeApiItem(row) {
