@@ -1577,11 +1577,15 @@ export default function DeskV2Root() {
     }
   };
 
+  // Telefone escolhido/salvo no ticket vem primeiro: é o que o agente selecionou pra essa
+  // conversa. client?.whatsappPhone é só o padrão do cadastro (Produto) — nunca muda quando o
+  // agente troca de telefone no ticket (correto, ver regra de cadastro), então não pode ganhar
+  // prioridade aqui, senão "Abrir conversa" sempre volta pro telefone antigo do cadastro.
   const resolveWhatsAppChatId = () => toWhatsAppChatIdDigits(
-    client?.whatsappPhone
-    || ticket?.lateralForm?.clienteTelefoneWhatsapp
+    ticket?.lateralForm?.clienteTelefoneWhatsapp
     || (Array.isArray(ticket?.lateralForm?.clienteTelefone) ? ticket.lateralForm.clienteTelefone[0] : '')
     || ticket?.clientPhone
+    || client?.whatsappPhone
     || '',
   );
 
@@ -1895,12 +1899,12 @@ export default function DeskV2Root() {
     }
 
     // O cadastro (b2c_cadastros) só reflete o telefone que o próprio app trouxe — nunca ganha
-    // número que o atendente só incluiu no ticket. Sem cadastro de telefone ainda (cliente
-    // novo), usa a lista do ticket mesmo, não tem outra fonte.
-    const cadastroPhones = Array.isArray(client?.phones)
+    // número que o atendente só incluiu no ticket, nem quando o cadastro ainda não tem nenhum
+    // telefone (cliente novo): o número adicionado fica só no ticket, editável/removível, até
+    // o próprio app trazer um telefone de verdade pro cadastro.
+    const phonesForCadastro = Array.isArray(client?.phones)
       ? client.phones.map((item) => String(item || '').trim()).filter(Boolean)
       : [];
-    const phonesForCadastro = cadastroPhones.length ? cadastroPhones : phoneList;
 
     try {
       const clienteDoc = await persistClienteContact(clientsApi, {
