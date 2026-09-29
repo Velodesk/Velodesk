@@ -12,7 +12,7 @@ import { applyTicketPlaceholders, resolveTicketSaudacao } from './placeholders.u
 import { getEmailConteudoByNome } from './emailConteudo.service';
 import { businessMsBetween } from './dates/businessHours.util';
 import { assembleClientEmail, plainTextToEmailHtml } from './emailSkeleton.service';
-import { escapeHtmlAttribute } from './emailHtml.util';
+import { escapeHtmlAttribute, semAutoLinkDeTelefone } from './emailHtml.util';
 import { sendOutboundEmail } from './email-outbound.service';
 import { extractComposeInlineImages } from './composeInlineImages.util';
 import { blockQaOutboundEmail } from './qaEmailGuard.service';
@@ -74,17 +74,6 @@ function loadCsatStarDataUri(): string | null {
     cachedCsatStarDataUri = null;
   }
   return cachedCsatStarDataUri;
-}
-
-/**
- * Quebra a sequência de dígitos com um marcador invisível — sem isso, Gmail e outros
- * webmails detectam o protocolo (10 dígitos) como se fosse telefone e o transformam num
- * link clicável sozinhos, sem nenhum <a> nosso. Ainda não temos página de destino pra
- * esse link (ver conversa da Nathalia em 28/09) — remover esta quebra quando tiver.
- */
-function semAutoLinkDeTelefone(digitos: string): string {
-  const meio = Math.ceil(digitos.length / 2);
-  return `${digitos.slice(0, meio)}<span style="display:none">&#8203;</span>${digitos.slice(meio)}`;
 }
 
 /** Linha discreta "Avaliação referente ao protocolo X." — formato compacto, não o card grande padrão. */
