@@ -14,7 +14,7 @@ import deskLog from '../../utils/deskDebugLog';
 
 const STORAGE_KEY = 'velodesk_queue_counts_v1';
 const STORAGE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-export const QUEUE_COUNTS_POLL_MS = 60000;
+export const QUEUE_COUNTS_POLL_MS = 120000;
 
 const DESK_QUEUE_IDS = ['novos', 'em-andamento', 'pendente', 'resolvidos', 'meus-tickets'];
 

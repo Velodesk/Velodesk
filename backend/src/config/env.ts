@@ -241,6 +241,12 @@ export const env = {
   /** Revisor de Texto — flash-lite por padrão (menor latência). */
   geminiRefinarModel: (process.env.GEMINI_REFINAR_MODEL || 'gemini-2.5-flash-lite').trim(),
   openaiApiKey: (process.env.OPENAI_API_KEY || '').trim(),
+  /**
+   * Filas, contagens e jobs passam a filtrar por `chamados_n1.statusAtual` (indexado) em vez de
+   * varrer `$arrayElemAt: ['$registro.status', -1]`. Só ligar DEPOIS de rodar
+   * `scripts/backfill-status-atual.ts` — documento sem o campo some das filas.
+   */
+  statusAtualQueriesEnabled: process.env.STATUS_ATUAL_QUERIES_ENABLED === 'true',
   whatsappAudioTranscriptionEnabled:
     process.env.WHATSAPP_AUDIO_TRANSCRIPTION_ENABLED !== 'false',
   whatsappAudioTranscriptionModel: (

@@ -117,6 +117,8 @@ export interface IChamadoN1 extends Document {
   cliente: IClienteRef[];
   tabulacao: ITabulacao[];
   registro: IRegistro[];
+  /** Cópia denormalizada do status do último `registro` — mantida em pre('save'), indexada. */
+  statusAtual?: string;
   workflow?: IChamadoWorkflow;
   fusao?: IChamadoFusao;
   csat?: IChamadoCsat;
@@ -272,6 +274,7 @@ const ChamadoN1Schema = new Schema<IChamadoN1>(
     cliente: { type: [ClienteRefSchema], default: [] },
     tabulacao: { type: [TabulacaoSchema], default: [] },
     registro: { type: [RegistroSchema], default: [] },
+    statusAtual: { type: String },
     workflow: { type: ChamadoWorkflowSchema, default: undefined },
     fusao: { type: ChamadoFusaoSchema, default: undefined },
     csat: { type: ChamadoCsatSchema, default: undefined },
@@ -294,6 +297,30 @@ ChamadoN1Schema.index({ 'registro.data': 1 }, { name: 'registro_data_1' });
 // Acelera as agregações de CSAT (gestaoInsights/workspace360) que filtram por respostas
 // dentro de um período.
 ChamadoN1Schema.index({ 'csat.respondido': 1, 'csat.respondidoEm': 1 }, { name: 'csat_respondido_1' });
+// Filas, contagens e jobs filtram pelo status atual; antes isso era `$expr` sobre o último item de
+// `registro[]`, que não usa índice e varria a coleção inteira a cada consulta.
+ChamadoN1Schema.index({ statusAtual: 1, updatedAt: -1 }, { name: 'statusAtual_1_updatedAt_-1' });
+// `statusAtual` espelha o último registro.status. O status só muda via save() (nenhum
+// updateOne/$push escreve em registro[]), então este hook basta para manter o campo coerente.
+ChamadoN1Schema.pre('save', function syncStatusAtual() {
+  const registros = this.registro ?? [];
+  this.statusAtual = (registros.length ? registros[registros.length - 1].status : '') || 'novo';
+});
+// Callback de status do Twilio (POST /inbound/whatsapp/message-status) busca o ticket pelo
+// MessageSid a cada mudança de estado de cada mensagem enviada; sem índice era varredura completa.
+ChamadoN1Schema.index(
+  { 'registro.metadados.whatsappMensagens.twilioMessageSid': 1 },
+  { name: 'wa_twilioMessageSid_1', sparse: true },
+);
+// Worker de transcrição de áudio varre `pending` a cada 30s por instância; índice parcial só
+// indexa os poucos pendentes, então a varredura fica instantânea e o índice quase não ocupa espaço.
+ChamadoN1Schema.index(
+  { 'registro.metadados.whatsappMensagens.transcriptionStatus': 1 },
+  {
+    name: 'wa_transcriptionStatus_pending',
+    partialFilterExpression: { 'registro.metadados.whatsappMensagens.transcriptionStatus': 'pending' },
+  },
+);
 
 /**
  * Dispara o webhook outbound Velodesk → App Velotax só depois que a mudança persistir.

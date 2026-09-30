@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { ChamadoN1, type IChamadoN1 } from '../models/ChamadoN1';
 import { env } from '../config/env';
-import { isEspeciaisChamado, currentStatus } from './chamado.mapper';
+import { isEspeciaisChamado, currentStatus, lastStatusInFilter } from './chamado.mapper';
 import { resolveClienteEmailFromChamado } from './emailNotification.service';
 import { applyTicketPlaceholders, resolveTicketSaudacao } from './placeholders.util';
 import { getEmailConteudoByNome } from './emailConteudo.service';
@@ -326,7 +326,7 @@ export async function runCsatInicialPastWindow(now = new Date()): Promise<CsatIn
   const prazoMs = prazoHoras * 60 * 60 * 1000;
 
   const candidates = await ChamadoN1.find({
-    $expr: { $eq: [{ $arrayElemAt: ['$registro.status', -1] }, status] },
+    ...lastStatusInFilter([status]),
     $or: [{ 'csat.enviado': { $exists: false } }, { 'csat.enviado': false }],
   }).select('_id chamadoProtocolo cliente registro csat tabulacao');
 

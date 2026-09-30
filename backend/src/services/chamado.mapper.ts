@@ -1145,17 +1145,7 @@ export function appendStatusTransition(
 
 /** Tickets com último status diferente de resolvido/cancelado/fechado */
 export function activeTicketsStatusFilter(): Record<string, unknown> {
-  const terminalVariants = gestaoTerminalStatusVariants();
-  return {
-    $expr: {
-      $not: {
-        $in: [
-          { $ifNull: [{ $arrayElemAt: ['$registro.status', -1] }, 'novo'] },
-          terminalVariants,
-        ],
-      },
-    },
-  };
+  return lastStatusNotInFilter(gestaoTerminalStatusVariants());
 }
 
 /** Reverse lookup: nome da box → status canônico (primeiro status que mapeia para o nome). */
@@ -2265,22 +2255,27 @@ function buildTicketDtoCore(
   };
 }
 
-export function lastStatusFilter(status: string) {
-  const variants = STATUS_VARIANTS[status] ?? [status];
+/**
+ * Último status ∈ `statuses`. Com STATUS_ATUAL_QUERIES_ENABLED usa o campo indexado `statusAtual`;
+ * sem a flag mantém o `$expr` legado (varredura de coleção), para permitir rollback imediato.
+ */
+export function lastStatusInFilter(statuses: string[]): Record<string, unknown> {
+  if (env.statusAtualQueriesEnabled) return { statusAtual: { $in: statuses } };
+  return { $expr: { $in: [{ $arrayElemAt: ['$registro.status', -1] }, statuses] } };
+}
 
-  if (variants.length === 1) {
-    return {
-      $expr: {
-        $eq: [{ $arrayElemAt: ['$registro.status', -1] }, variants[0]],
-      },
-    };
-  }
-
+/** Último status ∉ `statuses` (ticket sem registro conta como 'novo'). */
+export function lastStatusNotInFilter(statuses: string[]): Record<string, unknown> {
+  if (env.statusAtualQueriesEnabled) return { statusAtual: { $nin: statuses } };
   return {
     $expr: {
-      $in: [{ $arrayElemAt: ['$registro.status', -1] }, variants],
+      $not: [{ $in: [{ $ifNull: [{ $arrayElemAt: ['$registro.status', -1] }, 'novo'] }, statuses] }],
     },
   };
+}
+
+export function lastStatusFilter(status: string) {
+  return lastStatusInFilter(STATUS_VARIANTS[status] ?? [status]);
 }
 
 export function currentResponsavel(chamado: IChamadoN1): string {

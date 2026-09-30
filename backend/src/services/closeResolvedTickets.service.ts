@@ -6,7 +6,7 @@
  */
 import { ChamadoN1 } from '../models/ChamadoN1';
 import { env } from '../config/env';
-import { appendStatusTransition } from './chamado.mapper';
+import { appendStatusTransition, lastStatusInFilter } from './chamado.mapper';
 
 export interface CloseResolvedResult {
   scanned: number;
@@ -16,11 +16,7 @@ export interface CloseResolvedResult {
 
 /** Último registro.status exatamente `resolvido` (não inclui fechado/cancelado da fila). */
 function lastStatusExactResolvidoFilter() {
-  return {
-    $expr: {
-      $eq: [{ $arrayElemAt: ['$registro.status', -1] }, 'resolvido'],
-    },
-  };
+  return lastStatusInFilter(['resolvido']);
 }
 
 /**

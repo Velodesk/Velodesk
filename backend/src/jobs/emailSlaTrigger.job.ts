@@ -5,6 +5,7 @@
 import { ChamadoN1 } from '../models/ChamadoN1';
 import { isDeskConfigConnected, isMongoConnected } from '../config/database';
 import { evaluateEmailTriggers } from '../services/emailTrigger.service';
+import { lastStatusNotInFilter } from '../services/chamado.mapper';
 
 const INTERVAL_MS = 30 * 60 * 1000;
 
@@ -17,14 +18,7 @@ async function runCycleSafe(): Promise<void> {
   try {
     // Cobre tanto o SLA (em-aberto/em-andamento) quanto o prazo por status (novo/
     // em-andamento/pendente/resolvido/fechado) — só exclui cancelado, que não dispara e-mail.
-    const cursor = ChamadoN1.find({
-      $expr: {
-        $ne: [
-          { $ifNull: [{ $arrayElemAt: ['$registro.status', -1] }, 'novo'] },
-          'cancelado',
-        ],
-      },
-    }).cursor();
+    const cursor = ChamadoN1.find(lastStatusNotInFilter(['cancelado'])).cursor();
 
     let scanned = 0;
     let sent = 0;

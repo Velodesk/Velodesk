@@ -31,7 +31,7 @@ import {
 } from './gestaoInsights.service';
 import { listOnlineEligiblePresenceKeys } from './agentSession.service';
 
-const CACHE_TTL_MS = 60_000;
+const CACHE_TTL_MS = 180_000;
 const SLA_LIMIT_HOURS_BY_STATUS: Record<string, number> = {
   'em-aberto': 4,
   'em-andamento': 8,
