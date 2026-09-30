@@ -94,3 +94,14 @@ export function escapeHtmlAttribute(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+/**
+ * Quebra uma sequência de dígitos com um marcador invisível — sem isso, Gmail e outros
+ * webmails detectam números como o protocolo (10 dígitos) como se fosse telefone e o
+ * transformam num link clicável sozinhos, sem nenhum <a> nosso. Ainda não temos página de
+ * destino pra esse link (ver conversa da Nathalia em 28/09) — remover esta quebra quando tiver.
+ */
+export function semAutoLinkDeTelefone(digitos: string): string {
+  const meio = Math.ceil(digitos.length / 2);
+  return `${digitos.slice(0, meio)}<span style="display:none">&#8203;</span>${digitos.slice(meio)}`;
+}

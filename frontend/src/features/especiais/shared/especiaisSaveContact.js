@@ -30,11 +30,11 @@ export async function saveEspeciaisTicketContact(ticket, draft, client) {
   if (phoneList.length > 1 && !whatsappPhone) throw new Error('WhatsApp obrigatório');
 
   // O cadastro (b2c_cadastros) só reflete o telefone que o próprio app trouxe — nunca ganha
-  // número que o atendente só incluiu no ticket (mesma regra do Desk padrão).
-  const cadastroPhones = Array.isArray(client?.phones)
+  // número que o atendente só incluiu no ticket, nem quando o cadastro ainda não tem nenhum
+  // telefone (cliente novo): fica só no ticket, editável/removível (mesma regra do Desk padrão).
+  const phonesForCadastro = Array.isArray(client?.phones)
     ? client.phones.map((item) => String(item || '').trim()).filter(Boolean)
     : [];
-  const phonesForCadastro = cadastroPhones.length ? cadastroPhones : phoneList;
 
   const clienteDoc = await persistClienteContact(clientsApi, {
     cpf,

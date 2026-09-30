@@ -1151,6 +1151,37 @@ export default function DeskV2Root() {
     showNotification(getDeskSearchSuccessMessage(q, results.length), 'success');
   };
 
+  // Busca ao vivo (a cada tecla, sem apertar Enter) só enxerga o cache local — que é
+  // carregado/paginado por fila, então um ticket antigo de Resolvidos/Pendente pode nunca ter
+  // sido baixado pro cache enquanto o agente navega em Novos, e o card nunca aparece (parece
+  // "só busca dentro da aba atual" mesmo a busca não sendo restrita a fila nenhuma). Mesmo
+  // fallback pro backend que o Enter já usa (resolveDeskSearchEntriesAsync busca por CPF/
+  // protocolo independente de status/fila), só que disparado também durante a digitação —
+  // ao achar algo, injeta no cache local e força a lista a recalcular.
+  useEffect(() => {
+    const q = appliedSearch.trim();
+    if (!q) return undefined;
+    const localResults = resolveDeskSearchEntries(q, activeSort, entrySortOldestFirst);
+    if (localResults.length) return undefined;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const apiResults = await resolveDeskSearchEntriesAsync(q, activeSort, entrySortOldestFirst);
+        if (!cancelled && apiResults.length) {
+          bumpTicketCacheView();
+        }
+      } catch {
+        /* CPF/protocolo não encontrado — mantém a lista vazia da busca */
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [appliedSearch, activeSort, entrySortOldestFirst, bumpTicketCacheView]);
+
   const handleQueueCollapse = (collapsed) => {
     localStorage.setItem('velodeskCrmQueueCollapsed', collapsed ? '1' : '0');
     setQueueCollapsed(collapsed);
@@ -1546,11 +1577,15 @@ export default function DeskV2Root() {
     }
   };
 
+  // Telefone escolhido/salvo no ticket vem primeiro: é o que o agente selecionou pra essa
+  // conversa. client?.whatsappPhone é só o padrão do cadastro (Produto) — nunca muda quando o
+  // agente troca de telefone no ticket (correto, ver regra de cadastro), então não pode ganhar
+  // prioridade aqui, senão "Abrir conversa" sempre volta pro telefone antigo do cadastro.
   const resolveWhatsAppChatId = () => toWhatsAppChatIdDigits(
-    client?.whatsappPhone
-    || ticket?.lateralForm?.clienteTelefoneWhatsapp
+    ticket?.lateralForm?.clienteTelefoneWhatsapp
     || (Array.isArray(ticket?.lateralForm?.clienteTelefone) ? ticket.lateralForm.clienteTelefone[0] : '')
     || ticket?.clientPhone
+    || client?.whatsappPhone
     || '',
   );
 
@@ -1864,12 +1899,12 @@ export default function DeskV2Root() {
     }
 
     // O cadastro (b2c_cadastros) só reflete o telefone que o próprio app trouxe — nunca ganha
-    // número que o atendente só incluiu no ticket. Sem cadastro de telefone ainda (cliente
-    // novo), usa a lista do ticket mesmo, não tem outra fonte.
-    const cadastroPhones = Array.isArray(client?.phones)
+    // número que o atendente só incluiu no ticket, nem quando o cadastro ainda não tem nenhum
+    // telefone (cliente novo): o número adicionado fica só no ticket, editável/removível, até
+    // o próprio app trazer um telefone de verdade pro cadastro.
+    const phonesForCadastro = Array.isArray(client?.phones)
       ? client.phones.map((item) => String(item || '').trim()).filter(Boolean)
       : [];
-    const phonesForCadastro = cadastroPhones.length ? cadastroPhones : phoneList;
 
     try {
       const clienteDoc = await persistClienteContact(clientsApi, {

@@ -34,11 +34,12 @@ import {
   findReclamacoesByCpf,
   reclamacaoToHistoryTicketDto,
 } from './reclamacoes/reclamacao.service';
-import { isReclamacoesConnected } from '../config/database';
+import { isCadastrosConnected, isReclamacoesConnected } from '../config/database';
 import { parseDateOnlyBrBound } from './dates/brDateTime.util';
 import { connectLegacyOcta } from '../config/legacyOctaConnection';
 import { getTicketLegadoOctaModel } from '../models/TicketLegadoOcta';
 import { getWhatsappLegadoOctaModel } from '../models/WhatsappLegadoOcta';
+import { getClienteModel, type IClienteDados } from '../models/Cliente';
 
 export interface SearchCriterio {
   campo: string;
@@ -247,36 +248,9 @@ function buildCriterioClause(criterio: SearchCriterio): Record<string, unknown> 
       };
     }
 
-    case 'clienteNome':
-    case 'nome':
-      return textMatchClause('cliente.clienteNome', operador, valores);
-
-    case 'email':
-    case 'clienteEmail':
-      if (operador === 'not_empty') {
-        return { 'cliente.clienteEmail.lista.0': { $exists: true } };
-      }
-      if (!valores.length) return null;
-      return {
-        $or: valores.map((v) => ({
-          'cliente.clienteEmail.lista': { $regex: escapeRegex(v), $options: 'i' },
-        })),
-      };
-
-    case 'telefone':
-    case 'clienteTelefone': {
-      if (operador === 'not_empty') {
-        return { 'cliente.clienteTelefone.lista.0': { $exists: true } };
-      }
-      if (!valores.length) return null;
-      const digitVals = valores.map(digitsOnly).filter(Boolean);
-      return {
-        $or: (digitVals.length ? digitVals : valores).map((v) => ({
-          'cliente.clienteTelefone.lista': { $regex: escapeRegex(v), $options: 'i' },
-        })),
-      };
-    }
-
+    // clienteNome/email/telefone não ficam no chamado (ChamadoN1.cliente só tem clienteCpf/
+    // clienteId) — moram na coleção `clientes` (cluster de cadastro). Resolvidos à parte em
+    // resolveClienteCadastroCriterioClause, antes de chegar aqui.
     case 'status': {
       if (operador === 'not_empty') {
         return { 'registro.0.status': { $exists: true } };
@@ -429,6 +403,71 @@ function buildCriterioClause(criterio: SearchCriterio): Record<string, unknown> 
   }
 }
 
+const CLIENTE_CADASTRO_FIELDS = new Set(['clienteNome', 'nome', 'email', 'clienteEmail', 'telefone', 'clienteTelefone']);
+
+function isClienteCadastroCriterio(criterio: SearchCriterio): boolean {
+  return CLIENTE_CADASTRO_FIELDS.has(String(criterio.campo || '').trim());
+}
+
+/** Clause impossível — usada quando um critério de nome/e-mail/telefone não bate com nenhum cliente. */
+const NO_MATCH_CLAUSE: Record<string, unknown> = { 'cliente.clienteCpf': { $exists: false } };
+
+/**
+ * Nome/e-mail/telefone do cliente não ficam no documento do chamado (ChamadoN1.cliente só tem
+ * clienteCpf/clienteId) — moram na coleção `clientes` (cluster de cadastro, um documento por
+ * CPF/identidade). Resolve o critério ali primeiro e traduz pra um filtro cliente.clienteCpf
+ * $in no chamado — sem isso a busca por esses campos nunca batia (o campo aparece no catálogo
+ * do front, mas o path consultado no chamado nunca existiu).
+ */
+async function resolveClienteCadastroCriterioClause(
+  criterio: SearchCriterio,
+): Promise<Record<string, unknown> | null> {
+  const campo = String(criterio.campo || '').trim();
+  const operador = String(criterio.operador || 'equals').trim().toLowerCase();
+  const valores = criterioValores(criterio);
+
+  if (!isCadastrosConnected()) {
+    console.warn(`[ticket-search] b2c_cadastros desconectado — critério "${campo}" ignorado (0 resultados)`);
+    return NO_MATCH_CLAUSE;
+  }
+
+  let path = 'clienteDados.clienteNome';
+  let valoresParaQuery = valores;
+  if (campo === 'email' || campo === 'clienteEmail') {
+    path = 'clienteDados.clienteEmail.lista';
+  } else if (campo === 'telefone' || campo === 'clienteTelefone') {
+    path = 'clienteDados.clienteTelefone.lista';
+    const digitVals = valores.map(digitsOnly).filter(Boolean);
+    if (digitVals.length) valoresParaQuery = digitVals;
+  }
+
+  let match: Record<string, unknown>;
+  if (operador === 'not_empty') {
+    match = path.endsWith('.lista')
+      ? { [`${path}.0`]: { $exists: true } }
+      : { [path]: { $exists: true, $nin: [null, ''] } };
+  } else if (!valoresParaQuery.length) {
+    return NO_MATCH_CLAUSE;
+  } else if (operador === 'contains') {
+    match = { $or: valoresParaQuery.map((v) => ({ [path]: { $regex: escapeRegex(v), $options: 'i' } })) };
+  } else {
+    match = { $or: valoresParaQuery.map((v) => ({ [path]: { $regex: `^${escapeRegex(v)}$`, $options: 'i' } })) };
+  }
+
+  const Cliente = getClienteModel();
+  const docs = await Cliente.find(match, { 'clienteDados.clienteCpf': 1 }).lean();
+  const cpfs = new Set<string>();
+  for (const doc of docs as unknown as { clienteDados?: IClienteDados[] }[]) {
+    for (const dados of doc.clienteDados || []) {
+      const cpf = digitsOnly(String(dados.clienteCpf || ''));
+      if (cpf) cpfs.add(cpf);
+    }
+  }
+
+  if (!cpfs.size) return NO_MATCH_CLAUSE;
+  return { 'cliente.clienteCpf': { $in: [...cpfs] } };
+}
+
 function needsSlaPostFilter(criterios: SearchCriterio[]): string[] | null {
   const sla = criterios.find((c) => String(c.campo || '').trim().toLowerCase() === 'sla');
   if (!sla) return null;
@@ -541,7 +580,9 @@ export async function searchTickets(
   for (const criterio of criterios) {
     const campo = String(criterio.campo || '').trim().toLowerCase();
     if (campo === 'sla') continue;
-    const clause = buildCriterioClause(criterio);
+    const clause = isClienteCadastroCriterio(criterio)
+      ? await resolveClienteCadastroCriterioClause(criterio)
+      : buildCriterioClause(criterio);
     if (clause) andClauses.push(clause);
   }
 
