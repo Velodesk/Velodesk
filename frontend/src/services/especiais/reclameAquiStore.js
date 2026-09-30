@@ -78,21 +78,57 @@ function normalizeApiItem(row) {
   };
 }
 
+let backgroundRefreshPromise = null;
+
+// Antes buscava TODAS as páginas em sequência (~136 requisições pra 6.800+ tickets importados)
+// antes de liberar a tela — a lista ficava travada em "Carregando..." por um tempo excessivo.
+// Agora só a 1ª página (rápida) bloqueia o carregamento inicial; o restante do histórico
+// completa em segundo plano, sem travar a UI, emitindo velodesk:ra-sync periodicamente pra
+// KPIs/kanban/contadores da fila irem se atualizando conforme mais dados chegam.
 export async function refreshReclamacoesFromApi() {
-  const all = [];
-  let skip = 0;
-  let total = Infinity;
-  while (skip < total) {
-    const data = await reclamacoesApi.list('reclame-aqui', { limit: RA_LIST_PAGE_SIZE, skip });
-    const batch = (data?.items ?? []).map(normalizeApiItem);
-    total = Number.isFinite(Number(data?.total)) ? Number(data.total) : skip + batch.length;
-    all.push(...batch);
-    if (!batch.length || batch.length < RA_LIST_PAGE_SIZE) break;
-    skip += RA_LIST_PAGE_SIZE;
+  const first = await reclamacoesApi.list('reclame-aqui', { limit: RA_LIST_PAGE_SIZE, skip: 0 });
+  const firstBatch = (first?.items ?? []).map(normalizeApiItem);
+  const total = Number.isFinite(Number(first?.total)) ? Number(first.total) : firstBatch.length;
+  memoryCache = firstBatch;
+  writeAll(firstBatch);
+
+  if (firstBatch.length >= total || firstBatch.length < RA_LIST_PAGE_SIZE) {
+    return memoryCache;
   }
-  memoryCache = all;
-  writeAll(all);
-  return all;
+
+  continueRefreshInBackground(total).catch(() => {});
+  return memoryCache;
+}
+
+function continueRefreshInBackground(total) {
+  if (backgroundRefreshPromise) return backgroundRefreshPromise;
+  backgroundRefreshPromise = (async () => {
+    const all = memoryCache ? [...memoryCache] : [];
+    let skip = all.length;
+    let pagesSinceSync = 0;
+    while (skip < total) {
+      // eslint-disable-next-line no-await-in-loop
+      const data = await reclamacoesApi.list('reclame-aqui', { limit: RA_LIST_PAGE_SIZE, skip });
+      const batch = (data?.items ?? []).map(normalizeApiItem);
+      if (!batch.length) break;
+      all.push(...batch);
+      memoryCache = all;
+      skip += batch.length;
+      pagesSinceSync += 1;
+      if (pagesSinceSync >= 4 && typeof window !== 'undefined') {
+        pagesSinceSync = 0;
+        window.dispatchEvent(new CustomEvent('velodesk:ra-sync'));
+      }
+      if (batch.length < RA_LIST_PAGE_SIZE) break;
+    }
+    writeAll(all);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('velodesk:ra-sync'));
+    }
+  })().finally(() => {
+    backgroundRefreshPromise = null;
+  });
+  return backgroundRefreshPromise;
 }
 
 /** Busca em chamados_reclamacoes + chamados_n1; faz merge no cache local. */
