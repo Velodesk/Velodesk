@@ -2,7 +2,7 @@
  * DeskConsultasPanel v2.1.1 — rascunho usa CPF do painel sem exigir Mongo
  * VERSION: v2.1.1 | DATE: 2026-08-03 | AUTHOR: VeloHub Development Team
  */
-import React from 'react';
+import React, { useState } from 'react';
 import useCustomerConsulta from '../../../hooks/useCustomerConsulta';
 import { getClientContactFields } from '../../../services/desk/utils';
 import ConsultaOverviewSummary from './ConsultaOverviewSummary';
@@ -17,6 +17,10 @@ export default function DeskConsultasPanel({ ticket, client, active = false }) {
     refreshing,
     reload,
   } = useCustomerConsulta({ ticket, client, active });
+
+  // Clicar num produto do resumo (topo) seleciona esse mesmo produto no workspace (abaixo) —
+  // cada clique gera um objeto novo pra reacionar o efeito mesmo clicando 2x seguidas na mesma flag.
+  const [flagSelection, setFlagSelection] = useState(null);
 
   const ticketKey = String(ticket?.id || ticket?._id || ticket?.protocolo || '');
 
@@ -103,11 +107,13 @@ export default function DeskConsultasPanel({ ticket, client, active = false }) {
             overview={data.overview}
             cpfFormatted={data.cpfFormatted || contact.cpf}
             contactName={contact.name}
+            onSelectFlag={setFlagSelection}
           />
 
           <ConsultaProductWorkspace
             key={ticketKey}
             data={data}
+            flagSelection={flagSelection}
           />
 
           {data.errors?.length ? (

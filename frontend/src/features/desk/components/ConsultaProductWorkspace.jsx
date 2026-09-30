@@ -5,7 +5,7 @@
  * parcelas na API real.
  * VERSION: v2.0.0 | DATE: 2026-09-24
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CONSULTA_PRODUCT_LABELS,
   CONSULTA_PRODUCT_SLUGS,
@@ -611,11 +611,22 @@ function isContractSlug(slug) {
   return CONTRACT_PRODUCT_SLUGS.includes(slug);
 }
 
-export default function ConsultaProductWorkspace({ data }) {
+// Chaves de getOverviewProductFlags (camelCase) -> slug do produto no workspace (kebab-case).
+// Seguros/Seguros ativos/Calculadora/Crédito trabalhador não têm workspace próprio (sem
+// contratos/linha do tempo) — clicar neles sempre cai no card informativo genérico.
+const FLAG_KEY_TO_SLUG = {
+  emprestimoPessoal: 'emprestimo-pessoal',
+  antecipacaoSalario: 'antecipacao-salario',
+  irpf: 'antecipacao-irpf',
+  clubeVelotax: 'clube-velotax',
+};
+
+export default function ConsultaProductWorkspace({ data, flagSelection = null }) {
   const [manualSlug, setManualSlug] = useState(null);
-  const [manualInactiveKey, setManualInactiveKey] = useState(null);
+  const [manualInfoFlag, setManualInfoFlag] = useState(null);
   const [semRelacaoOpen, setSemRelacaoOpen] = useState(false);
   const [selectedContractByProduct, setSelectedContractByProduct] = useState({});
+  const workspaceRef = useRef(null);
 
   const activeEntries = useMemo(() => (
     CONSULTA_PRODUCT_SLUGS
@@ -651,9 +662,7 @@ export default function ConsultaProductWorkspace({ data }) {
     [data],
   );
 
-  const selectedInactive = manualInactiveKey
-    ? inactiveFlags.find((flag) => flag.key === manualInactiveKey) || null
-    : null;
+  const selectedInactive = manualInfoFlag;
 
   const defaultSlug = activeEntries.find((item) => item.slug === data?.ticketProductSlug)?.slug
     || activeEntries[0]?.slug
@@ -664,20 +673,41 @@ export default function ConsultaProductWorkspace({ data }) {
   const selected = activeEntries.find((item) => item.slug === selectedSlug) || null;
 
   const handleSelectActive = (slug) => {
-    setManualInactiveKey(null);
+    setManualInfoFlag(null);
     setManualSlug(slug);
   };
 
-  const handleSelectInactive = (key) => {
-    setManualInactiveKey(key);
+  const handleSelectInactive = (flag) => {
+    setManualInfoFlag(flag);
   };
 
   const handleSelectContract = (slug) => (contractId) => {
     setSelectedContractByProduct((prev) => ({ ...prev, [slug]: contractId }));
   };
 
+  // Clique numa flag do resumo (Consultas > topo): produto modelado (com workspace próprio) e
+  // ativo abre o detalhe real; qualquer outro caso (inativo, ou sem workspace — Seguros/
+  // Calculadora/Crédito trabalhador) cai no card genérico "possui/não possui".
+  useEffect(() => {
+    if (!flagSelection) return;
+    const slug = FLAG_KEY_TO_SLUG[flagSelection.key];
+    const hasActiveDetail = Boolean(
+      flagSelection.active && slug && activeEntries.some((item) => item.slug === slug),
+    );
+    if (hasActiveDetail) {
+      setManualInfoFlag(null);
+      setManualSlug(slug);
+    } else {
+      setManualSlug(null);
+      setManualInfoFlag(flagSelection);
+      setSemRelacaoOpen(true);
+    }
+    workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flagSelection]);
+
   return (
-    <div className="crm-consultas-workspace">
+    <div className="crm-consultas-workspace" ref={workspaceRef}>
       <aside className="crm-consultas-workspace__sidebar">
         <div>
           <h3 className="crm-consultas__section-title">Produtos ativos ({activeEntries.length})</h3>
@@ -732,9 +762,9 @@ export default function ConsultaProductWorkspace({ data }) {
                 <button
                   type="button"
                   key={flag.key}
-                  className={'crm-consultas__flag' + (flag.key === manualInactiveKey ? ' is-active' : '')}
-                  onClick={() => handleSelectInactive(flag.key)}
-                  aria-pressed={flag.key === manualInactiveKey}
+                  className={'crm-consultas__flag' + (flag.key === manualInfoFlag?.key ? ' is-active' : '')}
+                  onClick={() => handleSelectInactive(flag)}
+                  aria-pressed={flag.key === manualInfoFlag?.key}
                 >
                   {flag.label}
                 </button>
@@ -747,8 +777,11 @@ export default function ConsultaProductWorkspace({ data }) {
       <section className="crm-consultas-workspace__main" aria-label="Detalhe do produto selecionado">
         {selectedInactive ? (
           <div className="crm-consultas__empty crm-consultas__empty--inline">
-            <i className="ti ti-package-off" aria-hidden="true" />
-            <p>Cliente não possui <strong>{selectedInactive.label}</strong>.</p>
+            <i className={selectedInactive.active ? 'ti ti-circle-check' : 'ti ti-package-off'} aria-hidden="true" />
+            <p>
+              Cliente {selectedInactive.active ? 'possui' : 'não possui'} <strong>{selectedInactive.label}</strong>
+              {selectedInactive.active ? ', mas não há detalhamento disponível para este produto.' : '.'}
+            </p>
           </div>
         ) : selected && isContractSlug(selected.slug) ? (
           <ContractProductDetail
