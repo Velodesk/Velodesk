@@ -3,6 +3,7 @@
  * VERSION: v1.0.1 | DATE: 2026-08-04
  */
 import React, { useCallback, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useProfile } from '../../context/ProfileContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -69,6 +70,24 @@ export default function TicketSearchView() {
     }
   }, [criterios, showNotification]);
 
+  const handleExport = useCallback(() => {
+    if (!tickets.length) return;
+    const rows = tickets.map((ticket) => ({
+      Protocolo: ticket.chamadoProtocolo || '—',
+      Título: ticket.title || ticket.chamadoTitulo || '—',
+      Cliente: ticket.clientName || ticket.lateralForm?.clienteNome || '—',
+      CPF: ticket.clientCPF || ticket.lateralForm?.cpf || '—',
+      Status: ticket.status || '—',
+      Responsável: ticket.responsibleAgent || ticket.lateralForm?.responsavel || '—',
+      Atualizado: formatDate(ticket.updatedAt),
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Tickets');
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `busca-tickets-${stamp}.xlsx`);
+  }, [tickets]);
+
   const handleClear = useCallback(() => {
     setCriterios([createEmptyCriterio()]);
     setTickets([]);
@@ -95,6 +114,15 @@ export default function TicketSearchView() {
               <h1 className="ticket-search-header__title">Busca de Tickets</h1>
             </div>
             <div className="ticket-search-header__actions">
+              <button
+                type="button"
+                className="btn-secondary ticket-search-header__export-btn"
+                onClick={handleExport}
+                disabled={loading || !tickets.length}
+                title="Exportar os tickets listados para uma planilha Excel"
+              >
+                <i className="ti ti-download" aria-hidden="true" /> Exportar
+              </button>
               <button type="button" className="btn-secondary" onClick={handleClear} disabled={loading}>
                 Limpar
               </button>

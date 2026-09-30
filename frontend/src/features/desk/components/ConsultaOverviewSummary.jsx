@@ -10,7 +10,7 @@ import {
   getOverviewProductFlags,
 } from '../../../services/desk/consultaFormatters';
 
-export default function ConsultaOverviewSummary({ overview, cpfFormatted, contactName }) {
+export default function ConsultaOverviewSummary({ overview, cpfFormatted, contactName, onSelectFlag }) {
   const data = overview?.data;
   const isNotFound = overview?.status === 'customer_not_found' || !data;
   const cpfLabel = cpfFormatted || formatConsultaCpf(data?.cpf) || '—';
@@ -69,13 +69,15 @@ export default function ConsultaOverviewSummary({ overview, cpfFormatted, contac
       </div>
 
       <div className="crm-consultas__flags" aria-label="Produtos vinculados">
-        {flags.map(({ key, label, active }) => (
-          <span
-            key={key}
-            className={'crm-consultas__flag' + (active ? ' is-active' : '')}
+        {flags.map((flag) => (
+          <button
+            type="button"
+            key={flag.key}
+            className={'crm-consultas__flag' + (flag.active ? ' is-active' : '')}
+            onClick={() => onSelectFlag?.(flag)}
           >
-            {label}
-          </span>
+            {flag.label}
+          </button>
         ))}
       </div>
     </section>
