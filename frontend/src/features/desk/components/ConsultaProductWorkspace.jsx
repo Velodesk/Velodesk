@@ -540,10 +540,186 @@ function buildClubeView(data) {
   return { statusLabel: 'Disponível', statusTone: 'green', metrics, timeline, note: '' };
 }
 
+function buildCalculadoraView(data) {
+  const plans = Array.isArray(data?.plans) ? data.plans : [];
+  if (!plans.length) return null;
+
+  const sorted = plans.slice().sort((a, b) => new Date(b.expiresAt || 0) - new Date(a.expiresAt || 0));
+  const primary = sorted[0];
+  const active = !primary.expiresAt || new Date(primary.expiresAt).getTime() >= Date.now();
+  const statusLabel = active ? 'Ativo' : 'Expirado';
+  const statusTone = CONSULTA_STATUS_TONE[active ? 'done' : 'canceled'] || 'gray';
+
+  const metrics = [
+    { key: 'plan', label: 'Plano', value: primary.planName || primary.planType || '—' },
+    { key: 'origin', label: 'Origem', value: primary.origin || '—' },
+    { key: 'expires', label: 'Validade', value: primary.expiresAt ? formatConsultaDate(primary.expiresAt) : '—' },
+    { key: 'total', label: 'Total de planos', value: String(plans.length) },
+  ];
+
+  const timeline = sorted
+    .filter((plan) => plan.expiresAt)
+    .map((plan, index) => ({
+      id: `plan-${index}`,
+      dateLabel: formatConsultaDate(plan.expiresAt),
+      sortValue: new Date(plan.expiresAt).getTime(),
+      label: `${plan.planName || plan.planType || 'Plano'}${plan.origin ? ` · ${plan.origin}` : ''}`,
+      tone: new Date(plan.expiresAt).getTime() >= Date.now() ? 'upcoming' : 'contract',
+    }));
+
+  return {
+    statusLabel,
+    statusTone,
+    metrics,
+    timeline,
+    note: plans.length > 1 ? `+${plans.length - 1} outro(s) plano(s) não exibido(s)` : '',
+  };
+}
+
+function buildCreditoTrabalhadorView(data) {
+  const contracts = Array.isArray(data?.contracts) ? data.contracts : [];
+  const margem = data?.margem;
+  if (!contracts.length && !margem) return null;
+
+  if (contracts.length) {
+    const base = buildEpAsView(data);
+    if (base && margem) {
+      base.metrics.push({
+        key: 'margem',
+        label: 'Margem disponível',
+        value: margem.availableBalance ? formatConsultaMoney(margem.availableBalance) : '—',
+      });
+    }
+    return base;
+  }
+
+  const statusLabel = margem.authorized ? 'Autorizado' : 'Não autorizado';
+  const statusTone = CONSULTA_STATUS_TONE[margem.authorized ? 'done' : 'pending'] || 'gray';
+  const metrics = [
+    { key: 'employer', label: 'Empregador', value: margem.employerName || '—' },
+    { key: 'available', label: 'Margem disponível', value: margem.availableBalance ? formatConsultaMoney(margem.availableBalance) : '—' },
+    { key: 'job', label: 'Cargo', value: margem.jobDescription || '—' },
+    { key: 'admission', label: 'Admissão', value: margem.admissionDate ? formatConsultaDate(margem.admissionDate) : '—' },
+  ];
+
+  return { statusLabel, statusTone, metrics, timeline: [], note: '' };
+}
+
+function buildSegurosView(data) {
+  const contracts = Array.isArray(data?.contracts) ? data.contracts : [];
+  if (!contracts.length) return null;
+
+  const primary = contracts[0];
+  const statusLabel = primary.contractStatusLabel || primary.contractStatus || '—';
+  const statusTone = CONSULTA_STATUS_TONE[classifyConsultaStatusLabel(statusLabel)] || 'gray';
+
+  const metrics = [
+    { key: 'product', label: 'Produto', value: primary.productLabel || primary.productType || '—' },
+    { key: 'plan', label: 'Plano', value: primary.productName || '—' },
+    { key: 'payment', label: 'Periodicidade', value: primary.paymentMethod || '—' },
+    { key: 'hired', label: 'Contratação', value: primary.hiredAt ? formatConsultaDate(primary.hiredAt) : '—' },
+  ];
+
+  const timeline = contracts
+    .filter((contract) => contract.hiredAt)
+    .map((contract, index) => ({
+      id: `seguro-${index}`,
+      dateLabel: formatConsultaDate(contract.hiredAt),
+      sortValue: new Date(contract.hiredAt).getTime(),
+      label: `${contract.productLabel || contract.productType || 'Seguro'} · ${contract.contractStatusLabel || contract.contractStatus || '—'}`,
+      tone: 'contract',
+    }))
+    .sort((a, b) => b.sortValue - a.sortValue);
+
+  return {
+    statusLabel,
+    statusTone,
+    metrics,
+    timeline,
+    note: contracts.length > 1 ? `+${contracts.length - 1} outro(s) seguro(s) não exibido(s)` : '',
+  };
+}
+
+function buildPagarmeView(data) {
+  const velotax = data?.velotax || {};
+  const fairfield = data?.fairfield || {};
+  const charges = [
+    ...(Array.isArray(velotax.charges) ? velotax.charges.map((c) => ({ ...c, conta: 'Velotax' })) : []),
+    ...(Array.isArray(fairfield.charges) ? fairfield.charges.map((c) => ({ ...c, conta: 'FairField' })) : []),
+  ];
+  const subscriptions = [
+    ...(Array.isArray(velotax.subscriptions) ? velotax.subscriptions : []),
+    ...(Array.isArray(fairfield.subscriptions) ? fairfield.subscriptions : []),
+  ];
+  if (!charges.length && !subscriptions.length) return null;
+
+  const sorted = charges.slice().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  const latest = sorted[0];
+
+  const metrics = [
+    { key: 'total', label: 'Cobranças encontradas', value: String(charges.length) },
+    { key: 'last', label: 'Última cobrança', value: latest ? formatConsultaDateTime(latest.date) : '—' },
+    { key: 'lastAmount', label: 'Valor da última', value: latest ? formatConsultaMoney(latest.amount) : '—' },
+    { key: 'subs', label: 'Assinaturas', value: String(subscriptions.length) },
+  ];
+
+  const timeline = sorted.map((charge, index) => ({
+    id: `charge-${index}`,
+    dateLabel: formatConsultaDateTime(charge.date),
+    sortValue: new Date(charge.date || 0).getTime(),
+    label: `${charge.conta} · ${formatConsultaMoney(charge.amount)} · ${charge.statusLabel || charge.status || '—'}${charge.description ? ` · ${charge.description}` : ''}`,
+    tone: 'paid',
+  }));
+
+  return {
+    statusLabel: 'Encontrado',
+    statusTone: 'green',
+    metrics,
+    timeline,
+    note: '',
+  };
+}
+
+function buildStarkbankView(data) {
+  const invoices = Array.isArray(data?.invoices) ? data.invoices : [];
+  if (!invoices.length) return null;
+
+  const sorted = invoices.slice().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  const latest = sorted[0];
+
+  const metrics = [
+    { key: 'total', label: 'Pagamentos confirmados', value: String(invoices.length) },
+    { key: 'last', label: 'Último pagamento', value: latest ? formatConsultaDateTime(latest.date) : '—' },
+    { key: 'lastAmount', label: 'Valor do último', value: latest ? formatConsultaMoney(latest.amount) : '—' },
+    { key: 'product', label: 'Produto', value: latest?.product || '—' },
+  ];
+
+  const timeline = sorted.map((invoice, index) => ({
+    id: `invoice-${index}`,
+    dateLabel: formatConsultaDateTime(invoice.date),
+    sortValue: new Date(invoice.date || 0).getTime(),
+    label: `${formatConsultaMoney(invoice.amount)} · ${invoice.statusLabel || invoice.status || '—'}${invoice.product ? ` · ${invoice.product}` : ''}`,
+    tone: 'paid',
+  }));
+
+  return {
+    statusLabel: 'Encontrado',
+    statusTone: 'green',
+    metrics,
+    timeline,
+    note: '',
+  };
+}
+
 function buildLegacyProductView(slug, entry) {
   if (!entry?.loaded || !entry?.data) return null;
   if (slug === 'antecipacao-irpf') return buildIrpfView(entry.data);
   if (slug === 'clube-velotax') return buildClubeView(entry.data);
+  if (slug === 'calculadora') return buildCalculadoraView(entry.data);
+  if (slug === 'credito-trabalhador') return buildCreditoTrabalhadorView(entry.data);
+  if (slug === 'seguros') return buildSegurosView(entry.data);
+  if (slug === 'pagarme') return buildPagarmeView(entry.data);
+  if (slug === 'starkbank') return buildStarkbankView(entry.data);
   return null;
 }
 
