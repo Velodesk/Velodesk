@@ -171,11 +171,7 @@ export const env = {
   ).trim().replace(/\/+$/, ''),
   octadeskApiKey: (process.env.OCTADESK_API_KEY || '').trim(),
   octadeskAgentEmail: (process.env.OCTADESK_AGENT_EMAIL || '').trim(),
-  /** Cluster dedicado e separado do Velodesk — só tickets legados do módulo "Legado Octa" */
-  // Cluster de prod (velodesk-crm) — decisão explícita do usuário após o cluster dedicado
-  // M0 (MONGODB_LEGACY) não aguentar o churn de staging mesmo processando mês a mês.
-  // Banco/collection próprios (legado_octa/tickets), isolados dos bancos de produção reais.
-  mongoLegacyOctaUri: (process.env.MONGODB_LEGADO_OCTA_URI || '').trim(),
+  /** Módulo "Legado Octa": mesmo cluster do MONGODB_URI, banco próprio (legado_octa: tickets, whatsapp) */
   mongoLegacyOctaDbName: (process.env.MONGODB_LEGACY_OCTA_DB_NAME || 'legado_octa').trim(),
   inboundAttachmentsDir: (process.env.INBOUND_ATTACHMENTS_DIR || '').trim(),
   sentAttachmentsDir: (process.env.SENT_ATTACHMENTS_DIR || '').trim(),

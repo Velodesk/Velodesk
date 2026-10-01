@@ -23,6 +23,26 @@ function onlyDigits(value: string): string {
   return String(value || '').replace(/\D/g, '');
 }
 
+/**
+ * clientPhone vem do wa_id do Octadesk (DDI 55 + DDD + número, às vezes sem o 9º dígito).
+ * Gera as variações com/sem 55 e com/sem o 9 para casar com o que o usuário digitar.
+ */
+function phoneVariants(digits: string): string[] {
+  const base = digits.length >= 12 && digits.startsWith('55') ? digits.slice(2) : digits;
+  if (base.length !== 10 && base.length !== 11) return [digits];
+  const ddd = base.slice(0, 2);
+  const rest = base.slice(2);
+  const sem9 = rest.length === 9 && rest[0] === '9' ? rest.slice(1) : rest;
+  const com9 = rest.length === 8 ? `9${rest}` : rest;
+  const out = new Set<string>();
+  for (const n of [sem9, com9]) {
+    out.add(`${ddd}${n}`);
+    out.add(`55${ddd}${n}`);
+  }
+  out.add(digits);
+  return [...out];
+}
+
 router.get('/tickets', async (req, res: Response<unknown, { user?: AuthPayload }>) => {
   await connectLegacyOcta();
   const Model = getTicketLegadoOctaModel();
@@ -93,7 +113,7 @@ router.get('/whatsapp', async (req, res: Response<unknown, { user?: AuthPayload 
 
   const filter: Record<string, unknown> = {};
   if (cpf) filter.clientCpf = cpf;
-  if (phone) filter.clientPhone = phone;
+  if (phone) filter.clientPhone = { $in: phoneVariants(phone) };
   if (protocolo) filter.protocoloExibicao = protocolo;
 
   const [items, total] = await Promise.all([
@@ -151,7 +171,7 @@ router.get('/search', async (req, res: Response<unknown, { user?: AuthPayload }>
   const whatsappFilter = {
     $or: [
       { clientCpf: q },
-      { clientPhone: q },
+      { clientPhone: { $in: phoneVariants(q) } },
       { protocoloExibicao: q.toUpperCase() },
     ],
   };

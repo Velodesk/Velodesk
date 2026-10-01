@@ -7,10 +7,11 @@ import { resolveAtlasSrvUri } from './resolveAtlasUri';
 let legacyOctaConnection: Connection | null = null;
 let connectInFlight: Promise<Connection> | null = null;
 
+/** Sem cluster dedicado: usa o MONGODB_URI do Desk, apontando para o banco legado_octa. */
 export function requireLegacyOctaUri(): string {
-  const uri = String(env.mongoLegacyOctaUri || '').trim();
+  const uri = String(env.mongoUri || '').trim();
   if (!uri) {
-    throw new Error('MONGODB_LEGADO_OCTA_URI ausente — defina no backend/.env (não commitar).');
+    throw new Error('MONGODB_URI ausente — necessário para o módulo Legado Octa.');
   }
   return uri;
 }
