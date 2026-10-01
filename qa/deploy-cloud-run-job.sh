@@ -11,26 +11,12 @@
 #
 # ── Pré-requisitos (uma vez só, antes de rodar este script) ──────────────────
 # 1. Preencher PROJECT_ID abaixo (ou exportar como variável de ambiente antes).
-# 2. Criar os secrets no Secret Manager com os MESMOS valores que hoje estão
-#    nos GitHub Secrets (Settings → Secrets and variables → Actions do repo):
-#      gcloud secrets create qa-email-allowlist      --project "$PROJECT_ID"
-#      gcloud secrets create qa-login-email           --project "$PROJECT_ID"
-#      gcloud secrets create qa-login-password        --project "$PROJECT_ID"
-#      gcloud secrets create qa-responsavel           --project "$PROJECT_ID"
-#      gcloud secrets create qa-inbound-secret        --project "$PROJECT_ID"
-#      gcloud secrets create qa-client-cpf            --project "$PROJECT_ID"
-#      gcloud secrets create qa-openai-key            --project "$PROJECT_ID"
-#      gcloud secrets create qa-gemini-key            --project "$PROJECT_ID"
-#      gcloud secrets create qa-telegram-token        --project "$PROJECT_ID"
-#      gcloud secrets create qa-telegram-chat-id      --project "$PROJECT_ID"
-#      gcloud secrets create qa-mongodb-uri           --project "$PROJECT_ID"
-#    (depois de criar cada um, `echo -n "<valor>" | gcloud secrets versions add <nome> --data-file=-`)
-#
-#    IMPORTANTE sobre qa-mongodb-uri: essa ainda é a pendência em aberto —
-#    confirmar qual cluster é produção antes de preencher (ver conversa sobre
-#    velodesk-dev vs. o cluster novo). Sem isso, as checagens que leem direto
-#    do Mongo (e-mails, mesclas) ficam bloqueadas — o resto do agente
-#    continua funcionando (testa pela API normalmente).
+# 2. Secrets já existentes no Secret Manager (velohub-471220), reaproveitados
+#    tal como estão — nomes reais, não os genéricos de quando este script foi
+#    escrito:
+#      QA_LOGIN_PASSWORD, INBOUND_TICKET_QA_TESTE_SECRET, QA_CLIENT_CPF,
+#      OPENAI_API_KEY, GEMINI_API_KEY, qa-telegram-token, qa-telegram-chat-id,
+#      MONGO_URI (versão 2 — confirmada como o cluster de produção)
 #
 # ── Uso ────────────────────────────────────────────────────────────────────
 #   PROJECT_ID=meu-projeto-gcp ./deploy-cloud-run-job.sh
@@ -39,7 +25,7 @@ set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:?defina PROJECT_ID (ex: PROJECT_ID=velodesk-278491073220 ./deploy-cloud-run-job.sh)}"
 REGION="southamerica-east1"
-REPOSITORY="velodesk"
+REPOSITORY="cloud-run-source-deploy"
 JOB_NAME="velodesk-qa"
 SCHEDULER_SA="qa-scheduler-invoker"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/velodesk-qa:latest"
@@ -58,8 +44,8 @@ gcloud run jobs deploy "$JOB_NAME" \
   --max-retries 0 \
   --task-timeout 25m \
   --memory 2Gi \
-  --set-env-vars "QA_BASE_URL=https://velodesk-278491073220.us-east1.run.app" \
-  --set-secrets "QA_EMAIL_ALLOWLIST=qa-email-allowlist:latest,QA_LOGIN_EMAIL=qa-login-email:latest,QA_LOGIN_PASSWORD=qa-login-password:latest,QA_RESPONSAVEL=qa-responsavel:latest,QA_INBOUND_QA_TESTE_SECRET=qa-inbound-secret:latest,QA_CLIENT_CPF=qa-client-cpf:latest,OPENAI_API_KEY=qa-openai-key:latest,GEMINI_API_KEY=qa-gemini-key:latest,TELEGRAM_BOT_TOKEN=qa-telegram-token:latest,TELEGRAM_CHAT_ID=qa-telegram-chat-id:latest,MONGODB_URI=qa-mongodb-uri:latest"
+  --set-env-vars "QA_BASE_URL=https://velodesk-278491073220.us-east1.run.app,QA_EMAIL_ALLOWLIST=villanova.nsv@gmail.com,QA_LOGIN_EMAIL=qateste@velotax.com.br,QA_RESPONSAVEL=Q.A.Velodesk,OPENAI_MODEL=gpt-4.1-mini,GEMINI_MODEL=gemini-2.5-flash" \
+  --set-secrets "QA_LOGIN_PASSWORD=QA_LOGIN_PASSWORD:1,QA_INBOUND_QA_TESTE_SECRET=INBOUND_TICKET_QA_TESTE_SECRET:latest,QA_CLIENT_CPF=QA_CLIENT_CPF:1,OPENAI_API_KEY=OPENAI_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,TELEGRAM_BOT_TOKEN=qa-telegram-token:latest,TELEGRAM_CHAT_ID=qa-telegram-chat-id:latest,MONGODB_URI=MONGO_URI:2"
 
 echo "== 3/4 — service account dedicada pro Scheduler disparar o Job =="
 gcloud iam service-accounts create "$SCHEDULER_SA" \
