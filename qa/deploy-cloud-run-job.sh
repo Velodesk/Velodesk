@@ -28,6 +28,7 @@ REGION="southamerica-east1"
 REPOSITORY="cloud-run-source-deploy"
 JOB_NAME="velodesk-qa"
 SCHEDULER_SA="qa-scheduler-invoker"
+TZ_AGENDA="America/Sao_Paulo"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/velodesk-qa:latest"
 
 echo "== 1/4 — build + push da imagem =="
@@ -59,19 +60,19 @@ gcloud run jobs add-iam-policy-binding "$JOB_NAME" \
   --member "serviceAccount:${SCHEDULER_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role "roles/run.invoker"
 
-echo "== 4/4 — Cloud Scheduler: 07h e 17h BRT (10h/20h UTC), seg-sex =="
+echo "== 4/4 — Cloud Scheduler: 07h e 17h (America/Sao_Paulo), seg-sex =="
 JOB_URI="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/${JOB_NAME}:run"
 
-for par in "qa-velodesk-manha:0 10 * * 1-5" "qa-velodesk-tarde:0 20 * * 1-5"; do
+for par in "qa-velodesk-manha:0 7 * * 1-5" "qa-velodesk-tarde:0 17 * * 1-5"; do
   nome="${par%%:*}"
   cron="${par#*:}"
   if gcloud scheduler jobs describe "$nome" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
     gcloud scheduler jobs update http "$nome" \
-      --location "$REGION" --project "$PROJECT_ID" --schedule "$cron" --uri "$JOB_URI"
+      --location "$REGION" --project "$PROJECT_ID" --schedule "$cron" --time-zone "$TZ_AGENDA" --uri "$JOB_URI"
   else
     gcloud scheduler jobs create http "$nome" \
       --location "$REGION" --project "$PROJECT_ID" \
-      --schedule "$cron" --uri "$JOB_URI" --http-method POST \
+      --schedule "$cron" --time-zone "$TZ_AGENDA" --uri "$JOB_URI" --http-method POST \
       --oauth-service-account-email "${SCHEDULER_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
   fi
 done
