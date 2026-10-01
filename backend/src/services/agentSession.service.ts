@@ -132,7 +132,9 @@ export async function touchAgentSession(userId: string, email?: string): Promise
       $setOnInsert: {
         email: normalizeEmail(email),
         responsavelKey: emailLocalPart(email),
-        lastOfflineAt: null,
+        // Mongo rejeita o mesmo path em $set e $setOnInsert (ConflictingUpdateOperators) — no
+        // forceLogoff o $set acima já grava lastOfflineAt, então aqui só quando não houver.
+        ...(forceLogoff ? {} : { lastOfflineAt: null }),
         lastLoginAt: now,
       },
     },
