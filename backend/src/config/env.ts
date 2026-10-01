@@ -165,13 +165,12 @@ export const env = {
     process.env.GCP_STORAGE_INBOUND_QUARANTINE_PREFIX || 'desk_ticket_attachments_quarantine'
   ).trim().replace(/^\/+|\/+$/g, ''),
   attachmentScanCallbackSecret: (process.env.ATTACHMENT_SCAN_CALLBACK_SECRET || '').trim(),
-  /** Dump Octadesk → legado_tickets.importados_octadesk (scripts offline) */
+  /** Dump Octadesk — scripts offline de importação pontual */
   octadeskApiBase: (
     process.env.OCTADESK_API_BASE || 'https://o199103-bfa.api001.octadesk.services'
   ).trim().replace(/\/+$/, ''),
   octadeskApiKey: (process.env.OCTADESK_API_KEY || '').trim(),
   octadeskAgentEmail: (process.env.OCTADESK_AGENT_EMAIL || '').trim(),
-  mongoLegadoTicketsDbName: (process.env.MONGODB_LEGADO_TICKETS_DB_NAME || 'legado_tickets').trim(),
   /** Cluster dedicado e separado do Velodesk — só tickets legados do módulo "Legado Octa" */
   // Cluster de prod (velodesk-crm) — decisão explícita do usuário após o cluster dedicado
   // M0 (MONGODB_LEGACY) não aguentar o churn de staging mesmo processando mês a mês.
@@ -386,8 +385,11 @@ export const env = {
   fbSystemUserToken: (process.env.FB_SYSTEM_USER_TOKEN || '').trim(),
   fbPageId: (process.env.FB_PAGE_ID || '').trim(),
   instagramAccessToken: (process.env.INSTAGRAM_ACCESS_TOKEN || '').trim(),
-  googleServiceAccountJson: (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '').trim(),
   googlePlayPackageName: (process.env.GOOGLE_PLAY_PACKAGE_NAME || '').trim(),
+  /** API do parceiro (play-reviews) — única porta de entrada para o Google Play. */
+  playReviewsApiUrl: (process.env.PLAY_REVIEWS_API_URL || '').trim().replace(/\/+$/, ''),
+  playReviewsApiKey: (process.env.PLAY_REVIEWS_API_KEY || '').trim(),
+  playReviewsTimeoutMs: parseInt(process.env.PLAY_REVIEWS_TIMEOUT_MS || '30000', 10),
   graphApiVersion: (process.env.GRAPH_API_VERSION || 'v21.0').trim(),
   graphApiVersionInstagram: (process.env.GRAPH_API_VERSION_INSTAGRAM || 'v21.0').trim(),
 };
