@@ -381,6 +381,7 @@ export const env = {
   fbSystemUserToken: (process.env.FB_SYSTEM_USER_TOKEN || '').trim(),
   fbPageId: (process.env.FB_PAGE_ID || '').trim(),
   instagramAccessToken: (process.env.INSTAGRAM_ACCESS_TOKEN || '').trim(),
+  googleServiceAccountJson: (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '').trim(),
   googlePlayPackageName: (process.env.GOOGLE_PLAY_PACKAGE_NAME || '').trim(),
   /** API do parceiro (play-reviews) — única porta de entrada para o Google Play. */
   playReviewsApiUrl: (process.env.PLAY_REVIEWS_API_URL || '').trim().replace(/\/+$/, ''),
