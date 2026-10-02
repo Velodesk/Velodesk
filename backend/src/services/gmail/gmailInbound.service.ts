@@ -206,6 +206,17 @@ export async function handleGmailPubSubPush(
     return { processed: 0, results: [], hasMore: false };
   }
 
+  // O tópico Pub/Sub é compartilhado entre ambientes (dev=suporte@, prod=atendimento@): cada
+  // serviço recebe os pushes da caixa do outro. Sem este filtro, um historyId de outra caixa
+  // (faixa numérica diferente) poderia realinhar o ponteiro desta e travar o inbound em loop de
+  // 'history expirado'. Só ignora quando AMBOS os endereços são conhecidos e diferem.
+  const notifiedMailbox = String(notification.emailAddress ?? '').trim().toLowerCase();
+  const ownMailbox = String(getDelegatedUserEmail() ?? '').trim().toLowerCase();
+  if (notifiedMailbox && ownMailbox && notifiedMailbox !== ownMailbox) {
+    console.info('[gmailInbound] push de outra caixa ignorado', { notifiedMailbox, ownMailbox });
+    return { processed: 0, results: [], hasMore: false };
+  }
+
   const stored = await getStoredHistoryId();
   const startId = stored ?? String(notification.historyId);
 
