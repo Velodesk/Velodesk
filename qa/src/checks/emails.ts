@@ -196,4 +196,170 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
     }
     return ok(`${ativos} modelo(s) de e-mail ativo(s) com gatilho, de ${total} cadastrado(s).`);
   });
+
+  // Mantém em sincronia com EMAIL_SLA_LIMIT_HOURS em
+  // backend/src/services/emailOutbound.constants.ts — se um status novo ganhar prazo lá (ou
+  // um existente mudar de valor) e esta lista não acompanhar, o E09 passa a reportar "sem prazo
+  // configurado" por engano para um gatilho que na verdade já funciona.
+  const SLA_LIMITE_HORAS: Record<string, number> = {
+    'em-aberto': 4,
+    'em-andamento': 8,
+    pendente: 24,
+  };
+
+  // E09 — cobertura de canal e cumprimento de prazo dos encerramentos automáticos por
+  // status/SLA (gatilho_interno fica de fora: é o CSAT, já coberto por E02/E03/C07). Avalia
+  // cada modelo ativo separadamente para apontar exatamente qual deles tem problema: "canal não
+  // coberto" (nunca avalia), "prazo não cumprido" (avaliou e não saiu) ou "sem prazo configurado"
+  // (SLA preso a um status sem limite definido no backend — nunca dispara, não importa o tempo).
+  await coletor.checar('E09', async () => {
+    if (!ctx.temBanco) return bloqueado('Sem acesso ao banco para conferir os modelos de encerramento.');
+    const colC = await colConteudos();
+    const templates = await colC.find({ ativo: true }).toArray();
+
+    type Alvo = { tpl: any; statusCrit: any; canalCrit: any; slaCrit: any };
+    const alvos: Alvo[] = [];
+    for (const tpl of templates) {
+      const criterios = tpl?.gatilho?.criterios ?? [];
+      if (criterios.some((c: any) => c.tipo === 'gatilho_interno')) continue;
+      const statusCrit = criterios.find((c: any) => c.tipo === 'status');
+      if (!statusCrit?.valores?.length) continue;
+      const slaCrit = criterios.find((c: any) => c.tipo === 'sla');
+      const statusHasDelay = statusCrit.prazoTipo === 'horas' && Number(statusCrit.prazoHoras) > 0;
+      const statusImediato = statusCrit.prazoTipo === 'imediato';
+      if (!slaCrit && !statusHasDelay && !statusImediato) continue;
+      alvos.push({ tpl, statusCrit, canalCrit: criterios.find((c: any) => c.tipo === 'canal'), slaCrit });
+    }
+
+    if (!alvos.length) {
+      return ok('Nenhum modelo ativo de encerramento por status/SLA (fora o CSAT) para conferir nesta rodada.');
+    }
+
+    // Fora do escopo: evaluateEmailTriggers pula todo ticket "especiais" antes mesmo de olhar
+    // canal/status (ver isEspeciaisChamado) — contar esses canais aqui daria falso alarme.
+    const CANAIS_ESPECIAIS = new Set([
+      'reclame aqui', 'procon', 'bacen', 'consumidor.gov', 'consumidor .gov', 'consumidor.go v',
+    ]);
+    const colCh = await colChamados();
+    const colD = await colDisparos();
+    const JANELA_DIAS = 7;
+    const corteInferior = new Date(Date.now() - JANELA_DIAS * 24 * 60 * 60 * 1000);
+
+    const problemas: string[] = [];
+
+    for (const { tpl, statusCrit, canalCrit, slaCrit } of alvos) {
+      const statusAlvo: string[] = statusCrit.valores;
+      const canaisTemplate: string[] | null = canalCrit?.valores?.length ? canalCrit.valores : null;
+
+      // sla "metade" é transitório (só vale numa janela estreita) — difícil de auditar depois
+      // do fato sem falso alarme, então fica de fora de propósito; "estourado"/"personalizado"
+      // só crescem com o tempo, por isso dá pra conferir com folga.
+      let semPrazoDefinido = false;
+      let prazoLabel = '';
+      let folgaHoras = 2;
+      if (slaCrit) {
+        const valoresSla: string[] = slaCrit.valores ?? [];
+        if (valoresSla.includes('personalizado')) {
+          const limite = Number(slaCrit.horasPersonalizadas) || 0;
+          if (limite <= 0) continue;
+          folgaHoras = limite * 2 + 48;
+          prazoLabel = `${limite}h personalizadas`;
+        } else if (valoresSla.includes('estourado')) {
+          const limite = SLA_LIMITE_HORAS[statusAlvo[0]];
+          if (!limite) {
+            problemas.push(
+              `"${tpl.nome}": gatilho de SLA preso ao status "${statusAlvo[0]}", mas esse status não ` +
+                'tem prazo configurado no sistema (só em-aberto/em-andamento têm) — nunca dispara.',
+            );
+            continue;
+          }
+          folgaHoras = limite * 2 + 48;
+          prazoLabel = 'SLA estourado';
+        } else {
+          continue; // só "metade" configurado
+        }
+      } else if (statusCrit.prazoTipo === 'horas') {
+        folgaHoras = (Number(statusCrit.prazoHoras) || 0) + 24;
+        prazoLabel = `${statusCrit.prazoHoras}h úteis`;
+      } else {
+        prazoLabel = 'imediato';
+      }
+
+      const corteSuperior = new Date(Date.now() - folgaHoras * 60 * 60 * 1000);
+
+      // SLA é avaliado com o ticket ainda no status (condição que persiste), não um evento
+      // passado — por isso filtra pelo status atual, igual o backend faz (currentStatus).
+      const candidatos = await colCh
+        .find({
+          $expr: { $in: [{ $arrayElemAt: ['$registro.status', -1] }, statusAlvo] },
+          updatedAt: { $gte: corteInferior, $lte: corteSuperior },
+          $nor: [filtroQa()],
+        })
+        .project({ chamadoProtocolo: 1, tabulacao: 1, registro: 1 })
+        .limit(500)
+        .toArray();
+
+      if (!candidatos.length) continue; // sem volume nesta janela pra avaliar o modelo
+
+      const elegiveis: Array<{ _id: any; chamadoProtocolo: string; eventKey: string }> = [];
+      const canaisNaoCobertos = new Map<string, number>();
+
+      for (const doc of candidatos) {
+        const tabs = doc.tabulacao ?? [];
+        const canal = String(tabs[tabs.length - 1]?.canal ?? '').trim();
+        if (CANAIS_ESPECIAIS.has(canal.toLowerCase())) continue;
+        if (canaisTemplate && !canaisTemplate.includes(canal)) {
+          const chave = canal || '(vazio)';
+          canaisNaoCobertos.set(chave, (canaisNaoCobertos.get(chave) ?? 0) + 1);
+          continue;
+        }
+        // eventKey por ticket (não pelo template) — correto mesmo quando o gatilho lista mais
+        // de um status, já que cada ticket só está, de fato, num deles agora.
+        const statusDoTicket = String(
+          doc.registro?.[doc.registro.length - 1]?.status ?? '',
+        ).trim();
+        const eventKey = slaCrit
+          ? (slaCrit.valores.includes('personalizado') ? 'sla:personalizado' : 'sla:estourado')
+          : statusCrit.prazoTipo === 'horas'
+            ? `status:${statusDoTicket}:prazo`
+            : `status:${statusDoTicket}`;
+        elegiveis.push({ _id: doc._id, chamadoProtocolo: doc.chamadoProtocolo, eventKey });
+      }
+
+      if (canaisNaoCobertos.size) {
+        const detalhe = [...canaisNaoCobertos.entries()].map(([c, n]) => `"${c}" (${n})`).join(', ');
+        problemas.push(
+          `"${tpl.nome}": gatilho não cobre o canal ${detalhe} — esses tickets nunca são avaliados.`,
+        );
+      }
+
+      if (!elegiveis.length) continue;
+
+      const ids = elegiveis.map((d) => d._id);
+      const enviados = await colD
+        .find({ chamadoId: { $in: ids }, conteudoId: tpl._id })
+        .project({ chamadoId: 1, eventKey: 1 })
+        .toArray();
+      const enviadosSet = new Set(enviados.map((e: any) => `${e.chamadoId}|${e.eventKey}`));
+      const faltando = elegiveis.filter((d) => !enviadosSet.has(`${d._id}|${d.eventKey}`));
+
+      if (faltando.length) {
+        problemas.push(
+          `"${tpl.nome}": prazo (${prazoLabel}) não cumprido em ${faltando.length}/${elegiveis.length} ` +
+            `ticket(s) elegível(eis) nos últimos ${JANELA_DIAS} dias — ex.: protocolo ${faltando[0]?.chamadoProtocolo}.`,
+        );
+      }
+    }
+
+    coletor.metrica({
+      nome: 'Modelos de encerramento com problema de canal/prazo',
+      valor: problemas.length,
+      situacao: problemas.length ? 'Alerta' : 'Normal',
+    });
+
+    if (!problemas.length) {
+      return ok(`${alvos.length} modelo(s) de encerramento por status/SLA conferido(s) — canal e prazo cumpridos.`);
+    }
+    return falha(problemas.join(' | '));
+  });
 }

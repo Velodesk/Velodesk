@@ -54,6 +54,7 @@ export const ORIENTACOES: Record<string, string> = {
   E06: 'Nenhum modelo ativo com gatilho significa cliente sem nenhuma comunicação automática: revise a aba Emails de Saída.',
   E07: 'Revise o texto (saudação e corpo) do(s) modelo(s) apontado(s) na observação diretamente na aba Emails de Saída — lembre que todo e-mail recebe automaticamente o convite fixo "responda este e-mail" e a assinatura "Time de Atendimento Velotax", então um modelo de pesquisa/aviso não deve pedir resposta.',
   E08: 'A observação traz o protocolo do e-mail real com problema — abra o ticket, confira a mensagem enviada na aba Conversa/Eventos e, se o problema for do modelo (não só daquele ticket), corrija na aba Emails de Saída para não repetir no próximo envio.',
+  E09: 'A observação nomeia o modelo com problema: "canal não coberto" se resolve adicionando o canal faltante na aba Emails de Saída; "prazo não cumprido" é mais sério — o canal está certo mas o e-mail não saiu, confira o ticket de exemplo e os logs do backend no horário dele; "sem prazo configurado" exige mudança de código — adicionar o status em EMAIL_SLA_LIMIT_HOURS (backend/src/services/emailOutbound.constants.ts), não dá pra corrigir só pela tela.',
 
   // CSAT
   C01: 'Confira POST /api/csat e a gravação do subdocumento csat (nota, respondido, respondidoEm) — é o que alimenta o painel de CSAT.',

@@ -311,6 +311,18 @@ export const CATALOGO: CasoCatalogo[] = [
       'nome do cliente é removido antes da revisão, nunca sai da máquina',
     esperado: 'A revisão por IA de uma amostra recente de e-mails reais não aponta tom incoerente ou instrução errada',
   },
+  {
+    id: 'E09',
+    area: 'Envios de e-mail',
+    funcionalidade: 'Cobertura de canal e prazo dos encerramentos automáticos',
+    objetivo:
+      'Cada modelo ativo de encerramento por status/SLA (fora o CSAT) cobre os canais reais dos ' +
+      'tickets e cumpre o prazo configurado (imediato, em horas, ou SLA estourado/personalizado)',
+    esperado:
+      'Nenhum canal com volume real fica fora do gatilho de nenhum modelo, nenhum ticket elegível fica ' +
+      'sem o e-mail depois do prazo, e nenhum gatilho de SLA fica preso a um status sem limite ' +
+      'configurado — quando falha, aponta o nome do modelo específico',
+  },
 
   // ── CSAT ──────────────────────────────────────────────────────────────────
   {
