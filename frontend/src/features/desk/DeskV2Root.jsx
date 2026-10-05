@@ -2643,6 +2643,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
                 onSelectTicket={selectTicket}
                 onReload={reload}
                 refreshing={ticketsLoading}
+                entrySortOldestFirst={entrySortOldestFirst}
+                onToggleEntrySort={() => setEntrySortOldestFirst((v) => !v)}
               />
             ) : showTableQueueMain && isResolvedQueue ? (
               <DeskResolvedTicketTable
@@ -2787,12 +2789,12 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
                         iaAuditScore={ticketAi.auditScore}
                         onRequestRevision={handleOpenAiRevision}
                         onOpenWhatsAppChat={() => setWaChatOpen(true)}
-                      />
-                      <DeskComposePanel
                         iaApproveMode={hideComposer}
                         onReject={hideComposer ? handleOpenAiFeedback : undefined}
-                        ticketId={ticket.id}
+                      />
                       {!hideComposer ? (
+                      <DeskComposePanel
+                        ticketId={ticket.id}
                         ticket={ticket}
                         variant="full"
                         composeMode={composeMode}
@@ -2811,9 +2813,9 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
                         onSendInternalNote={canInternalCompose && !ticketReadOnly ? handleSendInternalNote : undefined}
                         sendInternalNoteBusy={sendInternalNoteBusy}
                       />
+                      ) : null}
                     </>
                   ) : mainTab === 'notas' ? (
-                      ) : null}
                     <DeskInternalNotesPanel
                       ticket={ticket}
                       client={client}
@@ -2893,8 +2895,6 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         onSubmit={handleAiRevisionSubmit}
       />
 
-      <WorkflowComunicacaoModal
-        open={comunicacaoModalOpen}
       <DeskAiFeedbackModal
         open={aiFeedbackOpen}
         auditScore={ticketAi.auditScore}
@@ -2904,6 +2904,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         onGenerate={handleAiFeedbackGenerate}
       />
 
+      <WorkflowComunicacaoModal
+        open={comunicacaoModalOpen}
         busy={comunicacaoBusy}
         ticket={ticket}
         origem="responsavel"

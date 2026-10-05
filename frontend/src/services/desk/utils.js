@@ -1197,13 +1197,14 @@ export function formatTicketSlaRemaining(ticket) {
   return `${minutes} min`;
 }
 
-export function groupMyTicketsByStatus(entries) {
+export function groupMyTicketsByStatus(entries, entrySortOldestFirst = false) {
   return MY_TICKETS_STATUS_SECTIONS.map((section) => ({
     ...section,
     entries: sortTicketEntries(
       (entries || []).filter((entry) => matchesMyTicketsStatusSection(entry, section.id)),
       'sla',
       'asc',
+      entrySortOldestFirst,
     ),
   })).filter((section) => section.entries.length > 0);
 }
