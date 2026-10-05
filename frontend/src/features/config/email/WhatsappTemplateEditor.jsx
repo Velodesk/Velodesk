@@ -3,7 +3,7 @@
  * (categoria, nome, disponibilidade e conteúdo). Ainda sem persistência real —
  * salvar só valida e volta pra lista.
  */
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useDeskColaboradores } from '../../../hooks/useDeskColaboradores';
 import { useNotifications } from '../../../context/NotificationContext';
 
@@ -16,7 +16,39 @@ const NOME_MAX = 512;
 const CORPO_MAX = 1024;
 const RODAPE_MAX = 60;
 const CABECALHO_MAX = 60;
-const MAX_BOTOES = 10;
+const BOTAO_TEXTO_MAX = 25;
+const BOTAO_URL_MAX = 2000;
+const BOTAO_TELEFONE_MAX = 20;
+
+/** Chamada para ação — tipos de botão e quantos de cada o WhatsApp aceita por modelo. */
+const ACOES_BOTAO = [
+  { id: 'ligar', label: 'Ligar', menuLabel: 'Ligar', max: 1 },
+  { id: 'site', label: 'Acessar Site', menuLabel: 'Acessar o site', max: 2 },
+];
+
+const DDI_OPCOES = [
+  { id: '+55', label: '🇧🇷 +55' },
+  { id: '+1', label: '🇺🇸 +1' },
+  { id: '+351', label: '🇵🇹 +351' },
+  { id: '+54', label: '🇦🇷 +54' },
+];
+
+const URL_TIPOS = [
+  { id: 'estatico', label: 'Estático' },
+  { id: 'dinamico', label: 'Dinâmico' },
+];
+
+function novoBotao(tipo) {
+  return {
+    id: Date.now(),
+    tipo,
+    texto: '',
+    ddi: '+55',
+    telefone: '',
+    urlTipo: 'estatico',
+    url: '',
+  };
+}
 
 function wrapSelection(textareaRef, value, marker, onChange) {
   const el = textareaRef?.current;
@@ -139,6 +171,7 @@ function WhatsappPreviewCard({ cabecalhoTipo, cabecalhoTexto, corpo, rodape, bot
               ) : (
                 botoesPreenchidos.map((botao) => (
                   <button type="button" tabIndex={-1} key={botao.id}>
+                    <i className={'ti ' + (botao.tipo === 'ligar' ? 'ti-phone' : 'ti-external-link')} aria-hidden="true" />
                     {botao.texto}
                   </button>
                 ))
@@ -163,7 +196,33 @@ export default function WhatsappTemplateEditor({ onClose }) {
   const [corpo, setCorpo] = useState('');
   const [rodape, setRodape] = useState('');
   const [botoes, setBotoes] = useState([]);
+  const [acaoMenuOpen, setAcaoMenuOpen] = useState(false);
   const corpoRef = useRef(null);
+  const acaoMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!acaoMenuOpen) return undefined;
+    const onPointerDown = (event) => {
+      if (!acaoMenuRef.current?.contains(event.target)) setAcaoMenuOpen(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setAcaoMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [acaoMenuOpen]);
+
+  /** Ainda cabe mais um botão desse tipo? `ignorarId` desconsidera o próprio botão ao trocar o tipo. */
+  const acaoDisponivel = (tipo, ignorarId = null) => {
+    const acao = ACOES_BOTAO.find((item) => item.id === tipo);
+    const usados = botoes.filter((item) => item.tipo === tipo && item.id !== ignorarId).length;
+    return Boolean(acao) && usados < acao.max;
+  };
+  const algumaAcaoDisponivel = ACOES_BOTAO.some((acao) => acaoDisponivel(acao.id));
 
   const disponibilidadeOptions = ['Todos os usuários', ...agentOptions]
     .filter((opt) => !disponibilidade.includes(opt));
@@ -182,13 +241,14 @@ export default function WhatsappTemplateEditor({ onClose }) {
     insertAtCursor(corpoRef, corpo, `{{${count + 1}}}`, setCorpo);
   };
 
-  const handleAddBotao = () => {
-    if (botoes.length >= MAX_BOTOES) return;
-    setBotoes((prev) => [...prev, { id: Date.now(), texto: '' }]);
+  const handleAddBotao = (tipo) => {
+    setAcaoMenuOpen(false);
+    if (!acaoDisponivel(tipo)) return;
+    setBotoes((prev) => [...prev, novoBotao(tipo)]);
   };
 
-  const handleUpdateBotao = (id, texto) => {
-    setBotoes((prev) => prev.map((item) => (item.id === id ? { ...item, texto } : item)));
+  const handleUpdateBotao = (id, patch) => {
+    setBotoes((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   };
 
   const handleRemoveBotao = (id) => {
@@ -202,6 +262,15 @@ export default function WhatsappTemplateEditor({ onClose }) {
     }
     if (!corpo.trim()) {
       showNotification('Informe o corpo da mensagem.', 'warning');
+      return;
+    }
+    const botaoIncompleto = botoes.find((item) => (
+      !item.texto.trim()
+      || (item.tipo === 'ligar' && !item.telefone.trim())
+      || (item.tipo === 'site' && !item.url.trim())
+    ));
+    if (botaoIncompleto) {
+      showNotification('Preencha todos os campos obrigatórios dos botões.', 'warning');
       return;
     }
     showNotification('Formulário validado — integração de salvamento ainda não implementada.', 'info');
@@ -370,43 +439,152 @@ export default function WhatsappTemplateEditor({ onClose }) {
           <div className="config-whatsapp-template-editor__botoes-head">
             <h4>Botões <span className="config-whatsapp-template-editor__badge">Opcional</span></h4>
             <p className="config-placeholder-msg">
-              Crie botões que permitam que os clientes respondam à sua mensagem ou realizem uma ação.
-              É possível adicionar até 10 botões. Se você adicionar mais de 3 botões, eles aparecerão em uma lista.
+              Crie botões que permitam que os clientes realizem uma ação: ligar (1 botão no máximo)
+              ou acessar um site (2 botões no máximo).
             </p>
           </div>
 
           {botoes.length ? (
-            <ul className="config-whatsapp-template-editor__botoes-list">
-              {botoes.map((botao) => (
-                <li key={botao.id}>
-                  <input
-                    type="text"
-                    value={botao.texto}
-                    maxLength={25}
-                    placeholder="Texto do botão…"
-                    onChange={(e) => handleUpdateBotao(botao.id, e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="config-action-btn config-action-btn--delete"
-                    onClick={() => handleRemoveBotao(botao.id)}
-                    aria-label="Remover botão"
-                  >
-                    <i className="ti ti-trash" aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="config-whatsapp-template-editor__cta">
+              <h5 className="config-whatsapp-template-editor__cta-title">Chamada para ação</h5>
+              <ul className="config-whatsapp-template-editor__cta-list">
+                {botoes.map((botao) => (
+                  <li key={botao.id} className="config-whatsapp-template-editor__cta-item">
+                    <div className="config-whatsapp-template-editor__cta-card">
+                      <div className="config-whatsapp-template-editor__cta-row">
+                        <label className="config-email-field">
+                          <span>Tipo de ação</span>
+                          <select
+                            value={botao.tipo}
+                            onChange={(e) => handleUpdateBotao(botao.id, { tipo: e.target.value })}
+                          >
+                            {ACOES_BOTAO.map((acao) => (
+                              <option
+                                key={acao.id}
+                                value={acao.id}
+                                disabled={acao.id !== botao.tipo && !acaoDisponivel(acao.id, botao.id)}
+                              >
+                                {acao.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        {botao.tipo === 'ligar' ? (
+                          <label className="config-email-field">
+                            <span>Telefone *</span>
+                            <div className="config-whatsapp-template-editor__phone">
+                              <select
+                                value={botao.ddi}
+                                onChange={(e) => handleUpdateBotao(botao.id, { ddi: e.target.value })}
+                                aria-label="Código do país"
+                              >
+                                {DDI_OPCOES.map((ddi) => (
+                                  <option key={ddi.id} value={ddi.id}>{ddi.label}</option>
+                                ))}
+                              </select>
+                              <input
+                                type="tel"
+                                value={botao.telefone}
+                                maxLength={BOTAO_TELEFONE_MAX}
+                                placeholder="(11) 99999-9999"
+                                onChange={(e) => handleUpdateBotao(botao.id, { telefone: e.target.value })}
+                              />
+                            </div>
+                          </label>
+                        ) : (
+                          <label className="config-email-field">
+                            <span>Tipo de URL *</span>
+                            <select
+                              value={botao.urlTipo}
+                              onChange={(e) => handleUpdateBotao(botao.id, { urlTipo: e.target.value })}
+                            >
+                              {URL_TIPOS.map((tipo) => (
+                                <option key={tipo.id} value={tipo.id}>{tipo.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                      </div>
+
+                      <label className="config-email-field">
+                        <div className="config-whatsapp-template-editor__field-head">
+                          <span>Texto do botão *</span>
+                          <span className="config-whatsapp-template-editor__counter">{botao.texto.length}/{BOTAO_TEXTO_MAX}</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={botao.texto}
+                          maxLength={BOTAO_TEXTO_MAX}
+                          placeholder="Insira o texto do botão…"
+                          onChange={(e) => handleUpdateBotao(botao.id, { texto: e.target.value })}
+                        />
+                      </label>
+
+                      {botao.tipo === 'site' ? (
+                        <label className="config-email-field">
+                          <div className="config-whatsapp-template-editor__field-head">
+                            <span>URL do site *</span>
+                            <span className="config-whatsapp-template-editor__counter">{botao.url.length}/{BOTAO_URL_MAX}</span>
+                          </div>
+                          <input
+                            type="url"
+                            value={botao.url}
+                            maxLength={BOTAO_URL_MAX}
+                            placeholder="https://www.exemplo.com"
+                            onChange={(e) => handleUpdateBotao(botao.id, { url: e.target.value })}
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="config-whatsapp-template-editor__cta-remove"
+                      onClick={() => handleRemoveBotao(botao.id)}
+                      aria-label="Remover botão"
+                    >
+                      <i className="ti ti-x" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
 
-          <button
-            type="button"
-            className="config-action-btn config-action-btn--create"
-            onClick={handleAddBotao}
-            disabled={botoes.length >= MAX_BOTOES}
-          >
-            <i className="ti ti-plus" aria-hidden="true" /> Adicionar botão
-          </button>
+          <div className="config-whatsapp-template-editor__acao-anchor" ref={acaoMenuRef}>
+            <button
+              type="button"
+              className="config-action-btn config-action-btn--create"
+              onClick={() => setAcaoMenuOpen((prev) => !prev)}
+              disabled={!algumaAcaoDisponivel}
+              aria-haspopup="menu"
+              aria-expanded={acaoMenuOpen}
+            >
+              <i className="ti ti-plus" aria-hidden="true" /> Adicionar botão
+            </button>
+
+            {acaoMenuOpen ? (
+              <div className="config-whatsapp-template-editor__acao-menu" role="menu">
+                <p className="config-whatsapp-template-editor__acao-menu-title">Chamada para ação</p>
+                {ACOES_BOTAO.map((acao) => (
+                  <button
+                    key={acao.id}
+                    type="button"
+                    role="menuitem"
+                    className="config-whatsapp-template-editor__acao-menu-item"
+                    onClick={() => handleAddBotao(acao.id)}
+                    disabled={!acaoDisponivel(acao.id)}
+                  >
+                    <span className="config-whatsapp-template-editor__acao-menu-label">{acao.menuLabel}</span>
+                    <span className="config-whatsapp-template-editor__acao-menu-hint">
+                      {acao.max} {acao.max === 1 ? 'botão' : 'botões'} no máximo
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       </section>
 
