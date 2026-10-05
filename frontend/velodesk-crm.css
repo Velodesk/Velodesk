@@ -4736,6 +4736,15 @@
     background: rgba(22, 52, 255, 0.06);
 }
 
+#velodeskDeskV2Root .ia-suggestion-bar__btn--use.ia-suggestion-bar__btn--approve {
+    border-color: #15803d;
+    color: #15803d;
+}
+
+#velodeskDeskV2Root .ia-suggestion-bar__btn--use.ia-suggestion-bar__btn--approve:hover:not(:disabled) {
+    background: rgba(21, 128, 61, 0.08);
+}
+
 #velodeskDeskV2Root .ia-suggestion-bar__btn--revise {
     border-color: #000058;
     color: #000058;

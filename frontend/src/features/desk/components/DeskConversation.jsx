@@ -1,6 +1,6 @@
 /**
- * DeskConversation v1.10.0 — Verificando só inbound; MIME preview; brand Velotax completa
- * VERSION: v1.10.0 | DATE: 2026-08-21
+ * DeskConversation v1.11.0 — prop `iaApproveMode`: botões "Usar resposta"/"Não usar" viram "Aprovado" (verde)/"Reprovado" e "Revisar" some; Reprovado chama `onReject` (Área de IA)
+ * VERSION: v1.11.0 | DATE: 2026-10-02
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { composeMarkupToSafeHtml, composeTextHasFormatting } from '../../../services/desk/composeFormatPreview';
@@ -273,6 +273,8 @@ export default function DeskConversation({
   iaAuditScore = null,
   onRequestRevision,
   onOpenWhatsAppChat,
+  iaApproveMode = false,
+  onReject,
 }) {
   const [iaVisible, setIaVisible] = useState(true);
   const lastIaReplyRef = useRef('');
@@ -380,13 +382,13 @@ export default function DeskConversation({
                 <div className="ia-suggestion-bar__actions">
                   <button
                     type="button"
-                    className="ia-suggestion-bar__btn ia-suggestion-bar__btn--use container-secondary"
+                    className={'ia-suggestion-bar__btn ia-suggestion-bar__btn--use container-secondary' + (iaApproveMode ? ' ia-suggestion-bar__btn--approve' : '')}
                     disabled={!canUseReply}
                     onClick={handleUseIaReply}
                   >
-                    Usar resposta
+                    {iaApproveMode ? 'Aprovado' : 'Usar resposta'}
                   </button>
-                  {onRequestRevision && (
+                  {onRequestRevision && !iaApproveMode && (
                     <button
                       type="button"
                       className="ia-suggestion-bar__btn ia-suggestion-bar__btn--revise container-secondary"
@@ -399,9 +401,9 @@ export default function DeskConversation({
                   <button
                     type="button"
                     className="ia-suggestion-bar__btn ia-suggestion-bar__btn--dismiss container-secondary"
-                    onClick={() => setIaVisible(false)}
+                    onClick={iaApproveMode && onReject ? onReject : () => setIaVisible(false)}
                   >
-                    Não usar
+                    {iaApproveMode ? 'Reprovado' : 'Não usar'}
                   </button>
                 </div>
               </div>

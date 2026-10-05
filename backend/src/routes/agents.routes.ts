@@ -1,6 +1,6 @@
 /**
- * agents.routes v1.2.2 — revisar-sugestao retorna 503 quando agentes incompletos
- * VERSION: v1.2.2 | DATE: 2026-08-07
+ * agents.routes v1.3.0 — POST /feedback: operador reprova a sugestão e envia correção para aprendizado
+ * VERSION: v1.3.0 | DATE: 2026-10-02
  */
 import { Router, Request, Response } from 'express';
 import { authMiddleware, authFromHeaderOrBody } from '../middleware/auth';
@@ -29,6 +29,7 @@ import {
 import {
   exportAgentFeedbackCsv,
   listAgentFeedback,
+  saveAgentFeedback,
 } from '../services/agents/agentFeedback.service';
 import { validateTicketAiInput } from '../services/openaiTicketSuggest.service';
 import type { RevisaoOrigem, TicketAiTabulationResult } from '../services/agents/agentTypes';
@@ -323,6 +324,31 @@ router.delete('/autonomy-rules/:id', authMiddleware, supervisorMiddleware, async
   const rule = await deleteAutonomyRule(req.params.id);
   if (!rule) return res.status(404).json({ success: false, error: 'Regra não encontrada' });
   return res.json({ success: true, deleted: true });
+});
+
+router.post('/feedback', authMiddleware, async (req: Request, res: Response) => {
+  const body = req.body as Record<string, unknown>;
+  const inputOperador = String(body.inputOperador || '').trim();
+  const respostaAntes = String(body.respostaAntes || '').trim();
+  if (!inputOperador || !respostaAntes) {
+    return res.status(400).json({ success: false, error: 'inputOperador e respostaAntes são obrigatórios' });
+  }
+
+  const saved = await saveAgentFeedback({
+    ticketId: String(body.ticketId || '').trim() || undefined,
+    protocolo: String(body.protocolo || '').trim() || undefined,
+    agentOrigem: 'atendimento',
+    tipoEvento: 'reprovacao_operador',
+    scoreAntes: typeof body.auditScore === 'number' ? body.auditScore : undefined,
+    inputOperador,
+    respostaAntes,
+    tabulacao: (body.tabulacao as TicketAiTabulationResult) || undefined,
+  });
+  if (!saved) {
+    return res.status(500).json({ success: false, error: 'Falha ao salvar o feedback' });
+  }
+
+  return res.status(201).json({ success: true, source: 'agents_feedback' });
 });
 
 router.get('/feedback', authMiddleware, supervisorMiddleware, async (req, res) => {
