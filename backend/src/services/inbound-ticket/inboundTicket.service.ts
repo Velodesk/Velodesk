@@ -152,7 +152,8 @@ function buildTicketBody(
     classificacaoTipo: payload.classificacaoTipo || payload.tipoChamado || 'Solicitação',
     tipoChamado: payload.tipoChamado || payload.classificacaoTipo || 'Solicitação',
     produto: payload.produto || '',
-    motivo: payload.motivo || payload.title,
+    // sem fallback pro título: no App o título é o produto, e motivo virava cópia do produto.
+    motivo: payload.motivo || '',
     detalhe: payload.detalhe || payload.text.slice(0, 500),
   };
 
