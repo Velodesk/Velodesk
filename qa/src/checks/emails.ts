@@ -3,7 +3,9 @@
  */
 import { cfg, ehEmailSeguro } from '../config';
 import type { Contexto } from '../contexto';
-import { colChamados, colClientes, colConteudos, colDisparos, filtroQa, buscarComRetry } from '../db';
+import {
+  colChamados, colClientes, colConteudos, colDisparos, filtroExcluirEspeciais, filtroQa, buscarComRetry,
+} from '../db';
 import { ok, falha, parcial, bloqueado, comTicket } from '../resultado';
 
 const VINTE_QUATRO_H = 24 * 60 * 60 * 1000;
@@ -235,11 +237,6 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
       return ok('Nenhum modelo ativo de encerramento por status/SLA (fora o CSAT) para conferir nesta rodada.');
     }
 
-    // Fora do escopo: evaluateEmailTriggers pula todo ticket "especiais" antes mesmo de olhar
-    // canal/status (ver isEspeciaisChamado) — contar esses canais aqui daria falso alarme.
-    const CANAIS_ESPECIAIS = new Set([
-      'reclame aqui', 'procon', 'bacen', 'consumidor.gov', 'consumidor .gov', 'consumidor.go v',
-    ]);
     const colCh = await colChamados();
     const colD = await colDisparos();
     const JANELA_DIAS = 7;
@@ -289,11 +286,14 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
 
       // SLA é avaliado com o ticket ainda no status (condição que persiste), não um evento
       // passado — por isso filtra pelo status atual, igual o backend faz (currentStatus).
+      // Exclui especiais (Procon/Consumidor.Gov/Reclame Aqui/Bacen) igual o backend faz antes
+      // de avaliar qualquer gatilho (ver isEspeciaisChamado) — inclui o histórico de Reclame
+      // Aqui importado do CRM antigo, que nunca passa por esse fluxo de e-mail.
       const candidatos = await colCh
         .find({
           $expr: { $in: [{ $arrayElemAt: ['$registro.status', -1] }, statusAlvo] },
           updatedAt: { $gte: corteInferior, $lte: corteSuperior },
-          $nor: [filtroQa()],
+          $and: [{ $nor: [filtroQa()] }, filtroExcluirEspeciais()],
         })
         .project({ chamadoProtocolo: 1, tabulacao: 1, registro: 1 })
         .limit(500)
@@ -307,7 +307,6 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
       for (const doc of candidatos) {
         const tabs = doc.tabulacao ?? [];
         const canal = String(tabs[tabs.length - 1]?.canal ?? '').trim();
-        if (CANAIS_ESPECIAIS.has(canal.toLowerCase())) continue;
         if (canaisTemplate && !canaisTemplate.includes(canal)) {
           const chave = canal || '(vazio)';
           canaisNaoCobertos.set(chave, (canaisNaoCobertos.get(chave) ?? 0) + 1);

@@ -2,7 +2,7 @@
  * checks/erros v1.0.0 — sinais de problema que não aparecem nos fluxos felizes
  */
 import type { Contexto } from '../contexto';
-import { colChamados, filtroStatusAtual } from '../db';
+import { colChamados, filtroExcluirEspeciais, filtroStatusAtual } from '../db';
 import { ok, falha, parcial, bloqueado } from '../resultado';
 
 const VINTE_QUATRO_H = 24 * 60 * 60 * 1000;
@@ -52,8 +52,12 @@ export async function checarErros(ctx: Contexto): Promise<void> {
   await coletor.checar('X04', async () => {
     if (!ctx.temBanco) return bloqueado('Sem acesso ao banco.');
     const col = await colChamados();
+    // Exclui Procon/Consumidor.Gov/Reclame Aqui/Bacen: tickets de Reclame Aqui importados do
+    // CRM antigo (Octadesk) chegaram com status "novo" e nunca entram na fila de tratamento —
+    // contá-los aqui é falso alarme, não fila parada de verdade.
     const travados = await col.countDocuments({
       ...filtroStatusAtual('novo'),
+      ...filtroExcluirEspeciais(),
       createdAt: { $lt: new Date(Date.now() - VINTE_QUATRO_H) },
     });
     coletor.metrica({

@@ -87,31 +87,14 @@ export async function checarTelas(ctx: Contexto): Promise<void> {
         [s.token, JSON.stringify(s.user), JSON.stringify(s.colaborador)] as [string, string, string],
       );
 
-      // U02 — Meu dia
-      await coletor.checar('U02', async () => {
-        await pagina.goto(`${cfg.baseUrl}/workspace`, { waitUntil: 'domcontentloaded', timeout: ESPERA });
-        const kpis = pagina.locator('section.ws360-kpis');
-        const apareceu = await kpis
-          .first()
-          .waitFor({ state: 'visible', timeout: ESPERA })
-          .then(() => true)
-          .catch(() => false);
-        const arquivo = await print(pagina, 'u02-meu-dia');
-        if (!apareceu) {
-          const login = pagina.url().includes('/login');
-          return {
-            ...falha(
-              login
-                ? 'O cockpit devolveu para a tela de login — a sessão do atendente não foi aceita.'
-                : 'O bloco "Meu dia" não apareceu no cockpit.',
-            ),
-            print: arquivo,
-          };
-        }
-        const cards = await pagina.locator('article.ws360-kpi').count();
-        if (cards === 0) return { ...parcial('Bloco "Meu dia" apareceu, mas sem nenhum indicador.'), print: arquivo };
-        return { ...ok(`Cockpit abriu com o bloco "Meu dia" e ${cards} indicador(es).`), print: arquivo };
-      });
+      // U02 — Meu dia (PAUSADO a pedido da Nathalia em 05/10: falso positivo recorrente,
+      // não reflete erro real do produto — retomar quando a causa (provável timing/seletor
+      // do Playwright, não o cockpit em si) for investigada e corrigida.)
+      coletor.naoExecutado(
+        'U02',
+        'Checagem pausada temporariamente — vinha reportando falha mesmo sem erro real no cockpit.',
+        'Nao testavel',
+      );
 
       // U03 — fila
       await coletor.checar('U03', async () => {

@@ -66,6 +66,21 @@ export const filtroQa = (): Document => ({
 });
 
 /**
+ * Exclui Procon/Consumidor.Gov/Reclame Aqui/Bacen — espelha
+ * excludeEspeciaisChannelsMongoFilter do backend (chamado.mapper.ts). Importa muito pros
+ * tickets de Reclame Aqui importados do CRM antigo (Octadesk): chegaram com status "novo" e
+ * nunca vão ser tratados como fila — contá-los em X04/E09 dá falso alarme de fila parada.
+ */
+export const filtroExcluirEspeciais = (): Document => ({
+  $nor: [
+    { $or: [{ 'registro.metadados.source': 'procon' }, { 'registro.metadados.procon': { $exists: true, $ne: null } }] },
+    { $or: [{ 'registro.metadados.source': 'consumidor-gov' }, { 'registro.metadados.consumidorGov': { $exists: true, $ne: null } }] },
+    { $or: [{ 'registro.metadados.source': 'reclame-aqui' }, { 'registro.metadados.reclameAqui': { $exists: true, $ne: null } }] },
+    { $or: [{ 'registro.metadados.source': 'bacen' }, { 'registro.metadados.bacen': { $exists: true, $ne: null } }] },
+  ],
+});
+
+/**
  * Repete uma leitura no Mongo até a condição bater, ou desiste depois de
  * `tentativas`. Existe porque o agente lê o banco por uma conexão separada da
  * do backend — a escrita já foi confirmada (`await save()`) antes da API
