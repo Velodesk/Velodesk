@@ -4,24 +4,24 @@
  * Procon, Consumidor.Gov). Não reaproveita o componente do Desk porque os itens selecionados
  * aqui são documentos de `chamados_reclamacoes` (reclamacoesApi.patch), não tickets de
  * `chamados` (ticketsApi.update) — coleções e endpoints diferentes.
+ *
+ * "Salvar o item com status" muda o status do ticket do Desk vinculado (Em andamento /
+ * Finalizado / Cancelado) e espelha no item do canal — mesmo efeito do Finalizar de um ticket
+ * por vez (especiaisTicketCommitService): status terminal fecha o canal (respondida, aberta=false).
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDeskColaboradores } from '../../../hooks/useDeskColaboradores';
 import { useNotifications } from '../../../context/NotificationContext';
-import { reclamacoesApi } from '../../../api/client';
+import { reclamacoesApi, ticketsApi } from '../../../api/client';
+import { isTerminalTicketStatusValue } from '../../../services/desk/utils';
 import { CHANNEL_CONFIG } from './especiaisTicketCommitService';
-import { RA_STATUS_LABELS } from '../../../services/especiais/reclameAquiData';
-import { BC_STATUS_LABELS } from '../../../services/especiais/bacenData';
-import { PC_STATUS_LABELS } from '../../../services/especiais/proconData';
-import { CG_STATUS_LABELS } from '../../../services/especiais/consumidorGovData';
 
-const STATUS_LABELS_BY_CHANNEL = {
-  ra: RA_STATUS_LABELS,
-  bc: BC_STATUS_LABELS,
-  pc: PC_STATUS_LABELS,
-  gov: CG_STATUS_LABELS,
-};
+const STATUS_OPTIONS = [
+  { value: 'em-andamento', label: 'Em andamento' },
+  { value: 'resolvido', label: 'Finalizado' },
+  { value: 'cancelado', label: 'Cancelado' },
+];
 
 const ACTION_OPTIONS = [
   { value: 'status', label: 'Salvar o item com status' },
@@ -103,8 +103,6 @@ export default function EspeciaisBulkActionPopover({ open, onClose, anchorRef, c
   if (!open || !style) return null;
 
   const config = CHANNEL_CONFIG[channelId] || CHANNEL_CONFIG.ra;
-  const statusLabels = STATUS_LABELS_BY_CHANNEL[channelId] || RA_STATUS_LABELS;
-  const statusOptions = Object.entries(statusLabels).map(([value, label]) => ({ value, label }));
 
   const handleTypeChange = (id, type) => {
     setActions((prev) => prev.map((action) => (action.id === id ? { ...action, type, value: '' } : action)));
@@ -122,7 +120,7 @@ export default function EspeciaisBulkActionPopover({ open, onClose, anchorRef, c
   };
 
   const secondOptionsFor = (type) => {
-    if (type === 'status') return statusOptions;
+    if (type === 'status') return STATUS_OPTIONS;
     if (type === 'agente') return agentOptions.map((value) => ({ value, label: value }));
     return null;
   };
@@ -139,15 +137,29 @@ export default function EspeciaisBulkActionPopover({ open, onClose, anchorRef, c
       const results = await Promise.allSettled(
         ids.map(async (id) => {
           const original = (items || []).find((it) => String(it.id) === String(id));
-          const payload = action.type === 'status'
-            ? { statusCanal: action.value }
-            : { responsavel: action.value };
-          const persisted = await reclamacoesApi.patch(config.orgao, id, payload);
+          if (action.type === 'agente') {
+            const persisted = await reclamacoesApi.patch(config.orgao, id, { responsavel: action.value });
+            if (original) config.patchItem({ ...original, ...(persisted || {}), responsavel: action.value });
+            return id;
+          }
+
+          const ticketId = original?.ticketId || original?.chamadoId;
+          if (!ticketId) throw new Error('Item sem ticket vinculado no Desk.');
+          await ticketsApi.update(ticketId, { status: action.value });
+
+          const terminal = isTerminalTicketStatusValue(action.value);
+          // ticketStatus é denormalizado — a listagem do canal não faz join com o chamado.
+          const canalPatch = terminal
+            ? { statusCanal: config.respondidaStatus, aberta: false, ticketStatus: action.value }
+            : { ticketStatus: action.value };
+          const persisted = await reclamacoesApi.patch(config.orgao, id, canalPatch);
           if (original) {
-            const patch = action.type === 'status'
-              ? { [config.statusField]: action.value }
-              : { responsavel: action.value };
-            config.patchItem({ ...original, ...(persisted || {}), ...patch });
+            config.patchItem({
+              ...original,
+              ...(persisted || {}),
+              ticketStatus: action.value,
+              ...(terminal ? { [config.statusField]: config.respondidaStatus, aberta: false } : {}),
+            });
           }
           return id;
         }),
