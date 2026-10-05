@@ -49,7 +49,17 @@ function readAll() {
 }
 
 function writeAll(items) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  // Com milhares de tickets o JSON estoura a cota do localStorage (~5MB). O cache em memória
+  // é a fonte da sessão; o localStorage é só otimização de reabertura, então falha em silêncio.
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignora
+    }
+  }
 }
 
 function normalizeApiItem(row) {

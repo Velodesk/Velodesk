@@ -21,7 +21,13 @@ import {
   patchValores,
 } from './ticketSearchCriteria';
 
-export default function TicketSearchCriteriaEditor({ criterios = [], onChange }) {
+export default function TicketSearchCriteriaEditor({
+  criterios = [],
+  onChange,
+  showLegadoToggle = false,
+  incluirLegadoOcta = false,
+  onIncluirLegadoOctaChange,
+}) {
   const {
     getProdutoNames,
     getTipoChamadoOptions,
@@ -325,10 +331,28 @@ export default function TicketSearchCriteriaEditor({ criterios = [], onChange })
         </p>
       )}
 
-      <button type="button" className="btn-secondary ticket-search-criteria__add" onClick={addRow}>
-        <i className="ti ti-plus" aria-hidden="true" />
-        Adicionar filtro
-      </button>
+      <div className="ticket-search-criteria__footer">
+        <button type="button" className="btn-secondary ticket-search-criteria__add" onClick={addRow}>
+          <i className="ti ti-plus" aria-hidden="true" />
+          Adicionar filtro
+        </button>
+        {showLegadoToggle ? (
+          <label
+            className="ticket-search-criteria__legado"
+            title="Inclui o arquivo do Octadesk (tickets e WhatsApp) na busca. Desligado, só os tickets do Desk são consultados."
+          >
+            <input
+              type="checkbox"
+              role="switch"
+              className="ticket-search-criteria__legado-input"
+              checked={Boolean(incluirLegadoOcta)}
+              onChange={(e) => onIncluirLegadoOctaChange?.(e.target.checked)}
+            />
+            <span className="ticket-search-criteria__legado-track" aria-hidden="true" />
+            <span className="ticket-search-criteria__legado-label">Incluir Legado Octa</span>
+          </label>
+        ) : null}
+      </div>
     </div>
   );
 }

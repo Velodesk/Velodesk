@@ -62,7 +62,9 @@ export interface OpenAgentSessionInput {
 }
 
 /** Chamado no login — abre/reabre a sessão do colaborador. */
-export async function openAgentSession(input: OpenAgentSessionInput): Promise<{ displayName: string }> {
+export async function openAgentSession(
+  input: OpenAgentSessionInput,
+): Promise<{ displayName: string; wasOffline: boolean }> {
   if (!isAllMongoReady()) await waitForMongoReady();
   const Model = getAgentSessionModel();
   const userId = String(input.userId ?? '').trim();
@@ -72,6 +74,11 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<{ 
     ? resolveColaboradorDisplayName(input.colaborador)
     : String(input.fallbackName || '').trim();
   const now = new Date();
+
+  // O login já marca online:true, então o 1º heartbeat nunca enxerga "estava offline" — quem
+  // precisa disparar o backfill da roleta (tickets órfãos acumulados) é o próprio login.
+  const existing = await Model.findOne({ userId }).select('online lastSeenAt').lean();
+  const wasOffline = !existing?.online || isAgentSessionStale(existing?.lastSeenAt);
 
   await Model.findOneAndUpdate(
     { userId },
@@ -94,7 +101,7 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<{ 
   );
 
   setCachedDisplayName(userId, displayName);
-  return { displayName };
+  return { displayName, wasOffline };
 }
 
 export interface AgentSessionHeartbeatResult {
