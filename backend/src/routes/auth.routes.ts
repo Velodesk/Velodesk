@@ -15,7 +15,21 @@ import {
   resolveColaboradorDisplayName,
 } from '../services/colaboradoresCadastro.service';
 import { closeAgentSession, openAgentSession } from '../services/agentSession.service';
+import { provisionalResponsavelFromUser, rebalanceAgentToCap } from '../services/assignmentRouter.service';
 import { env } from '../config/env';
+
+/** Agente voltando a ficar online: puxa tickets órfãos acumulados (fim de semana/madrugada) até o cap. */
+function triggerRoletaBackfillOnLogin(
+  wasOffline: boolean,
+  user: { name?: string; email?: string; displayName?: string },
+): void {
+  if (!wasOffline || !env.assignmentRouterEnabled) return;
+  const key = provisionalResponsavelFromUser(user);
+  if (!key) return;
+  void rebalanceAgentToCap(key).catch((err) => {
+    console.warn('[auth/login] backfill da roleta falhou', err);
+  });
+}
 
 const router = Router();
 
@@ -61,12 +75,13 @@ router.post('/login', async (req: Request, res: Response) => {
       await user.save();
     }
 
-    await openAgentSession({
+    const { displayName, wasOffline } = await openAgentSession({
       userId: user.id,
       email: user.email,
       colaborador: access.colaborador,
       fallbackName: name,
     });
+    triggerRoletaBackfillOnLogin(wasOffline, { name, email: user.email, displayName });
 
     const token = signToken({
       userId: user.id,
@@ -135,12 +150,13 @@ router.post('/auth/google', async (req: Request, res: Response) => {
       await user.save();
     }
 
-    await openAgentSession({
+    const { displayName, wasOffline } = await openAgentSession({
       userId: user.id,
       email: user.email,
       colaborador: access.colaborador,
       fallbackName: name,
     });
+    triggerRoletaBackfillOnLogin(wasOffline, { name, email: user.email, displayName });
 
     const token = signToken({
       userId: user.id,

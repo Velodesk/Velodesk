@@ -77,6 +77,7 @@ import { getAgentsStatus } from './services/agents/openaiAgent.util';
 import { startGestaoChamadosJob } from './jobs/gestaoChamados.job';
 import { startCloseResolvedTicketsJob } from './jobs/closeResolvedTickets.job';
 import { startAgentSessionCleanupJob } from './jobs/agentSessionCleanup.job';
+import { startRoletaSweepJob } from './jobs/roletaSweep.job';
 import { startCsatRepescagemJob } from './jobs/csatRepescagem.job';
 import { startCsatInicialJob } from './jobs/csatInicial.job';
 import { startWhatsappCostSyncJob } from './jobs/whatsappCostSync.job';
@@ -383,6 +384,7 @@ async function start() {
       startChamadoIaAnaliseJob();
       startCloseResolvedTicketsJob();
       startAgentSessionCleanupJob();
+      startRoletaSweepJob();
       startCsatRepescagemJob();
       startCsatInicialJob();
       startWhatsappCostSyncJob();
