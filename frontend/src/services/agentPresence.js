@@ -1,25 +1,20 @@
 /**
- * agentPresence v1.2.0 — heartbeat só com atividade real (mousemove/keydown/click)
- * VERSION: v1.2.0 | DATE: 2026-09-23
+ * agentPresence v1.3.0 — heartbeat de 60s lendo a resposta (detecta forceLogoff do gestor)
+ * VERSION: v1.3.0 | DATE: 2026-09-25
  *
- * Aba fora de foco leva o navegador a desacelerar (throttle) o setInterval do heartbeat,
- * podendo estourar o TTL de presença (5min) mesmo com o agente logado e trabalhando — daí:
- * (1) heartbeat periódico via sendBeacon (mais confiável que fetch/axios sob throttling/
- *     descarregamento de página) e (2) heartbeat extra assim que a aba volta a ficar visível,
- *     fechando o intervalo em que o setInterval pode ter atrasado enquanto escondida.
+ * O heartbeat periódico e o de retorno de foco só disparam se houve interação real
+ * (mouse/teclado/clique) nos últimos IDLE_THRESHOLD_MS — uma aba deixada aberta e esquecida
+ * (ex.: fim de turno sem logout) para de mandar heartbeat e a sessão expira sozinha pelo
+ * mecanismo de sessão do backend (3 heartbeats perdidos ~180s), mesmo com a aba ainda aberta.
  *
- * Isso resolve aba em 2º plano, mas cria um problema oposto: aba deixada aberta e esquecida
- * (ex.: fim de turno sem logout) continua respondendo "estou aqui" pra sempre, porque o
- * navegador está tecnicamente vivo mesmo sem ninguém usando. Por isso o heartbeat periódico e
- * o de retorno de foco só disparam se houve interação real (mouse/teclado/clique) nos últimos
- * IDLE_THRESHOLD_MS — sem isso, o heartbeat para de ser mandado e a presença expira sozinha
- * pelo TTL de 5min já existente no backend, mesmo com a aba ainda aberta.
+ * O heartbeat periódico usa axios (não sendBeacon) porque a resposta carrega `forceLogoff`
+ * (gestor derrubou a sessão pelo painel) — sendBeacon é fire-and-forget e nunca entregaria esse
+ * sinal. sendBeacon fica reservado só para o aviso de aba fechando (onBeforeUnload).
  */
 import api from '../api/client';
 
-const HEARTBEAT_URL = '/api/agents/presence/heartbeat';
 const OFFLINE_URL = '/api/agents/presence/offline';
-const HEARTBEAT_MS = 120_000;
+const HEARTBEAT_MS = 60_000;
 const IDLE_THRESHOLD_MS = 15 * 60_000;
 const ACTIVITY_THROTTLE_MS = 2_000;
 const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
@@ -58,20 +53,35 @@ function sendBeaconWithToken(url) {
   }
 }
 
+/** Dispara quando o backend sinaliza que um gestor forçou o logoff desta sessão (ver
+ * agentSession.service.ts:touchAgentSession). Quem escuta decide como encerrar a sessão local
+ * (ver AuthContext/interceptor 401) — este módulo só detecta e avisa. */
+function dispatchForceLogoff() {
+  try {
+    window.dispatchEvent(new CustomEvent('velodesk:force-logoff'));
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function sendAgentHeartbeat() {
   try {
-    await api.post('/agents/presence/heartbeat');
+    const { data } = await api.post('/agents/presence/heartbeat');
+    if (data?.forceLogoff) dispatchForceLogoff();
   } catch (err) {
     console.warn('[agentPresence] heartbeat falhou', err?.response?.status || err?.message);
   }
 }
 
-/** Heartbeat "silencioso" (sem esperar resposta) pro intervalo periódico e pro retorno de foco. */
+/**
+ * Heartbeat periódico e de retorno de foco. Usa axios (não sendBeacon) porque precisamos ler a
+ * resposta pra detectar `forceLogoff` — sendBeacon é fire-and-forget e nunca entregaria esse
+ * sinal. sendBeacon continua reservado só para o aviso de aba fechando (onBeforeUnload), onde
+ * não há mais chance de ler resposta de qualquer forma.
+ */
 function pingHeartbeat() {
   if (isIdle()) return;
-  if (!sendBeaconWithToken(HEARTBEAT_URL)) {
-    void sendAgentHeartbeat();
-  }
+  void sendAgentHeartbeat();
 }
 
 export async function sendAgentOffline() {

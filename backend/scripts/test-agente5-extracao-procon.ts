@@ -11,9 +11,15 @@ import { routeCasoEspecialFormal } from '../src/services/agents/casosEspeciaisRo
 import { buildFastPathTriagem } from '../src/services/agents/casosEspeciaisAgent.service';
 import { resolveReclamacaoModel } from '../src/services/reclamacoes/reclamacao.service';
 import { extractCasosEspeciaisFields } from '../src/services/agents/casosEspeciaisExtracao.service';
+import { findClienteByCpf } from '../src/services/cliente.service';
 import { env } from '../src/config/env';
 
 const MARKER = `TESTE-AGENTE5-${Date.now()}`;
+// CPF de teste com dígito verificador matematicamente válido (amplamente usado em fixtures de
+// dev — não pertence a pessoa real). Um CPF com checksum inválido (ex.: "123.456.789-00") é
+// rejeitado de propósito pelo Agente 5 antes de associar qualquer cadastro de cliente.
+const FAKE_CPF_FORMATTED = '111.444.777-35';
+const FAKE_CPF_DIGITS = '11144477735';
 
 const FAKE_PROCON_EMAIL_BODY = `
 Prezados,
@@ -22,7 +28,7 @@ O Procon-SP (Fundação de Proteção e Defesa do Consumidor) notifica a empresa
 registrada abaixo, para conhecimento e providências no prazo legal de 10 dias.
 
 Consumidor: Maria da Silva Teste ${MARKER}
-CPF: 123.456.789-00
+CPF: ${FAKE_CPF_FORMATTED}
 Telefone: (11) 98888-7777
 Cidade/UF: São Paulo/SP
 
@@ -99,7 +105,7 @@ async function main() {
     console.log('[test] resultado Agente 5:', extraction);
 
     const updated = await ProconModel.findById(reclamacaoId).exec();
-    console.log('[test] estado DEPOIS do Agente 5:', {
+    console.log('[test] estado DEPOIS do Agente 5 (doc reclamação):', {
       protocoloExterno: updated?.protocoloExterno,
       consumidor: updated?.consumidor,
       produto: updated?.produto,
@@ -110,18 +116,36 @@ async function main() {
       assunto: updated?.assunto,
     });
 
+    // `chamado` é o mesmo objeto em memória mutado/salvo dentro de extractCasosEspeciaisFields
+    // (cliente + tabulacao) — não precisa refetch pra ver o resultado.
+    const chamadoCliente = chamado.cliente?.[0] ?? null;
+    const chamadoTab = chamado.tabulacao?.[chamado.tabulacao.length - 1] ?? null;
+    console.log('[test] estado DEPOIS do Agente 5 (chamado):', {
+      cliente: chamadoCliente,
+      tabulacaoProduto: chamadoTab?.produto,
+      tabulacaoMotivo: chamadoTab?.motivo,
+    });
+
     const passed = Boolean(
       extraction.ran
       && !extraction.error
       && updated?.protocoloExterno?.includes(MARKER)
       && updated?.produto
-      && updated?.prazoLegal,
+      && updated?.prazoLegal
+      && chamadoCliente?.clienteCpf === FAKE_CPF_DIGITS,
     );
+
+    // Produto/motivo da tabulação dependem do catálogo ativo (desk_config.tabulacao_campos) de
+    // quem rodar o teste — "Empréstimo consignado" pode não existir nesse ambiente, então isso é
+    // só um aviso informativo, não trava o resultado do teste.
+    if (!chamadoTab?.produto) {
+      console.warn('[test] AVISO: tabulacao.produto do chamado ficou vazio — catálogo ativo deste ambiente pode não ter "Empréstimo consignado" cadastrado.');
+    }
 
     console.log('\n=== RESULTADO ===');
     console.log(passed
-      ? 'PASSOU: Agente 5 extraiu e persistiu protocolo/produto/prazo do corpo do e-mail fictício.'
-      : 'FALHOU: campos esperados não foram extraídos/persistidos corretamente.');
+      ? 'PASSOU: Agente 5 extraiu protocolo/produto/prazo do e-mail e associou o CPF ao chamado.cliente.'
+      : 'FALHOU: campos esperados não foram extraídos/persistidos/associados corretamente.');
 
     process.exitCode = passed ? 0 : 1;
   } catch (err) {
@@ -132,6 +156,11 @@ async function main() {
     await ChamadoN1.deleteOne({ _id: chamado._id });
     if (reclamacaoId) {
       await resolveReclamacaoModel('procon')!.deleteOne({ _id: reclamacaoId });
+    }
+    const testCliente = await findClienteByCpf(FAKE_CPF_DIGITS);
+    if (testCliente) {
+      await testCliente.deleteOne();
+      console.log('[test] cadastro de cliente de teste removido.');
     }
     console.log('[test] limpeza concluída.');
     process.exit(process.exitCode ?? 0);

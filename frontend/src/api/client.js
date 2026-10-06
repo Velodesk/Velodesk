@@ -95,6 +95,8 @@ export const authApi = {
     api.post('/auth/google', { credential }).then((r) => r.data),
   devLogin: (email) =>
     api.post('/auth/dev-login', { email }).then((r) => r.data),
+  logout: () =>
+    api.post('/auth/logout').then((r) => r.data).catch(() => null),
 };
 
 export const ticketsApi = {
@@ -204,6 +206,13 @@ export const dashboardOperacionalApi = {
   get: (params) => api.get('/dashboard/operacional', { params }).then((r) => r.data),
   /** Bloco de tendência (série de volume/CSAT + top motivos) com filtro de período próprio. */
   trend: (params) => api.get('/dashboard/operacional/trend', { params }).then((r) => r.data),
+};
+
+export const agentSessionsApi = {
+  /** Colaboradores online agora — card "Usuários online" do painel de gestão. */
+  online: () => api.get('/agents/sessions/online').then((r) => r.data),
+  forceLogoff: (userId) => api.post(`/agents/sessions/${encodeURIComponent(userId)}/force-logoff`).then((r) => r.data),
+  forceLogoffAll: () => api.post('/agents/sessions/force-logoff-all').then((r) => r.data),
 };
 
 export const gestaoInsightsApi = {

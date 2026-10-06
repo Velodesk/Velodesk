@@ -165,7 +165,7 @@ export function buildDraftTicketFromCliente(doc, agentName) {
     clienteId: contact.clienteId,
     clientCPF: contact.clientCPF,
     clientName: contact.clientName,
-    channel: 'Portal',
+    channel: 'Interno',
     tipo: 'Solicitação',
     atribuir: `${agent} (eu)`,
     lateralForm: {
@@ -176,7 +176,7 @@ export function buildDraftTicketFromCliente(doc, agentName) {
       clienteEmailResposta: contact.replyEmail,
       clienteTelefone: contact.phones,
       clienteTelefoneWhatsapp: contact.whatsappPhone,
-      canal: 'Portal',
+      canal: 'Interno',
       classificacaoTipo: 'Solicitação',
       produto: '',
       motivo: '',

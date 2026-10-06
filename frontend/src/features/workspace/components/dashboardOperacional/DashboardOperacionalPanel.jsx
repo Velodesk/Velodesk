@@ -28,6 +28,7 @@ import DashboardChannelBars from './DashboardChannelBars';
 import DashboardEtapasTable from './DashboardEtapasTable';
 import DashboardBreachTable from './DashboardBreachTable';
 import DashboardWorkflowCard from './DashboardWorkflowCard';
+import DashboardOnlineAgentsCard from './DashboardOnlineAgentsCard';
 import DashboardTrendMini from './DashboardTrendMini';
 import DashboardTop3Motivos from './DashboardTop3Motivos';
 import './dashboardOperacional.css';
@@ -49,6 +50,11 @@ export default function DashboardOperacionalPanel() {
   const [trendPeriod, setTrendPeriod] = useState({ period: '7d' });
   const { data, loading, error, refresh } = useDashboardOperacional(period);
   const { data: trend } = useDashboardTrend(trendPeriod);
+  // Mesma combinação usada pelo backend (workspace360.routes.ts:wantsSupervisorPayload) pra
+  // decidir quem vê dado de equipe — o card de sessão é uma ação de gestão, não de agente comum.
+  const canManageSessions = Boolean(
+    permsCtx?.can?.('workspace', 'painel_360_equipe') || permsCtx?.can?.('tickets', 'ver_todos'),
+  );
 
   const handleOpenTicket = useCallback(
     (ticketId) => {
@@ -218,6 +224,8 @@ export default function DashboardOperacionalPanel() {
             workflow={data.workflow}
             onOpenTicket={handleOpenWorkflowTicket}
           />
+
+          {canManageSessions ? <DashboardOnlineAgentsCard /> : null}
 
           <DashboardEtapasTable
             leaderboard={data.leaderboard}

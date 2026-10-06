@@ -222,6 +222,7 @@ export default function ReclameAquiCrmRoot() {
   const {
     committing,
     handleSaveTicket,
+    handleCommitStatus,
     handleFinalizeTicket,
     finalized,
     readOnly,
@@ -370,6 +371,8 @@ export default function ReclameAquiCrmRoot() {
         onRaItemUpdated={handleModeracaoSaved}
         onSave={handleSaveTicket}
         onFinalize={handleFinalizeTicket}
+        sendStatus={ticket?.status}
+        onCommitStatus={handleCommitStatus}
         saving={committing}
         disabled={readOnly || finalized}
         finalized={finalized}

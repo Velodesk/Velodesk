@@ -7,6 +7,7 @@ import { connectLegacyOcta } from '../config/legacyOctaConnection';
 import { getTicketLegadoOctaModel } from '../models/TicketLegadoOcta';
 import { getWhatsappLegadoOctaModel } from '../models/WhatsappLegadoOcta';
 import { Types } from 'mongoose';
+import { phoneVariants } from '../services/legadoOctaSearch.service';
 
 const router = Router();
 
@@ -93,7 +94,7 @@ router.get('/whatsapp', async (req, res: Response<unknown, { user?: AuthPayload 
 
   const filter: Record<string, unknown> = {};
   if (cpf) filter.clientCpf = cpf;
-  if (phone) filter.clientPhone = phone;
+  if (phone) filter.clientPhone = { $in: phoneVariants(phone) };
   if (protocolo) filter.protocoloExibicao = protocolo;
 
   const [items, total] = await Promise.all([
@@ -151,7 +152,7 @@ router.get('/search', async (req, res: Response<unknown, { user?: AuthPayload }>
   const whatsappFilter = {
     $or: [
       { clientCpf: q },
-      { clientPhone: q },
+      { clientPhone: { $in: phoneVariants(q) } },
       { protocoloExibicao: q.toUpperCase() },
     ],
   };

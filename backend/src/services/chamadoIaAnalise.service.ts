@@ -18,7 +18,7 @@ import { ChamadoN1, IChamadoN1 } from '../models/ChamadoN1';
 import { ChamadoIaAnalise, SentimentoClasseIA } from '../models/ChamadoIaAnalise';
 import { TicketIaExemplo } from '../models/TicketIaExemplo';
 import type { ITicketIaSettings } from '../models/TicketIaSettings';
-import { currentStatus, GESTAO_TERMINAL_STATUSES } from './chamado.mapper';
+import { currentStatus, GESTAO_TERMINAL_STATUSES, lastStatusNotInFilter } from './chamado.mapper';
 import { env } from '../config/env';
 import {
   adaptChamadoToTicketIa,
@@ -63,7 +63,7 @@ async function coletarCandidatos(
   const desde = new Date(Date.now() - 14 * 24 * 3600 * 1000);
   const chamados = await ChamadoN1.find({
     $or: [
-      { $expr: { $not: [{ $in: [{ $arrayElemAt: ['$registro.status', -1] }, [...GESTAO_TERMINAL_STATUSES]] }] } },
+      lastStatusNotInFilter([...GESTAO_TERMINAL_STATUSES]),
       { updatedAt: { $gte: desde } },
     ],
   })

@@ -63,18 +63,26 @@ const SLIM_REGISTRO_EXPR = {
 
 function supervisorChamadosMatchFilter(from: Date, to: Date): Record<string, unknown> {
   const prevFrom = new Date(from.getTime() - 7 * 24 * 60 * 60 * 1000);
+  // Canais especiais (Procon/Bacen/Consumidor.gov/Reclame Aqui) têm CRM próprio e carregam
+  // metadados enormes (ex.: importação Hugme do RA) — incluí-los fazia a agregação do supervisor
+  // passar de 60s (504 em /dashboard/operacional). Mesma exclusão do Painel 360 pessoal.
   return {
-    $or: [
-      lastStatusInFilter(ACTIVE_STATUS_LIST),
+    $and: [
+      excludeEspeciaisChannelsMongoFilter(),
       {
-        registro: {
-          $elemMatch: {
-            status: 'resolvido',
-            data: { $gte: prevFrom, $lte: to },
+        $or: [
+          lastStatusInFilter(ACTIVE_STATUS_LIST),
+          {
+            registro: {
+              $elemMatch: {
+                status: 'resolvido',
+                data: { $gte: prevFrom, $lte: to },
+              },
+            },
           },
-        },
+          { createdAt: { $gte: from, $lte: to } },
+        ],
       },
-      { createdAt: { $gte: from, $lte: to } },
     ],
   };
 }

@@ -111,6 +111,11 @@ export default function ConsumidorGovPanel() {
     setSelectedIds(select ? [...ids] : []);
   }, []);
 
+  const handleBulkApplied = useCallback(() => {
+    setSelectedIds([]);
+    setListVersion((v) => v + 1);
+  }, []);
+
   const handleRowAction = useCallback(async (action, item) => {
     if (action === 'responder' && item?.id) {
       setRespondingId(item.id);
@@ -163,6 +168,7 @@ export default function ConsumidorGovPanel() {
               onToggleSelect={handleToggleSelect}
               onToggleSelectAll={handleToggleSelectAll}
               onRowAction={handleRowAction}
+              onBulkApplied={handleBulkApplied}
             />
           )}
           {activeTab === 'relatorios' && (

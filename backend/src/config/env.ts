@@ -92,7 +92,7 @@ export const env = {
   /** VeloHubCentral — console_config.module_status (mesmo status dos serviços do VeloHub, leitura via MONGO_ENV) */
   mongoConsoleConfigDbName: process.env.MONGODB_CONSOLE_CONFIG_DB_NAME || 'console_config',
   jwtSecret: process.env.JWT_SECRET || 'velodesk-dev-secret',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '5h',
   /** Diretório com os .docx dos POPs, um subdiretório por produto (quadro de Processos) */
   popsSourceDir: (
     process.env.POPS_SOURCE_DIR || path.resolve(__dirname, '..', '..', 'source file', 'POPs')
@@ -165,18 +165,13 @@ export const env = {
     process.env.GCP_STORAGE_INBOUND_QUARANTINE_PREFIX || 'desk_ticket_attachments_quarantine'
   ).trim().replace(/^\/+|\/+$/g, ''),
   attachmentScanCallbackSecret: (process.env.ATTACHMENT_SCAN_CALLBACK_SECRET || '').trim(),
-  /** Dump Octadesk → legado_tickets.importados_octadesk (scripts offline) */
+  /** Dump Octadesk — scripts offline de importação pontual */
   octadeskApiBase: (
     process.env.OCTADESK_API_BASE || 'https://o199103-bfa.api001.octadesk.services'
   ).trim().replace(/\/+$/, ''),
   octadeskApiKey: (process.env.OCTADESK_API_KEY || '').trim(),
   octadeskAgentEmail: (process.env.OCTADESK_AGENT_EMAIL || '').trim(),
-  mongoLegadoTicketsDbName: (process.env.MONGODB_LEGADO_TICKETS_DB_NAME || 'legado_tickets').trim(),
-  /** Cluster dedicado e separado do Velodesk — só tickets legados do módulo "Legado Octa" */
-  // Cluster de prod (velodesk-crm) — decisão explícita do usuário após o cluster dedicado
-  // M0 (MONGODB_LEGACY) não aguentar o churn de staging mesmo processando mês a mês.
-  // Banco/collection próprios (legado_octa/tickets), isolados dos bancos de produção reais.
-  mongoLegacyOctaUri: (process.env.MONGODB_LEGADO_OCTA_URI || '').trim(),
+  /** Módulo "Legado Octa": mesmo cluster do MONGODB_URI, banco próprio (legado_octa: tickets, whatsapp) */
   mongoLegacyOctaDbName: (process.env.MONGODB_LEGACY_OCTA_DB_NAME || 'legado_octa').trim(),
   inboundAttachmentsDir: (process.env.INBOUND_ATTACHMENTS_DIR || '').trim(),
   sentAttachmentsDir: (process.env.SENT_ATTACHMENTS_DIR || '').trim(),
@@ -241,6 +236,12 @@ export const env = {
   /** Revisor de Texto — flash-lite por padrão (menor latência). */
   geminiRefinarModel: (process.env.GEMINI_REFINAR_MODEL || 'gemini-2.5-flash-lite').trim(),
   openaiApiKey: (process.env.OPENAI_API_KEY || '').trim(),
+  /**
+   * Filas, contagens e jobs passam a filtrar por `chamados_n1.statusAtual` (indexado) em vez de
+   * varrer `$arrayElemAt: ['$registro.status', -1]`. Só ligar DEPOIS de rodar
+   * `scripts/backfill-status-atual.ts` — documento sem o campo some das filas.
+   */
+  statusAtualQueriesEnabled: process.env.STATUS_ATUAL_QUERIES_ENABLED === 'true',
   whatsappAudioTranscriptionEnabled:
     process.env.WHATSAPP_AUDIO_TRANSCRIPTION_ENABLED !== 'false',
   whatsappAudioTranscriptionModel: (
@@ -382,6 +383,10 @@ export const env = {
   instagramAccessToken: (process.env.INSTAGRAM_ACCESS_TOKEN || '').trim(),
   googleServiceAccountJson: (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '').trim(),
   googlePlayPackageName: (process.env.GOOGLE_PLAY_PACKAGE_NAME || '').trim(),
+  /** API do parceiro (play-reviews) — única porta de entrada para o Google Play. */
+  playReviewsApiUrl: (process.env.PLAY_REVIEWS_API_URL || '').trim().replace(/\/+$/, ''),
+  playReviewsApiKey: (process.env.PLAY_REVIEWS_API_KEY || '').trim(),
+  playReviewsTimeoutMs: parseInt(process.env.PLAY_REVIEWS_TIMEOUT_MS || '30000', 10),
   graphApiVersion: (process.env.GRAPH_API_VERSION || 'v21.0').trim(),
   graphApiVersionInstagram: (process.env.GRAPH_API_VERSION_INSTAGRAM || 'v21.0').trim(),
 };

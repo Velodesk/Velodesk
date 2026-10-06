@@ -4,7 +4,7 @@
 import { cockpitTicketToApi } from '../../../api/adapters/ticketAdapter';
 import { getAgentName } from '../../../services/clientDb';
 import { htmlToPlainText } from '../../../services/desk/composeRichEditor';
-import { isTicketReadOnly } from '../../../services/desk/utils';
+import { isTerminalTicketStatusValue, isTicketReadOnly } from '../../../services/desk/utils';
 import { RA_STATUS } from '../../../services/especiais/reclameAquiData';
 import { PC_STATUS } from '../../../services/especiais/proconData';
 import { CG_STATUS } from '../../../services/especiais/consumidorGovData';
@@ -81,7 +81,7 @@ function resolveTargetStatus(ticket, finalize, hasPublicPayload) {
   return currentStatus || 'em-andamento';
 }
 
-export function buildEspeciaisCommitPayload(ticket, session, { finalize = false, channelId = 'ra' } = {}) {
+export function buildEspeciaisCommitPayload(ticket, session, { finalize = false, status = null, channelId = 'ra' } = {}) {
   const config = CHANNEL_CONFIG[channelId] || CHANNEL_CONFIG.ra;
   const messageHtml = String(session?.composeText || '').trim();
   const internalNoteHtml = String(session?.internalText || '').trim();
@@ -93,7 +93,10 @@ export function buildEspeciaisCommitPayload(ticket, session, { finalize = false,
     .map((item) => String(item?.url || '').trim())
     .filter(Boolean);
   const hasPublicPayload = Boolean(messageText || attachmentUrls.length);
-  const targetStatus = resolveTargetStatus(ticket, finalize, hasPublicPayload);
+  const targetStatus = status || resolveTargetStatus(ticket, finalize, hasPublicPayload);
+  // "Enviar como" (status explícito) fecha o canal igual ao antigo Finalizar sempre que o status
+  // escolhido já é terminal (resolvido/cancelado/fechado) — não só quando finalize=true.
+  const isFinalizing = finalize || isTerminalTicketStatusValue(targetStatus);
 
   const prepared = { ...ticket, status: targetStatus };
   const lf = { ...(prepared.lateralForm || {}) };
@@ -112,7 +115,7 @@ export function buildEspeciaisCommitPayload(ticket, session, { finalize = false,
     ...(classificacaoDraft?.motivo3 ? { motivo3: classificacaoDraft.motivo3 } : {}),
   };
 
-  if (finalize) {
+  if (isFinalizing) {
     updatedMeta[config.statusField] = config.respondidaStatus;
   }
   lf[config.metaKey] = updatedMeta;
@@ -127,7 +130,7 @@ export function buildEspeciaisCommitPayload(ticket, session, { finalize = false,
     ...(classificacaoDraft?.motivo2 ? { motivo2: classificacaoDraft.motivo2 } : {}),
     ...(classificacaoDraft?.motivo3 ? { motivo3: classificacaoDraft.motivo3 } : {}),
   };
-  if (finalize) {
+  if (isFinalizing) {
     apiUpdatedMeta[config.statusField] = config.respondidaStatus;
   }
   apiLf[config.metaKey] = apiUpdatedMeta;
@@ -156,6 +159,7 @@ export function buildEspeciaisCommitPayload(ticket, session, { finalize = false,
     hadInternalPayload: Boolean(internalNoteText),
     hadClientePayload: Boolean(clienteText),
     clienteHtml,
+    isFinalizing,
   };
 }
 
@@ -177,6 +181,7 @@ export async function commitEspeciaisTicket({
   channelItem,
   session,
   finalize = false,
+  status = null,
 }) {
   if (!ticket) {
     throw new Error('Ticket inválido.');
@@ -191,10 +196,10 @@ export async function commitEspeciaisTicket({
     throw new Error('Ticket inválido.');
   }
 
-  const { payload, hadPublicPayload, hadInternalPayload, hadClientePayload, clienteHtml } = buildEspeciaisCommitPayload(
+  const { payload, hadPublicPayload, hadInternalPayload, hadClientePayload, clienteHtml, isFinalizing } = buildEspeciaisCommitPayload(
     ticket,
     session,
-    { finalize, channelId },
+    { finalize, status, channelId },
   );
 
   await commitTicketViaApi(ticketId, payload);
@@ -211,7 +216,7 @@ export async function commitEspeciaisTicket({
   }
 
   let updatedChannelItem = channelItem;
-  if (finalize && channelItem) {
+  if (isFinalizing && channelItem) {
     // patchItem sozinho só grava no cache local (localStorage) — sem persistir no backend,
     // a próxima sincronização (reclamacoesApi.list ao reabrir o módulo) trazia o status antigo
     // de volta, fazendo o ticket "voltar" da lista de finalizados.
@@ -246,6 +251,7 @@ export async function commitEspeciaisTicket({
     hadPublicPayload,
     hadInternalPayload,
     hadClientePayload,
+    isFinalizing,
   };
 }
 

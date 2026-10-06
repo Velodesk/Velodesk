@@ -76,6 +76,8 @@ import { seedDevelopmentData, purgeAllMockTickets, runDeskConfigMigrations } fro
 import { getAgentsStatus } from './services/agents/openaiAgent.util';
 import { startGestaoChamadosJob } from './jobs/gestaoChamados.job';
 import { startCloseResolvedTicketsJob } from './jobs/closeResolvedTickets.job';
+import { startAgentSessionCleanupJob } from './jobs/agentSessionCleanup.job';
+import { startRoletaSweepJob } from './jobs/roletaSweep.job';
 import { startCsatRepescagemJob } from './jobs/csatRepescagem.job';
 import { startCsatInicialJob } from './jobs/csatInicial.job';
 import { startWhatsappCostSyncJob } from './jobs/whatsappCostSync.job';
@@ -381,6 +383,8 @@ async function start() {
       // Independente do programa de agentes autônomos — controlado só por CHAMADO_IA_ANALISE_ENABLED.
       startChamadoIaAnaliseJob();
       startCloseResolvedTicketsJob();
+      startAgentSessionCleanupJob();
+      startRoletaSweepJob();
       startCsatRepescagemJob();
       startCsatInicialJob();
       startWhatsappCostSyncJob();

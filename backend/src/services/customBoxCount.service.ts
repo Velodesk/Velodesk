@@ -5,7 +5,7 @@
  * Espelha a lógica de frontend/src/services/desk/customQueueBoxCriteria.js — mesmos tipos de
  * critério, mesma semântica de AND entre linhas / OR dentro de valores[].
  */
-import { meusChamadosAgentScopeFilter } from './chamado.mapper';
+import { meusChamadosAgentScopeFilter, lastStatusInFilter } from './chamado.mapper';
 
 export interface CustomBoxCriterio {
   tipo: string;
@@ -72,9 +72,7 @@ function statusFilter(criterio: CustomBoxCriterio): Record<string, unknown> | nu
   if (!valores.length) return { _id: { $exists: false } };
   const expanded = new Set<string>();
   valores.forEach((v) => (STATUS_ALIASES[v] || [v]).forEach((s) => expanded.add(s)));
-  return {
-    $expr: { $in: [{ $arrayElemAt: ['$registro.status', -1] }, [...expanded]] },
-  };
+  return lastStatusInFilter([...expanded]);
 }
 
 function workflowFilter(criterio: CustomBoxCriterio): Record<string, unknown> | null {

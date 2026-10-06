@@ -5,6 +5,7 @@
 import type { IChamadoN1 } from '../models/ChamadoN1';
 import { resolveClientGreetingName } from './clientMessageEnvelope.service';
 import { findClienteByEmail, getPrimaryDados, loadDadosForRef } from './cliente.service';
+import { resolveResponsavelDisplayNameSync } from './responsavel.util';
 
 export type PlaceholderKey =
   | 'nomeCliente'
@@ -137,7 +138,10 @@ export async function buildTicketPlaceholderValues(
     // (mesma regra da saudação em resolveTicketSaudacao, mas aqui vale pro corpo do e-mail
     // também, onde o admin pode ter inserido {nomeCliente} fora da linha de saudação).
     nomeCliente: clientName ? resolveClientGreetingName(clientName, '') : '',
-    nomeAgente: String(tab?.responsavel || '').trim() || 'Atendimento Velotax',
+    // resolveResponsavelDisplayNameSync troca pelo aliasColaborador quando preenchido — sem
+    // isso o nome completo do atendente (gravado cru em tabulacao.responsavel em vários pontos
+    // de escrita) vazava direto pra assinatura do e-mail enviado ao cliente.
+    nomeAgente: resolveResponsavelDisplayNameSync(tab?.responsavel) || 'Atendimento Velotax',
     numeroTicket: String(chamado.chamadoProtocolo || '').trim(),
     produtoTicket: String(tab?.produto || '').trim(),
     dataAbertura: formatBrDate(chamado.createdAt),

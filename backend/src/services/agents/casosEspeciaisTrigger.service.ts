@@ -90,15 +90,6 @@ export async function runCasosEspeciaisTriagem(
   chamadoInput: IChamadoN1,
   context: CasosEspeciaisTriggerContext,
 ): Promise<CasosEspeciaisTriggerResult> {
-  // Registro manual (agente já escolheu o órgão explicitamente, ex.: "Registrar" no
-  // formulário de Reclame Aqui/Procon) não depende da IA de casos especiais — o sinal
-  // é determinístico (fast path). Só a detecção automática via canais inbound (e-mail,
-  // WhatsApp etc.) fica atrás da flag `AGENT_CASOS_ESPECIAIS_ENABLED`.
-  const isManualRegistration = context.source === 'reclamacoes-manual';
-  if (!env.agentCasosEspeciaisEnabled && !isManualRegistration) {
-    return { ran: false, action: 'skipped' };
-  }
-
   try {
     const chamado = chamadoInput._id
       ? await ChamadoN1.findById(chamadoInput._id) ?? chamadoInput
@@ -128,9 +119,11 @@ export async function runCasosEspeciaisTriagem(
     }
 
     if (!env.agentCasosEspeciaisEnabled && !signal.fastPathReal) {
-      // Flag de IA desligada globalmente: com a exceção do registro manual habilitada acima,
-      // nunca deixa cair na classificação por LLM (`classifyCasosEspeciais`) — só o caminho
-      // determinístico (fast path) é permitido enquanto a feature estiver desativada.
+      // Flag de IA desligada globalmente (AGENT_CASOS_ESPECIAIS_ENABLED=false): a triagem
+      // determinística (fast path — remetente institucional, canal já formal ou assunto de
+      // e-mail com órgão cadastrado em Config > Assuntos Prioritários) continua rodando; só
+      // a classificação por LLM (`classifyCasosEspeciais`) fica bloqueada enquanto a flag
+      // estiver desligada.
       return { ran: false, action: 'skipped' };
     }
 

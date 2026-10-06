@@ -11,6 +11,7 @@ import { getDeskDisplayName, resolveAgentDisplayName, isLegacyDeskUser } from '.
 import { clearDeskAuthSession, isBackendJwtUsable } from '../utils/backendJwt';
 import { clearCachedPermissions } from '../services/permissions/permissionService';
 import { notifyAgentOfflineAndStop } from '../services/agentPresence';
+import { authApi } from '../api/client';
 import { setResponsavelDisplayColaboradores } from '../services/desk/responsavelDisplay';
 
 const AuthContext = createContext(null);
@@ -162,19 +163,42 @@ export function AuthProvider({ children }) {
     setResponsavelDisplayColaboradores([]);
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback((redirectQuery = '') => {
     try {
       window.google?.accounts?.id?.disableAutoSelect?.();
     } catch {
       /* noop */
     }
+    void authApi.logout();
     void notifyAgentOfflineAndStop();
     clearStoredAuthSession();
     setAuthStatus('pending');
     setUser(null);
     setColaborador(null);
     setToken(null);
-    window.location.href = '/login';
+    window.location.href = redirectQuery ? `/login?${redirectQuery}` : '/login';
+  }, []);
+
+  // Gestor forçou o logoff desta sessão pelo painel de gestão (ver agentPresence.js →
+  // POST /agents/presence/heartbeat, campo forceLogoff). Não chama authApi.logout() aqui: o
+  // backend já marcou a sessão offline ao setar o pedido — só precisamos encerrar localmente.
+  useEffect(() => {
+    function onForceLogoff() {
+      try {
+        window.google?.accounts?.id?.disableAutoSelect?.();
+      } catch {
+        /* noop */
+      }
+      void notifyAgentOfflineAndStop();
+      clearStoredAuthSession();
+      setAuthStatus('pending');
+      setUser(null);
+      setColaborador(null);
+      setToken(null);
+      window.location.href = '/login?session=force-logoff';
+    }
+    window.addEventListener('velodesk:force-logoff', onForceLogoff);
+    return () => window.removeEventListener('velodesk:force-logoff', onForceLogoff);
   }, []);
 
   const updateUser = useCallback((partial) => {

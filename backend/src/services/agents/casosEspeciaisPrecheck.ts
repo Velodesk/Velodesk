@@ -56,6 +56,16 @@ function extractCorpo(chamado: IChamadoN1): string {
     .join('\n');
 }
 
+/** Assunto real do e-mail recebido (o chamadoTitulo de tickets Bacen/Consumidor.Gov estruturados é o texto da reclamação, não o assunto). */
+function extractEmailSubject(chamado: IChamadoN1): string {
+  for (const reg of chamado.registro ?? []) {
+    const meta = reg.metadados && typeof reg.metadados === 'object' ? reg.metadados : {};
+    const subject = String((meta as Record<string, unknown>).emailSubject ?? '').trim();
+    if (subject) return subject;
+  }
+  return '';
+}
+
 function extractEmailFrom(chamado: IChamadoN1): string {
   for (const reg of chamado.registro ?? []) {
     const meta = reg.metadados && typeof reg.metadados === 'object' ? reg.metadados : {};
@@ -118,10 +128,20 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
   }
 
   // Assunto/corpo cadastrado em Config > E-mail > Assuntos Prioritários (igual a / contém):
-  // mesmo tratamento do remetente prioritário — sinal confirmado, dispara o Agente 4 direto;
-  // fast-path só quando a regra também tiver órgão definido.
-  const subjectMatch = detectPrioritySubjectMatch(String(chamado.chamadoTitulo ?? ''), extractCorpo(chamado));
+  // dispara o Agente 4 sempre. Fast-path (pula a classificação e já marca caso_formal_real)
+  // só quando a regra é de ÁREA=ASSUNTO com órgão definido — o assunto de e-mails do
+  // Bacen/Procon/etc. é um texto padronizado pelo próprio órgão (só o nº de protocolo varia),
+  // então bater com o trecho literal do assunto é um fato verificável, igual a um remetente
+  // institucional. Regra de área=CORPO nunca fast-pathea: é texto livre do cliente, e
+  // "contém a palavra X" não distingue notificação formal de ameaça vazia ou citação
+  // retórica — essa distinção é o que o Agente 4 (LLM) decide quando a IA está ligada.
+  const corpo = extractCorpo(chamado);
+  const titleMatch = detectPrioritySubjectMatch(String(chamado.chamadoTitulo ?? ''), corpo);
+  const subjectMatch = titleMatch.matched
+    ? titleMatch
+    : detectPrioritySubjectMatch(extractEmailSubject(chamado), '');
   const subjectMatchWithOrgao = Boolean(subjectMatch.matched && subjectMatch.rule?.orgao);
+  const subjectAreaMatchWithOrgao = Boolean(subjectMatchWithOrgao && subjectMatch.rule?.area === 'assunto');
   if (subjectMatch.matched && subjectMatch.rule) {
     signals.push(`assunto_prioritario:${subjectMatch.rule.area}:${subjectMatch.rule.value}`);
     if (subjectMatch.rule.orgao) origemProvavel = origemProvavel || (subjectMatch.rule.orgao as CasoEspecialOrgao);
@@ -136,15 +156,9 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
   }
 
   const triggered = signals.length > 0;
-  // Assunto/corpo "contém" é match de PALAVRA no texto do cliente — não distingue notificação
-  // formal de ameaça vazia ou de citação retórica/jurídica (ex.: "vocês seguem as regras do
-  // Bacen?"). Essa distinção é exatamente o que o Agente 4 (LLM) foi treinado pra fazer, então
-  // um match de assunto/corpo NUNCA pula direto pro fast-path (caso_formal_real) — só dispara
-  // o Agente 4, com o órgão do cadastro como dica de origemProvavel. Fast-path fica reservado
-  // pra sinais sobre QUEM enviou (remetente institucional/prioritário, canal já formal) — fatos
-  // verificáveis, não interpretação de texto livre.
   const fastPathReal = Boolean(
     prioritySenderWithOrgao
+    || subjectAreaMatchWithOrgao
     || (formalSource
       && (institutional.matched || signals.some((s) => s.startsWith('canal_formal:')))),
   );

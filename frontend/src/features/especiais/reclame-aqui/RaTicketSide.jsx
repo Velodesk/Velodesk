@@ -18,6 +18,8 @@ export default function RaTicketSide({
   onCloseChat,
   onSave,
   onFinalize,
+  sendStatus,
+  onCommitStatus,
   saving = false,
   disabled = false,
   finalized = false,
@@ -72,6 +74,8 @@ export default function RaTicketSide({
           onCloseChat={onCloseChat}
           onSave={onSave}
           onFinalize={onFinalize}
+          sendStatus={sendStatus}
+          onCommitStatus={onCommitStatus}
           saving={saving}
           disabled={disabled}
           finalized={finalized}

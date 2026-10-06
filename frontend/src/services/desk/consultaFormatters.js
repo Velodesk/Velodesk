@@ -3,13 +3,18 @@
  * VERSION: v1.1.0 | DATE: 2026-08-18
  */
 import { isDraftTicket } from '../../api/adapters/ticketAdapter';
-import { formatDateBr, formatDateTimeBr } from '../../utils/dateTimeBr';
+import { formatDateBr, formatDateTimeBr, formatTimeBr } from '../../utils/dateTimeBr';
 
 export const CONSULTA_PRODUCT_SLUGS = [
   'emprestimo-pessoal',
   'antecipacao-salario',
   'antecipacao-irpf',
   'clube-velotax',
+  'calculadora',
+  'credito-trabalhador',
+  'seguros',
+  'pagarme',
+  'starkbank',
 ];
 
 export const CONSULTA_PRODUCT_LABELS = {
@@ -17,6 +22,11 @@ export const CONSULTA_PRODUCT_LABELS = {
   'antecipacao-salario': 'Antecipação de Salário',
   'antecipacao-irpf': 'Antecipação IRPF',
   'clube-velotax': 'Clube Velotax',
+  calculadora: 'Calculadora',
+  'credito-trabalhador': 'Crédito do Trabalhador',
+  seguros: 'Seguros',
+  pagarme: 'Pagar.me',
+  starkbank: 'StarkBank',
 };
 
 /** Espelha backend/src/services/consultaProductMap.ts (TABULACAO_TO_SLUG) — manter em sincronia. */
@@ -25,6 +35,9 @@ const TABULACAO_TO_SLUG = [
   { match: /antecipa[cç][aã]o.{0,12}sal[aá]rio|sal[aá]rio/i, slug: 'antecipacao-salario' },
   { match: /irpf|imposto.{0,12}renda|antecipa[cç][aã]o.{0,12}ir/i, slug: 'antecipacao-irpf' },
   { match: /clube|cupom|vibes/i, slug: 'clube-velotax' },
+  { match: /calculadora/i, slug: 'calculadora' },
+  { match: /cr[eé]dito.{0,12}trabalhador|consignado/i, slug: 'credito-trabalhador' },
+  { match: /seguro/i, slug: 'seguros' },
 ];
 
 export function mapTabulacaoProdutoToSlug(produto) {
@@ -53,6 +66,10 @@ export function formatConsultaDate(value) {
 
 export function formatConsultaDateTime(value) {
   return formatDateTimeBr(value);
+}
+
+export function formatConsultaTime(value) {
+  return formatTimeBr(value);
 }
 
 export function formatAccountStatus(status) {
@@ -188,6 +205,93 @@ function summarizeIrpf(data) {
   return { iconState, pillLabel, pillTone, titleExtra, subtitle };
 }
 
+function summarizeCalculadora(data) {
+  const plans = Array.isArray(data?.plans) ? data.plans : [];
+  if (!plans.length) {
+    return { iconState: 'none', pillLabel: 'Sem dados', pillTone: 'gray', titleExtra: '', subtitle: 'nenhum plano ativo' };
+  }
+  const active = plans.filter((p) => !p.expiresAt || new Date(p.expiresAt).getTime() >= Date.now());
+  const primary = active[0] || plans[0];
+  const iconState = active.length ? 'done' : 'canceled';
+  return {
+    iconState,
+    pillLabel: active.length ? 'Ativo' : 'Expirado',
+    pillTone: CONSULTA_STATUS_TONE[iconState] || 'gray',
+    titleExtra: primary.planName || primary.planType || '',
+    subtitle: plans.length > 1 ? `${plans.length} planos` : (primary.expiresAt ? `válido até ${formatConsultaDate(primary.expiresAt)}` : ''),
+  };
+}
+
+function summarizeCreditoTrabalhador(data) {
+  const contracts = Array.isArray(data?.contracts) ? data.contracts : [];
+  const margem = data?.margem;
+  if (!contracts.length && !margem) {
+    return { iconState: 'none', pillLabel: 'Sem dados', pillTone: 'gray', titleExtra: '', subtitle: 'sem vínculo registrado' };
+  }
+  if (contracts.length) {
+    const { iconState, pillLabel, pillTone, titleExtra, subtitle } = summarizeEpAs(data);
+    return { iconState, pillLabel, pillTone, titleExtra, subtitle };
+  }
+  const iconState = margem.authorized ? 'done' : 'pending';
+  return {
+    iconState,
+    pillLabel: margem.authorized ? 'Autorizado' : 'Não autorizado',
+    pillTone: CONSULTA_STATUS_TONE[iconState] || 'gray',
+    titleExtra: margem.availableBalance ? `${formatConsultaMoney(margem.availableBalance)} de margem` : '',
+    subtitle: margem.employerName || '',
+  };
+}
+
+function summarizeSeguros(data) {
+  const contracts = Array.isArray(data?.contracts) ? data.contracts : [];
+  if (!contracts.length) {
+    return { iconState: 'none', pillLabel: 'Sem dados', pillTone: 'gray', titleExtra: '', subtitle: 'nenhum seguro contratado' };
+  }
+  const primary = contracts[0];
+  const iconState = classifyConsultaStatusLabel(primary.contractStatusLabel || primary.contractStatus);
+  return {
+    iconState,
+    pillLabel: primary.contractStatusLabel || primary.contractStatus || '—',
+    pillTone: CONSULTA_STATUS_TONE[iconState] || 'gray',
+    titleExtra: contracts.length > 1 ? `${contracts.length} seguros` : (primary.productLabel || ''),
+    subtitle: primary.productName || '',
+  };
+}
+
+function countPagamentos(data) {
+  const velotax = Array.isArray(data?.velotax?.charges) ? data.velotax.charges.length : 0;
+  const fairfield = Array.isArray(data?.fairfield?.charges) ? data.fairfield.charges.length : 0;
+  return velotax + fairfield;
+}
+
+function summarizePagarme(data) {
+  const total = countPagamentos(data);
+  if (!total) {
+    return { iconState: 'none', pillLabel: 'Sem movimento', pillTone: 'gray', titleExtra: '', subtitle: 'nenhuma cobrança encontrada' };
+  }
+  return {
+    iconState: 'done',
+    pillLabel: 'Encontrado',
+    pillTone: 'green',
+    titleExtra: `${total} cobrança${total > 1 ? 's' : ''}`,
+    subtitle: '',
+  };
+}
+
+function summarizeStarkbank(data) {
+  const invoices = Array.isArray(data?.invoices) ? data.invoices : [];
+  if (!invoices.length) {
+    return { iconState: 'none', pillLabel: 'Sem movimento', pillTone: 'gray', titleExtra: '', subtitle: 'nenhum pagamento confirmado' };
+  }
+  return {
+    iconState: 'done',
+    pillLabel: 'Encontrado',
+    pillTone: 'green',
+    titleExtra: `${invoices.length} pagamento${invoices.length > 1 ? 's' : ''}`,
+    subtitle: '',
+  };
+}
+
 function summarizeClube(data) {
   const totalCoupons = Number(data?.totalCoupons) || 0;
   if (!totalCoupons) {
@@ -222,6 +326,11 @@ export function summarizeConsultaProduct(slug, entry) {
   if (slug === 'emprestimo-pessoal' || slug === 'antecipacao-salario') return summarizeEpAs(entry.data);
   if (slug === 'antecipacao-irpf') return summarizeIrpf(entry.data);
   if (slug === 'clube-velotax') return summarizeClube(entry.data);
+  if (slug === 'calculadora') return summarizeCalculadora(entry.data);
+  if (slug === 'credito-trabalhador') return summarizeCreditoTrabalhador(entry.data);
+  if (slug === 'seguros') return summarizeSeguros(entry.data);
+  if (slug === 'pagarme') return summarizePagarme(entry.data);
+  if (slug === 'starkbank') return summarizeStarkbank(entry.data);
 
   return { iconState: 'none', pillLabel: 'Sem dados', pillTone: 'gray', titleExtra: '', subtitle: '' };
 }

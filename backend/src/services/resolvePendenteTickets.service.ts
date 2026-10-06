@@ -4,7 +4,7 @@
  */
 import { ChamadoN1 } from '../models/ChamadoN1';
 import { env } from '../config/env';
-import { appendStatusTransition } from './chamado.mapper';
+import { appendStatusTransition, lastStatusInFilter } from './chamado.mapper';
 
 export interface ResolvePendenteResult {
   scanned: number;
@@ -13,14 +13,7 @@ export interface ResolvePendenteResult {
 }
 
 function lastStatusExactPendenteFilter() {
-  return {
-    $expr: {
-      $in: [
-        { $arrayElemAt: ['$registro.status', -1] },
-        ['pendente', 'em-espera'],
-      ],
-    },
-  };
+  return lastStatusInFilter(['pendente', 'em-espera']);
 }
 
 /**

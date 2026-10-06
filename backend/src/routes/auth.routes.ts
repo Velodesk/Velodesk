@@ -2,7 +2,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { User } from '../models/User';
-import { signToken } from '../middleware/auth';
+import { authMiddleware, signToken } from '../middleware/auth';
 import { isFuncionariosConnected, isMongoConnected } from '../config/database';
 import { verifyGoogleIdToken } from '../services/googleAuth.service';
 import {
@@ -14,7 +14,22 @@ import {
   verifyColaboradorPassword,
   resolveColaboradorDisplayName,
 } from '../services/colaboradoresCadastro.service';
+import { closeAgentSession, openAgentSession } from '../services/agentSession.service';
+import { provisionalResponsavelFromUser, rebalanceAgentToCap } from '../services/assignmentRouter.service';
 import { env } from '../config/env';
+
+/** Agente voltando a ficar online: puxa tickets órfãos acumulados (fim de semana/madrugada) até o cap. */
+function triggerRoletaBackfillOnLogin(
+  wasOffline: boolean,
+  user: { name?: string; email?: string; displayName?: string },
+): void {
+  if (!wasOffline || !env.assignmentRouterEnabled) return;
+  const key = provisionalResponsavelFromUser(user);
+  if (!key) return;
+  void rebalanceAgentToCap(key).catch((err) => {
+    console.warn('[auth/login] backfill da roleta falhou', err);
+  });
+}
 
 const router = Router();
 
@@ -59,6 +74,14 @@ router.post('/login', async (req: Request, res: Response) => {
       user.name = name;
       await user.save();
     }
+
+    const { displayName, wasOffline } = await openAgentSession({
+      userId: user.id,
+      email: user.email,
+      colaborador: access.colaborador,
+      fallbackName: name,
+    });
+    triggerRoletaBackfillOnLogin(wasOffline, { name, email: user.email, displayName });
 
     const token = signToken({
       userId: user.id,
@@ -127,6 +150,14 @@ router.post('/auth/google', async (req: Request, res: Response) => {
       await user.save();
     }
 
+    const { displayName, wasOffline } = await openAgentSession({
+      userId: user.id,
+      email: user.email,
+      colaborador: access.colaborador,
+      fallbackName: name,
+    });
+    triggerRoletaBackfillOnLogin(wasOffline, { name, email: user.email, displayName });
+
     const token = signToken({
       userId: user.id,
       email: user.email,
@@ -151,6 +182,16 @@ router.post('/auth/google', async (req: Request, res: Response) => {
     console.error('Erro no login Google:', err);
     const message = err instanceof Error ? err.message : 'Erro no login Google';
     res.status(401).json({ message });
+  }
+});
+
+router.post('/auth/logout', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    await closeAgentSession(req.user!.userId, req.user!.email);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Erro no logout:', err);
+    res.status(500).json({ message: 'Erro no logout' });
   }
 });
 

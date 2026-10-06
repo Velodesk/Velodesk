@@ -207,6 +207,7 @@ export default function ConsumidorGovCrmRoot() {
   const {
     committing,
     handleSaveTicket,
+    handleCommitStatus,
     handleFinalizeTicket,
     finalized,
     readOnly,
@@ -346,6 +347,8 @@ export default function ConsumidorGovCrmRoot() {
         onTicketUpdated={handleTicketUpdated}
         onSave={handleSaveTicket}
         onFinalize={handleFinalizeTicket}
+        sendStatus={ticket?.status}
+        onCommitStatus={handleCommitStatus}
         saving={committing}
         disabled={readOnly || finalized}
         finalized={finalized}

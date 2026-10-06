@@ -159,6 +159,11 @@ export default function ReclameAquiPanel() {
     setSelectedIds(select ? [...ids] : []);
   }, []);
 
+  const handleBulkApplied = useCallback(() => {
+    setSelectedIds([]);
+    setListVersion((v) => v + 1);
+  }, []);
+
   const handleRowAction = useCallback((action, item) => {
     if (action === 'responder' && item?.id) {
       if (item.ticketId) {
@@ -205,6 +210,7 @@ export default function ReclameAquiPanel() {
               onToggleSelect={handleToggleSelect}
               onToggleSelectAll={handleToggleSelectAll}
               onRowAction={handleRowAction}
+              onBulkApplied={handleBulkApplied}
               clientRepeatCounts={clientRepeatCounts}
               casosEspeciaisByCpf={casosEspeciaisByCpf}
             />

@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { useDeskColaboradores } from '../../../hooks/useDeskColaboradores';
 import { useNotifications } from '../../../context/NotificationContext';
 import { usePermissions } from '../../../context/PermissionContext';
+import { useTabulation } from '../../../context/TabulationContext';
 import { getAgentName } from '../../../services/clientDb';
 import { ticketsApi } from '../../../api/client';
 import { findTicketEntry } from '../../../services/ticketsStorage';
@@ -34,6 +35,26 @@ const STATUS_OPTIONS = [
 
 const POPOVER_WIDTH = 280;
 const VIEWPORT_MARGIN = 12;
+
+const EMPTY_ACTION = { type: '', value: '', produto: '', motivo: '', detalhe: '', done: false, failures: [] };
+
+/**
+ * Resolvido em massa exige tabulação (produto/motivo/detalhe) igual ao resolver um ticket por
+ * vez — sem isto o backend (assertTabulacaoForStatus) rejeita cada ticket com "Preencha a
+ * tabulação", e a Ação em massa só reportava a falha depois de já ter tentado salvar.
+ */
+function resolveTabulacaoState(action, getMotivos, getDetalhes) {
+  const produtoOk = Boolean(action.produto);
+  const motivoOptions = produtoOk ? getMotivos(action.produto) : [];
+  const motivoOk = motivoOptions.length === 0 || Boolean(action.motivo);
+  const detalheOptions = produtoOk && action.motivo ? getDetalhes(action.produto, action.motivo) : [];
+  const detalheOk = detalheOptions.length === 0 || Boolean(action.detalhe);
+  return {
+    motivoOptions,
+    detalheOptions,
+    complete: produtoOk && motivoOk && detalheOk,
+  };
+}
 
 function useAnchoredPosition(open, anchorRef) {
   const [style, setStyle] = useState(null);
@@ -70,13 +91,15 @@ function useAnchoredPosition(open, anchorRef) {
 }
 
 export default function BulkActionPopover({ open, onClose, anchorRef, selectedTicketIds, onApplied }) {
-  const [actions, setActions] = useState([{ id: 1, type: '', value: '', done: false, failures: [] }]);
+  const [actions, setActions] = useState([{ id: 1, ...EMPTY_ACTION }]);
   const [applyingId, setApplyingId] = useState(null);
   const popRef = useRef(null);
   const style = useAnchoredPosition(open, anchorRef);
   const { agentOptions, loading: loadingAgents } = useDeskColaboradores();
   const { showNotification } = useNotifications();
   const { permissions } = usePermissions();
+  const { getProdutoNames, getMotivos, getDetalhes } = useTabulation();
+  const produtoOptions = getProdutoNames();
   // Enquanto as permissões ainda não carregaram, assume o nível mais baixo (falha fechado —
   // não oferece "atribuir a outro agente" antes de saber se a pessoa realmente pode).
   const canAssignToOthers = (permissions?.nivel ?? 0) >= MIN_NIVEL_ATRIBUIR_A_OUTROS;
@@ -84,7 +107,7 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
 
   useEffect(() => {
     if (!open) {
-      setActions([{ id: 1, type: '', value: '', done: false, failures: [] }]);
+      setActions([{ id: 1, ...EMPTY_ACTION }]);
       setApplyingId(null);
       return undefined;
     }
@@ -105,17 +128,30 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
   if (!open || !style) return null;
 
   const handleTypeChange = (id, type) => {
-    setActions((prev) => prev.map((action) => (action.id === id ? { ...action, type, value: '' } : action)));
+    setActions((prev) => prev.map((action) => (
+      action.id === id ? { ...action, type, value: '', produto: '', motivo: '', detalhe: '' } : action
+    )));
   };
 
   const handleValueChange = (id, value) => {
-    setActions((prev) => prev.map((action) => (action.id === id ? { ...action, value } : action)));
+    setActions((prev) => prev.map((action) => (
+      action.id === id ? { ...action, value, produto: '', motivo: '', detalhe: '' } : action
+    )));
+  };
+
+  const handleTabulacaoFieldChange = (id, field, value) => {
+    setActions((prev) => prev.map((action) => {
+      if (action.id !== id) return action;
+      if (field === 'produto') return { ...action, produto: value, motivo: '', detalhe: '' };
+      if (field === 'motivo') return { ...action, motivo: value, detalhe: '' };
+      return { ...action, detalhe: value };
+    }));
   };
 
   const handleAddAction = () => {
     setActions((prev) => [
       ...prev,
-      { id: (prev[prev.length - 1]?.id || 0) + 1, type: '', value: '', done: false, failures: [] },
+      { id: (prev[prev.length - 1]?.id || 0) + 1, ...EMPTY_ACTION },
     ]);
   };
 
@@ -142,7 +178,16 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
     setApplyingId(action.id);
     try {
       const payload = action.type === 'status'
-        ? { status: action.value }
+        ? {
+          status: action.value,
+          ...(action.value === 'resolvidos' ? {
+            lateralForm: {
+              produto: action.produto,
+              ...(action.motivo ? { motivo: action.motivo } : {}),
+              ...(action.detalhe ? { detalhe: action.detalhe } : {}),
+            },
+          } : {}),
+        }
         : { responsibleAgent: action.value };
       const results = await Promise.allSettled(
         ticketIds.map((id) => ticketsApi.update(id, payload)),
@@ -213,6 +258,9 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
               ? 'Selecionar agente'
               : '';
         const applying = applyingId === action.id;
+        const isResolvendo = action.type === 'status' && action.value === 'resolvidos';
+        const tabState = isResolvendo ? resolveTabulacaoState(action, getMotivos, getDetalhes) : null;
+        const canFinish = action.type && action.value && (!isResolvendo || tabState.complete);
 
         return (
           <div key={action.id} className="bulk-action-popover__group">
@@ -243,7 +291,54 @@ export default function BulkActionPopover({ open, onClose, anchorRef, selectedTi
                 </select>
               ) : null}
 
-              {action.type && action.value ? (
+              {isResolvendo ? (
+                <div className="bulk-action-popover__tabulacao">
+                  <span className="bulk-action-popover__tab-hint">
+                    Tabulação aplicada a todos os tickets selecionados:
+                  </span>
+                  <select
+                    className="bulk-action-popover__select"
+                    value={action.produto}
+                    disabled={applying}
+                    onChange={(e) => handleTabulacaoFieldChange(action.id, 'produto', e.target.value)}
+                  >
+                    <option value="">Selecionar produto</option>
+                    {produtoOptions.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+
+                  {action.produto && tabState.motivoOptions.length > 0 ? (
+                    <select
+                      className="bulk-action-popover__select"
+                      value={action.motivo}
+                      disabled={applying}
+                      onChange={(e) => handleTabulacaoFieldChange(action.id, 'motivo', e.target.value)}
+                    >
+                      <option value="">Selecionar motivo</option>
+                      {tabState.motivoOptions.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  ) : null}
+
+                  {action.motivo && tabState.detalheOptions.length > 0 ? (
+                    <select
+                      className="bulk-action-popover__select"
+                      value={action.detalhe}
+                      disabled={applying}
+                      onChange={(e) => handleTabulacaoFieldChange(action.id, 'detalhe', e.target.value)}
+                    >
+                      <option value="">Selecionar detalhe</option>
+                      {tabState.detalheOptions.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {canFinish ? (
                 <button
                   type="button"
                   className="bulk-action-popover__done"

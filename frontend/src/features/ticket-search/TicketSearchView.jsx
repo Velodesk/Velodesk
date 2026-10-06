@@ -1,8 +1,9 @@
 /**
  * Página Busca de Tickets — filtros dinâmicos + resultados
- * VERSION: v1.0.1 | DATE: 2026-08-04
+ * VERSION: v1.1.0 | DATE: 2026-10-02
  */
 import React, { useCallback, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useProfile } from '../../context/ProfileContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -38,7 +39,10 @@ export default function TicketSearchView() {
   const [searched, setSearched] = useState(false);
   const [total, setTotal] = useState(0);
 
+  const [incluirLegadoOcta, setIncluirLegadoOcta] = useState(false);
+
   const navAllowed = isNavAllowed('busca-tickets');
+  const legadoAllowed = isNavAllowed('legado-octa');
 
   const handleSearch = useCallback(async (event) => {
     event?.preventDefault?.();
@@ -52,10 +56,17 @@ export default function TicketSearchView() {
     setSearched(true);
     try {
       const apiCriterios = buildApiCriterios(valid, getAgentName());
-      const data = await searchTicketsApi({ criterios: apiCriterios, limit: 100 });
+      const data = await searchTicketsApi({
+        criterios: apiCriterios,
+        limit: 100,
+        incluirLegadoOcta: legadoAllowed && incluirLegadoOcta,
+      });
       const list = Array.isArray(data?.tickets) ? data.tickets : [];
       setTickets(list);
       setTotal(Number(data?.total) || list.length);
+      if (data?.legadoOcta?.aviso) {
+        showNotification?.(data.legadoOcta.aviso, 'warning');
+      }
       if (!list.length) {
         showNotification?.('Nenhum ticket encontrado com esses filtros.', 'info');
       }
@@ -67,7 +78,25 @@ export default function TicketSearchView() {
     } finally {
       setLoading(false);
     }
-  }, [criterios, showNotification]);
+  }, [criterios, incluirLegadoOcta, legadoAllowed, showNotification]);
+
+  const handleExport = useCallback(() => {
+    if (!tickets.length) return;
+    const rows = tickets.map((ticket) => ({
+      Protocolo: ticket.chamadoProtocolo || '—',
+      Título: ticket.title || ticket.chamadoTitulo || '—',
+      Cliente: ticket.clientName || ticket.lateralForm?.clienteNome || '—',
+      CPF: ticket.clientCPF || ticket.lateralForm?.cpf || '—',
+      Status: ticket.status || '—',
+      Responsável: ticket.responsibleAgent || ticket.lateralForm?.responsavel || '—',
+      Atualizado: formatDate(ticket.updatedAt),
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Tickets');
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `busca-tickets-${stamp}.xlsx`);
+  }, [tickets]);
 
   const handleClear = useCallback(() => {
     setCriterios([createEmptyCriterio()]);
@@ -77,6 +106,10 @@ export default function TicketSearchView() {
   }, []);
 
   const handleOpenTicket = useCallback((ticket) => {
+    if (ticket?.legadoPath) {
+      navigate(`/legado-octa/${ticket.legadoPath}`);
+      return;
+    }
     const ticketId = String(ticket?._id || ticket?.id || '').trim();
     if (!ticketId) return;
     navigate(resolveOpenPath(profileId, ticketId));
@@ -95,6 +128,15 @@ export default function TicketSearchView() {
               <h1 className="ticket-search-header__title">Busca de Tickets</h1>
             </div>
             <div className="ticket-search-header__actions">
+              <button
+                type="button"
+                className="btn-secondary ticket-search-header__export-btn"
+                onClick={handleExport}
+                disabled={loading || !tickets.length}
+                title="Exportar os tickets listados para uma planilha Excel"
+              >
+                <i className="ti ti-download" aria-hidden="true" /> Exportar
+              </button>
               <button type="button" className="btn-secondary" onClick={handleClear} disabled={loading}>
                 Limpar
               </button>
@@ -105,7 +147,13 @@ export default function TicketSearchView() {
           </header>
 
           <section className="ticket-search-panel" aria-label="Filtros de busca">
-            <TicketSearchCriteriaEditor criterios={criterios} onChange={setCriterios} />
+            <TicketSearchCriteriaEditor
+              criterios={criterios}
+              onChange={setCriterios}
+              showLegadoToggle={legadoAllowed}
+              incluirLegadoOcta={incluirLegadoOcta}
+              onIncluirLegadoOctaChange={setIncluirLegadoOcta}
+            />
           </section>
         </form>
 
@@ -161,7 +209,10 @@ export default function TicketSearchView() {
                         role="button"
                         aria-label={`Abrir ticket ${ticket.chamadoProtocolo || id}`}
                       >
-                        <td>{ticket.chamadoProtocolo || '—'}</td>
+                        <td>
+                          {ticket.chamadoProtocolo || '—'}
+                          {ticket.legadoPath ? <span className="ticket-search-table__legado-tag"> · Legado</span> : null}
+                        </td>
                         <td title={ticket.title || ticket.chamadoTitulo || ''}>
                           {ticket.title || ticket.chamadoTitulo || '—'}
                         </td>

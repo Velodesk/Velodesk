@@ -4,12 +4,12 @@ import { env } from '../config/env';
 import type { AuthPayload } from '../middleware/auth';
 import { ChamadoN1 } from '../models/ChamadoN1';
 import type { IChamadoN1 } from '../models/ChamadoN1';
-import { listOnlineEligibleEmails } from './agentPresence.service';
+import { listOnlineEligibleEmails } from './agentSession.service';
 import { listAgentesDeskLive } from './agenteDesk.service';
 import { listColaboradoresDesk } from './colaboradoresCadastro.service';
 import { loadParticipanteOverrides } from './roletaParticipantes.service';
 import { extractFuncoes } from '../utils/normalizeFuncao';
-import { currentStatus, isConsumidorGovChamado, isProconChamado } from './chamado.mapper';
+import { currentStatus, isConsumidorGovChamado, isEspeciaisChamado, isProconChamado } from './chamado.mapper';
 import {
   isRealResponsavel,
   looksLikeNonDisplayResponsavelToken,
@@ -41,7 +41,13 @@ function emailLocalPart(email?: string): string {
 }
 
 /** Identificador do agente — alias ou primeiro+último; nunca e-mail/login. */
-export function provisionalResponsavelFromUser(user: { name?: string; email?: string }): string {
+export function provisionalResponsavelFromUser(
+  user: { name?: string; email?: string; displayName?: string },
+): string {
+  const displayName = String(user.displayName ?? '').trim();
+  if (displayName && isRealResponsavel(displayName) && !looksLikeNonDisplayResponsavelToken(displayName)) {
+    return displayName;
+  }
   const name = String(user.name ?? '').trim();
   if (name && isRealResponsavel(name) && !looksLikeNonDisplayResponsavelToken(name)) {
     const resolved = resolveResponsavelDisplayNameSync(name);
@@ -54,7 +60,11 @@ export function provisionalResponsavelFromUser(user: { name?: string; email?: st
 }
 
 export function provisionalResponsavelFromAuth(authUser: AuthPayload): string {
-  return provisionalResponsavelFromUser({ name: authUser.name, email: authUser.email });
+  return provisionalResponsavelFromUser({
+    name: authUser.name,
+    email: authUser.email,
+    displayName: authUser.displayName,
+  });
 }
 
 export function buildAgentCandidates(user: { name?: string; email?: string; _id?: { toString(): string } }): string[] {
@@ -621,8 +631,67 @@ async function findOrphanTickets(limit: number): Promise<IChamadoN1[]> {
     .limit(limit);
 }
 
+/**
+ * Distribui TODOS os tickets órfãos (novo + sem responsável) por rodízio entre quem está online
+ * agora — sem teto e sem depender de gatilho (login/heartbeat): roda em varredura periódica
+ * (agentSessionCleanup / roletaSweep job). Sem ninguém online não faz nada; assim que alguém
+ * entra, a próxima varredura distribui. Só estratégia round_robin.
+ */
+const ROLETA_SWEEP_LOCK_ID = 'roletaSweepLock';
+const ROLETA_SWEEP_LOCK_MS = 50_000;
+const ROLETA_SWEEP_BATCH = 300;
+const ROLETA_SWEEP_MAX_SCAN = 3000;
+
+/** Líder único entre instâncias do Cloud Run — a varredura não pode rodar em paralelo. */
+async function acquireRoletaSweepLock(): Promise<boolean> {
+  const now = new Date();
+  const collection = mongoose.connection.collection<{ _id: string; until: Date }>('sequence_counters');
+  try {
+    const res = await collection.findOneAndUpdate(
+      { _id: ROLETA_SWEEP_LOCK_ID, $or: [{ until: { $lt: now } }, { until: { $exists: false } }] },
+      { $set: { until: new Date(now.getTime() + ROLETA_SWEEP_LOCK_MS) } },
+      { upsert: true, returnDocument: 'after' },
+    );
+    return Boolean(res);
+  } catch {
+    // upsert colide com o documento já travado por outra instância (duplicate key) = não é líder
+    return false;
+  }
+}
+
+export async function distributeOrphansRoundRobin(): Promise<number> {
+  if (!env.assignmentRouterEnabled || env.assignmentRouterStrategy !== 'round_robin') return 0;
+  if (!(await acquireRoletaSweepLock())) return 0;
+
+  const agents = await loadOnlineEligibleAgents();
+  if (agents.length === 0) return 0;
+
+  // Lê além do 1º lote: órfãos intencionalmente sem dono (telefone, agente-ia, canais especiais)
+  // ficam sempre no começo da fila por serem os mais antigos e não podem esgotar a varredura.
+  const orphans = await findOrphanTickets(ROLETA_SWEEP_MAX_SCAN);
+  let assigned = 0;
+
+  for (const chamado of orphans) {
+    if (assigned >= ROLETA_SWEEP_BATCH) break;
+    if (!shouldAutoAssign(chamado) || isEspeciaisChamado(chamado)) continue;
+    const assignment = await pickRoundRobinAgent(agents);
+    applyRoletaAssignment(chamado, assignment, { source: 'backfill' });
+    chamado.markModified('tabulacao');
+    chamado.markModified('registro');
+    await chamado.save();
+    assigned += 1;
+  }
+
+  if (assigned > 0) {
+    console.info(`[assignmentRouter] varredura rodízio atribuidos=${assigned} online=${agents.length}`);
+  }
+  return assigned;
+}
+
 export async function rebalanceAgentToCap(responsavelKey: string): Promise<number> {
   if (!env.assignmentRouterEnabled) return 0;
+  // No rodízio não há teto nem backfill por gatilho — quem cuida do acúmulo é distributeOrphansRoundRobin.
+  if (env.assignmentRouterStrategy === 'round_robin') return 0;
 
   const key = String(responsavelKey ?? '').trim().toLowerCase();
   if (!key) return 0;
