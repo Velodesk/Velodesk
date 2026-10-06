@@ -37,6 +37,46 @@ function sanitizeFilename(name: string): string {
   return base.replace(/[^\w.\-()+\s]/g, '_').slice(0, 180);
 }
 
+const MIME_TO_EXTENSION: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.ms-powerpoint': 'ppt',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'application/zip': 'zip',
+  'application/x-zip-compressed': 'zip',
+  'application/json': 'json',
+  'application/xml': 'xml',
+  'text/xml': 'xml',
+  'text/plain': 'txt',
+  'text/csv': 'csv',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/bmp': 'bmp',
+  'image/heic': 'heic',
+  'audio/mpeg': 'mp3',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+};
+
+/**
+ * Anexo sem extensão no filename (URL externa opaca, webhook sem filename) vira arquivo
+ * impossível de identificar/abrir após o download. O Content-Type já foi validado por
+ * magic-byte (attachmentGuard), então usamos ele pra anexar a extensão correta.
+ */
+function ensureFilenameExtension(filename: string, contentType: string): string {
+  if (/\.[a-z0-9]{1,10}$/i.test(filename)) return filename;
+  const mime = String(contentType || '').split(';')[0].trim().toLowerCase();
+  const ext = MIME_TO_EXTENSION[mime];
+  return ext ? `${filename}.${ext}` : filename;
+}
+
 function decodeStorageKey(rawKey: string): string {
   const raw = String(rawKey || '').trim();
   let decoded: string;
@@ -109,7 +149,7 @@ export function parseInboundAttachmentStorageKeyFromApiUrl(apiUrl: string): stri
 export async function persistInboundAttachment(
   input: PersistInboundAttachmentInput,
 ): Promise<StoredInboundAttachment> {
-  const safeName = sanitizeFilename(input.filename);
+  const safeName = ensureFilenameExtension(sanitizeFilename(input.filename), input.contentType);
   const storageKey = `${crypto.randomUUID()}-${safeName}`;
 
   const canQuarantine = isGcsAttachmentStorageConfigured();

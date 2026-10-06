@@ -8,6 +8,8 @@ export interface InboundEmailAttachment {
   contentHash?: string;
   bytes?: number;
   scanStatus?: string;
+  /** Conteúdo bruto de anexo recebido via multipart (webhook) — gravado e removido antes do fluxo principal. */
+  buffer?: Buffer;
 }
 
 export interface InboundEmailPayload {
