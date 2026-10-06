@@ -6,7 +6,7 @@ import type { Contexto } from '../contexto';
 import {
   colChamados, colClientes, colConteudos, colDisparos, filtroExcluirEspeciais, filtroQa, buscarComRetry,
 } from '../db';
-import { ok, falha, parcial, bloqueado, comTicket } from '../resultado';
+import { ok, falha, parcial, bloqueado, comTicket, listarAchados } from '../resultado';
 
 const VINTE_QUATRO_H = 24 * 60 * 60 * 1000;
 const TEMPLATE_CSAT = 'Encerramento mais satisfação';
@@ -171,8 +171,8 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
     coletor.metrica({ nome: 'Tickets de QA no banco', valor: tickets.length, situacao: 'Normal' });
     if (problemas.length) {
       return falha(
-        `Encontrado endereço fora da lista segura em ticket de QA — ${problemas.join(' | ')}. ` +
-          'Corrija antes da próxima rodada.',
+        `Encontrado endereço fora da lista segura em ticket de QA — corrija antes da próxima rodada.\n` +
+          listarAchados(problemas),
       );
     }
     return ok(
@@ -359,6 +359,6 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
     if (!problemas.length) {
       return ok(`${alvos.length} modelo(s) de encerramento por status/SLA conferido(s) — canal e prazo cumpridos.`);
     }
-    return falha(problemas.join(' | '));
+    return falha(listarAchados(problemas));
   });
 }

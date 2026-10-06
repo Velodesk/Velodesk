@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { cfg } from '../config';
 import type { Contexto } from '../contexto';
-import { ok, falha, parcial, bloqueado } from '../resultado';
+import { ok, falha, parcial, bloqueado, listarAchados } from '../resultado';
 
 const ESPERA = 25_000;
 
@@ -167,10 +167,12 @@ export async function checarTelas(ctx: Contexto): Promise<void> {
       if (!errosConsole.length) return ok('Nenhum erro no console ao abrir cockpit, fila e ticket.');
       if (falhasApi.length) {
         return falha(
-          `${falhasApi.length} falha(s) de API registrada(s) no console: ${falhasApi.slice(0, 3).join(' | ')}`,
+          `${falhasApi.length} falha(s) de API registrada(s) no console:\n${listarAchados(falhasApi.slice(0, 3))}`,
         );
       }
-      return parcial(`${errosConsole.length} erro(s) de console sem relação com API: ${errosConsole.slice(0, 3).join(' | ')}`);
+      return parcial(
+        `${errosConsole.length} erro(s) de console sem relação com API:\n${listarAchados(errosConsole.slice(0, 3))}`,
+      );
     });
   } finally {
     await contexto.close().catch(() => undefined);

@@ -145,6 +145,31 @@ export function gravarEstadoSentinela(estado: EstadoAtual): void {
   fs.writeFileSync(ARQ_RUNS, JSON.stringify(historico, null, 2) + '\n', 'utf8');
 }
 
+export interface CasoAnterior {
+  situacao: string;
+  observacao: string;
+}
+
+/**
+ * Lê o estado "atual" como ele está ANTES desta rodada sobrescrever — é a rodada anterior.
+ * Usado pra comparar e não repetir alarme de Telegram pra um problema que já foi notificado e
+ * continua exatamente igual (ver montarMensagemResumo). null quando não há rodada anterior
+ * (primeira execução) ou o Mongo não está acessível — tratado como "tudo é novo", comportamento
+ * de hoje.
+ */
+export async function lerEstadoAnteriorMongo(): Promise<Map<string, CasoAnterior> | null> {
+  try {
+    const colEstado = await colQaSentinelaEstado();
+    const doc = await colEstado.findOne({ _id: 'atual' });
+    const casos = (doc as unknown as EstadoAtual | null)?.casos;
+    if (!casos?.length) return null;
+    return new Map(casos.map((c) => [c.id, { situacao: c.situacao, observacao: c.observacao }]));
+  } catch (err) {
+    console.warn('[qa] falha ao ler estado anterior do Mongo:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 /**
  * Grava o mesmo retrato direto no MongoDB (coleções `qa_sentinela_estado` e
  * `qa_sentinela_runs`, banco `desk_config`) — é dali que a rotina que

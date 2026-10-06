@@ -3,6 +3,16 @@
  */
 import { caso, type CasoCatalogo, type Situacao } from './catalogo';
 
+/**
+ * Lista numerada, uma linha por item — o dashboard (Sentinela) preserva quebra de linha na
+ * observação (ver .obs-note em sentinela/index.html). Junta com " | " quando tem só 1 item,
+ * pra não numerar à toa uma frase única.
+ */
+export function listarAchados(items: string[]): string {
+  if (items.length <= 1) return items.join('');
+  return items.map((item, i) => `${i + 1}. ${item}`).join('\n');
+}
+
 /** Ticket de QA usado numa checagem — permite o dashboard linkar direto pro Desk. */
 export interface TicketRef {
   id: string;

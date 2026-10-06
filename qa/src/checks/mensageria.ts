@@ -19,7 +19,7 @@
 import type { Contexto } from '../contexto';
 import { amostraEmailsReais, colConteudos, nomeClienteParaRedigir } from '../db';
 import { revisarEmailsReais, revisarMensageria, type AmostraParaIa, type TemplateParaIa } from '../ia';
-import { ok, parcial, bloqueado } from '../resultado';
+import { ok, parcial, bloqueado, listarAchados } from '../resultado';
 
 const AMOSTRA_LIMITE = 5;
 
@@ -67,8 +67,8 @@ export async function checarMensageria(ctx: Contexto): Promise<void> {
       return ok(`IA revisou ${templates.length} modelo(s) ativo(s) e não achou problema de tom ou instrução.`);
     }
 
-    const resumo = revisao.achados.map((a) => `"${a.nome}": ${a.problema}`).join(' | ');
-    return parcial(`IA encontrou ${revisao.achados.length} ponto(s) de atenção — ${resumo}`);
+    const resumo = listarAchados(revisao.achados.map((a) => `"${a.nome}": ${a.problema}`));
+    return parcial(`IA encontrou ${revisao.achados.length} ponto(s) de atenção —\n${resumo}`);
   });
 
   // E08 — amostra de e-mail real enviado a cliente (nunca ticket de QA)
@@ -98,7 +98,7 @@ export async function checarMensageria(ctx: Contexto): Promise<void> {
       return ok(`IA revisou ${amostra.length} e-mail(s) real(is) recente(s) e não achou problema de tom ou instrução.`);
     }
 
-    const resumo = revisao.achados.map((a) => `${a.nome}: ${a.problema}`).join(' | ');
-    return parcial(`IA encontrou ${revisao.achados.length} ponto(s) de atenção em e-mail real — ${resumo}`);
+    const resumo = listarAchados(revisao.achados.map((a) => `${a.nome}: ${a.problema}`));
+    return parcial(`IA encontrou ${revisao.achados.length} ponto(s) de atenção em e-mail real —\n${resumo}`);
   });
 }

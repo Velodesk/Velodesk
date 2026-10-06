@@ -28,7 +28,7 @@ import { checarTelas } from './checks/ui';
 import { limparTicketsDaRodada } from './limpeza';
 import { gerarDevolutivas } from './ia';
 import { alimentarPlanilha, nomeRodada, resumoTexto } from './relatorio';
-import { montarEstadoAtual, gravarEstadoSentinela, gravarEstadoSentinelaMongo } from './estadoSentinela';
+import { montarEstadoAtual, gravarEstadoSentinela, gravarEstadoSentinelaMongo, lerEstadoAnteriorMongo } from './estadoSentinela';
 import { enviarRelatorioTelegram, montarMensagemResumo } from './telegram';
 
 const RAIZ = path.join(__dirname, '..');
@@ -158,8 +158,11 @@ async function main() {
   });
 
   // Uma mensagem por rodada, sempre — com falha ou não (enviarRelatorioTelegram já é
-  // fail-soft: nunca derruba a rodada se o Telegram estiver fora ou mal configurado).
-  await enviarRelatorioTelegram(montarMensagemResumo(coletor.resultados));
+  // fail-soft: nunca derruba a rodada se o Telegram estiver fora ou mal configurado). Lê o
+  // estado da rodada anterior ANTES dele ser sobrescrito logo abaixo, pra não repetir alarme
+  // de um problema que já foi notificado e continua idêntico.
+  const estadoAnterior = ctx.temBanco ? await lerEstadoAnteriorMongo() : null;
+  await enviarRelatorioTelegram(montarMensagemResumo(coletor.resultados, estadoAnterior));
 
   console.log(`\n${resumoTexto(coletor)}`);
   console.log(`\nPlanilha atualizada: ${PLANILHA}`);
