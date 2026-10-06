@@ -152,7 +152,8 @@ function buildTicketBody(
     classificacaoTipo: payload.classificacaoTipo || payload.tipoChamado || 'Solicitação',
     tipoChamado: payload.tipoChamado || payload.classificacaoTipo || 'Solicitação',
     produto: payload.produto || '',
-    motivo: payload.motivo || payload.title,
+    // App só envia o assunto (que já vira produto): usar o título como motivo duplicaria o produto.
+    motivo: payload.motivo || (origin === 'app' ? '' : payload.title),
     detalhe: payload.detalhe || payload.text.slice(0, 500),
   };
 
