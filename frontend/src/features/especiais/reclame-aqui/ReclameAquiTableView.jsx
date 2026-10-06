@@ -1,9 +1,10 @@
 /**
- * ReclameAquiTableView v1.1.0 — sem coluna de workflow
+ * ReclameAquiTableView v1.2.0 — coluna Data (dataReclamacao) antes do Status RA
  */
 import React, { useRef, useState } from 'react';
 import { getStatusLabel } from '../../../services/especiais/reclameAquiData';
 import EspeciaisBulkActionPopover from '../shared/EspeciaisBulkActionPopover';
+import { formatComplaintDate, formatRaListDate } from './raTicketFormatters';
 
 const ORGAO_LABELS = {
   bacen: 'Bacen',
@@ -121,6 +122,7 @@ export default function ReclameAquiTableView({
               </span>
             </th>
             <th>Consumidor / Assunto</th>
+            <th>Data</th>
             <th>Status RA</th>
             <th>RA</th>
             <th>Casos Especiais</th>
@@ -134,7 +136,7 @@ export default function ReclameAquiTableView({
           {groups.map((group) => (
             <React.Fragment key={group.id}>
               <tr className={`ra-table__group ra-table__group--${group.tone}`}>
-                <td colSpan={9}>
+                <td colSpan={10}>
                   <strong>{group.label}</strong>
                   <span className="ra-table__group-count">
                     ({group.items.length} reclamaç{group.items.length === 1 ? 'ão' : 'ões'})
@@ -159,6 +161,9 @@ export default function ReclameAquiTableView({
                         <span className="ra-table__assunto">{item.assunto}</span>
                       </div>
                     </div>
+                  </td>
+                  <td title={item.dataReclamacao ? formatComplaintDate(item.dataReclamacao) : undefined}>
+                    {formatRaListDate(item.dataReclamacao)}
                   </td>
                   <td>
                     <span className={`ra-badge ra-badge--${item.statusRa}`}>

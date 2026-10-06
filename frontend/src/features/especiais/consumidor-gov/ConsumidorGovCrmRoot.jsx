@@ -24,6 +24,7 @@ import CgQueuePanel from './CgQueuePanel';
 import CgTicketList from './CgTicketList';
 import CgTicketMain from './CgTicketMain';
 import CgTicketSide from './CgTicketSide';
+import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
 
 export default function ConsumidorGovCrmRoot() {
   const { id } = useParams();
@@ -106,9 +107,7 @@ export default function ConsumidorGovCrmRoot() {
         (a, b) => new Date(a.prazoLegal || 0).getTime() - new Date(b.prazoLegal || 0).getTime(),
       );
     } else {
-      items = [...items].sort(
-        (a, b) => new Date(b.dataDemanda || 0).getTime() - new Date(a.dataDemanda || 0).getTime(),
-      );
+      items = sortOldestFirst(items, 'dataDemanda');
     }
     return items;
   }, [allItems, activeGroup, activeSort, listSearchDraft, isRemoteSearch]);

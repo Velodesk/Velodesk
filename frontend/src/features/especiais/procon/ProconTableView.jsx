@@ -5,6 +5,7 @@ import React, { useRef, useState } from 'react';
 import { getStatusLabel } from '../../../services/especiais/proconData';
 import { formatPrazoLegal } from '../../../services/especiais/proconStore';
 import EspeciaisBulkActionPopover from '../shared/EspeciaisBulkActionPopover';
+import { formatComplaintDate, formatRaListDate } from './pcTicketFormatters';
 
 function RespostaButton({ action, item, onAction, disabled = false }) {
   if (action === 'responder') {
@@ -99,6 +100,7 @@ export default function ProconTableView({
               </span>
             </th>
             <th>Consumidor / Assunto</th>
+            <th>Data</th>
             <th>Status Procon</th>
             <th>SLA</th>
             <th>Prazo legal</th>
@@ -113,7 +115,7 @@ export default function ProconTableView({
           {groups.map((group) => (
             <React.Fragment key={group.id}>
               <tr className={`ra-table__group ra-table__group--${group.tone}`}>
-                <td colSpan={10}>
+                <td colSpan={11}>
                   <strong>{group.label}</strong>
                   <span className="ra-table__group-count">
                     ({group.items.length} demanda{group.items.length === 1 ? '' : 's'})
@@ -138,6 +140,9 @@ export default function ProconTableView({
                         <span className="ra-table__assunto">{item.assunto}</span>
                       </div>
                     </div>
+                  </td>
+                  <td title={item.dataDemanda ? formatComplaintDate(item.dataDemanda) : undefined}>
+                    {formatRaListDate(item.dataDemanda)}
                   </td>
                   <td>
                     <span className={`ra-badge ra-badge--${item.statusPc}`}>

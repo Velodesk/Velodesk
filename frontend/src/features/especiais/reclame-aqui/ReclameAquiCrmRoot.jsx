@@ -23,6 +23,7 @@ import RaQueuePanel from './RaQueuePanel';
 import RaTicketList from './RaTicketList';
 import RaTicketMain from './RaTicketMain';
 import RaTicketSide from './RaTicketSide';
+import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
 
 export default function ReclameAquiCrmRoot() {
   const { id } = useParams();
@@ -110,9 +111,7 @@ export default function ReclameAquiCrmRoot() {
         (a, b) => new Date(a.prazoRa || 0).getTime() - new Date(b.prazoRa || 0).getTime(),
       );
     } else {
-      items = [...items].sort(
-        (a, b) => new Date(b.dataReclamacao || 0).getTime() - new Date(a.dataReclamacao || 0).getTime(),
-      );
+      items = sortOldestFirst(items, 'dataReclamacao');
     }
     return items;
   }, [allItems, activeGroup, activeSort, listSearchDraft, isRemoteSearch]);

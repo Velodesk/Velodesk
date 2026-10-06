@@ -24,6 +24,7 @@ import BcQueuePanel from './BcQueuePanel';
 import BcTicketList from './BcTicketList';
 import BcTicketMain from './BcTicketMain';
 import BcTicketSide from './BcTicketSide';
+import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
 
 export default function BacenCrmRoot() {
   const { id } = useParams();
@@ -106,9 +107,7 @@ export default function BacenCrmRoot() {
         (a, b) => new Date(a.prazoLegal || 0).getTime() - new Date(b.prazoLegal || 0).getTime(),
       );
     } else {
-      items = [...items].sort(
-        (a, b) => new Date(b.dataDemanda || 0).getTime() - new Date(a.dataDemanda || 0).getTime(),
-      );
+      items = sortOldestFirst(items, 'dataDemanda');
     }
     return items;
   }, [allItems, activeGroup, activeSort, listSearchDraft, isRemoteSearch]);

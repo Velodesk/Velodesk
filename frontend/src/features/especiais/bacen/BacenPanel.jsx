@@ -23,8 +23,10 @@ import BacenToolbar from './BacenToolbar';
 import BacenKpiRow from './BacenKpiRow';
 import BacenTableView from './BacenTableView';
 import BacenReportsView from './BacenReportsView';
+import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
 
-function buildView(items) {
+function buildView(rawItems) {
+  const items = sortOldestFirst(rawItems, 'dataDemanda');
   return {
     items,
     kpis: getBacenKpis(items),
