@@ -12,6 +12,7 @@ import {
   findByChamadoId,
   listByOrgao,
   countByOrgao,
+  countContagensByOrgao,
   countCasosEspeciaisByCpf,
   parseReclamacaoOrgaoRoute,
   patchReclamacao,
@@ -129,6 +130,23 @@ router.get('/:orgao', authMiddleware, async (req, res: Response) => {
   } catch (err) {
     const status = (err as { status?: number }).status ?? 500;
     const message = err instanceof Error ? err.message : 'Erro ao listar reclamações';
+    return res.status(status).json({ message });
+  }
+});
+
+router.get('/:orgao/contagens', authMiddleware, async (req, res: Response) => {
+  if (!isReclamacoesConnected()) {
+    return res.status(503).json({ message: 'Banco chamados_reclamacoes indisponível' });
+  }
+
+  try {
+    const orgao = parseOrgaoParam(String(req.params.orgao));
+    await assertCanAccessOrgao(req.user!, orgao);
+    const contagens = await countContagensByOrgao(orgao);
+    return res.json(contagens ?? { total: 0, grupos: {}, kpis: {} });
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 500;
+    const message = err instanceof Error ? err.message : 'Erro ao contar reclamações';
     return res.status(status).json({ message });
   }
 });

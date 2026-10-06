@@ -469,6 +469,91 @@ export async function countByOrgao(
   return Model.countDocuments(query).exec();
 }
 
+export interface ReclamacaoContagens {
+  total: number;
+  grupos: Record<'vencendo-hoje' | 'finalizadas' | 'nao-respondidas' | 'respondidas', number>;
+  kpis: { vencendoHoje: number; naoRespondidas: number; respondidas: number; passivelNota: number };
+}
+
+const CANAL_FECHADO_STATUSES = ['respondida', 'aguard-avaliacao', 'aguardando-audiencia'];
+const TICKET_TERMINAL_STATUSES = ['resolvido', 'resolvidos', 'cancelado', 'fechado'];
+
+/**
+ * Contagens por fila/KPI calculadas no banco — espelha resolveEspeciaisGroupKey do front
+ * (especiaisGroupKey.js) para os cards não dependerem de baixar todas as páginas da lista.
+ */
+export async function countContagensByOrgao(orgao: CasoEspecialOrgao): Promise<ReclamacaoContagens | null> {
+  const Model = resolveReclamacaoModel(orgao);
+  if (!Model) return null;
+
+  const tz = 'America/Sao_Paulo';
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+
+  const statusLower = { $toLower: { $ifNull: ['$statusCanal', ''] } };
+  const canalFechado = {
+    $or: [{ $eq: ['$aberta', false] }, { $in: [statusLower, CANAL_FECHADO_STATUSES] }],
+  };
+  const deskTerminal = {
+    $in: [{ $toLower: { $ifNull: ['$ticketStatus', ''] } }, TICKET_TERMINAL_STATUSES],
+  };
+  const vencendoHoje = {
+    $and: [
+      { $ne: ['$aberta', false] },
+      { $eq: [{ $type: '$prazoLegal' }, 'date'] },
+      {
+        $eq: [
+          { $dateToString: { date: '$prazoLegal', format: '%Y-%m-%d', timezone: tz } },
+          todayStr,
+        ],
+      },
+    ],
+  };
+
+  const rows = await Model.aggregate([
+    {
+      $project: {
+        grupo: {
+          $switch: {
+            branches: [
+              { case: { $and: [canalFechado, deskTerminal] }, then: 'finalizadas' },
+              { case: vencendoHoje, then: 'vencendo-hoje' },
+              { case: canalFechado, then: 'respondidas' },
+            ],
+            default: 'nao-respondidas',
+          },
+        },
+        naoRespStatus: { $eq: [statusLower, 'nao-respondida'] },
+        respStatus: { $in: [statusLower, ['respondida', 'aguard-avaliacao']] },
+        passivel: { $eq: ['$meta.passivelNota', true] },
+      },
+    },
+    {
+      $group: {
+        _id: '$grupo',
+        count: { $sum: 1 },
+        naoResp: { $sum: { $cond: ['$naoRespStatus', 1, 0] } },
+        resp: { $sum: { $cond: ['$respStatus', 1, 0] } },
+        passivel: { $sum: { $cond: ['$passivel', 1, 0] } },
+      },
+    },
+  ]).exec();
+
+  const grupos = { 'vencendo-hoje': 0, finalizadas: 0, 'nao-respondidas': 0, respondidas: 0 };
+  const kpis = { vencendoHoje: 0, naoRespondidas: 0, respondidas: 0, passivelNota: 0 };
+  let total = 0;
+  for (const row of rows as Array<{ _id: keyof typeof grupos; count: number; naoResp: number; resp: number; passivel: number }>) {
+    grupos[row._id] = row.count;
+    total += row.count;
+    if (row._id === 'finalizadas') continue;
+    if (row._id === 'vencendo-hoje') kpis.vencendoHoje = row.count;
+    if (row._id === 'nao-respondidas') kpis.naoRespondidas += row.count;
+    kpis.naoRespondidas += row._id === 'nao-respondidas' ? 0 : row.naoResp;
+    kpis.respondidas += row.resp;
+    kpis.passivelNota += row.passivel;
+  }
+  return { total, grupos, kpis };
+}
+
 export interface CasosEspeciaisPorCpfEntry {
   orgao: Exclude<CasoEspecialOrgao, 'reclame_aqui' | 'indefinido'>;
   count: number;

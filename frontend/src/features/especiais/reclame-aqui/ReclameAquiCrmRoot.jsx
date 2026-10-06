@@ -7,7 +7,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useNotifications } from '../../../context/NotificationContext';
 import { useRaNovaReclamacaoModals } from '../../../hooks/useRaNovaReclamacaoModals';
 import { RA_GROUPS } from '../../../services/especiais/reclameAquiData';
-import { loadReclamacoes, searchReclamacoesFromApi, RA_LIST_PAGE_SIZE } from '../../../services/especiais/reclameAquiStore';
+import { getRaServerCounts, loadReclamacoes, searchReclamacoesFromApi, RA_LIST_PAGE_SIZE } from '../../../services/especiais/reclameAquiStore';
 import {
   buildRaInitialGreetingMessage,
   fetchRaTicketView,
@@ -93,6 +93,8 @@ export default function ReclameAquiCrmRoot() {
   }, [isRemoteSearch, remoteItems, listVersion]);
 
   const groupCounts = useMemo(() => {
+    const serverCounts = !isRemoteSearch ? getRaServerCounts() : null;
+    if (serverCounts?.grupos) return { ...serverCounts.grupos };
     const counts = {};
     const base = isRemoteSearch && remoteItems ? remoteItems : loadReclamacoes({});
     RA_GROUPS.forEach((g) => {

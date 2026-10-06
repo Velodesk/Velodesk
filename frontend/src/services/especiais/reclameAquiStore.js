@@ -89,6 +89,30 @@ function normalizeApiItem(row) {
 }
 
 let backgroundRefreshPromise = null;
+let serverCounts = null;
+let serverTotal = 0;
+
+/** Contagens vindas do banco — válidas enquanto o cache local ainda não tem todas as páginas. */
+export function getRaServerCounts() {
+  if (!serverCounts) return null;
+  const loaded = memoryCache ? memoryCache.length : 0;
+  return loaded < serverTotal ? serverCounts : null;
+}
+
+async function refreshServerCounts() {
+  try {
+    const data = await reclamacoesApi.contagens('reclame-aqui');
+    if (data?.grupos) {
+      serverCounts = data;
+      serverTotal = Number(data.total) || 0;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('velodesk:ra-sync'));
+      }
+    }
+  } catch {
+    // fail-soft: sem contagem do servidor os cards seguem pelo cache local
+  }
+}
 
 // Antes buscava TODAS as páginas em sequência (~136 requisições pra 6.800+ tickets importados)
 // antes de liberar a tela — a lista ficava travada em "Carregando..." por um tempo excessivo.
@@ -96,6 +120,7 @@ let backgroundRefreshPromise = null;
 // completa em segundo plano, sem travar a UI, emitindo velodesk:ra-sync periodicamente pra
 // KPIs/kanban/contadores da fila irem se atualizando conforme mais dados chegam.
 export async function refreshReclamacoesFromApi() {
+  void refreshServerCounts();
   const first = await reclamacoesApi.list('reclame-aqui', { limit: RA_LIST_PAGE_SIZE, skip: 0 });
   const firstBatch = (first?.items ?? []).map(normalizeApiItem);
   const total = Number.isFinite(Number(first?.total)) ? Number(first.total) : firstBatch.length;
@@ -211,6 +236,7 @@ export function loadReclamacoes({ search = '', activeChips = [], gestaoView = fa
 }
 
 export function getReclameAquiKpis(items = loadAllReclamacoes()) {
+  const counts = getRaServerCounts();
   const operational = items.filter((i) => !isEspeciaisItemFinalizada(i));
   const today = new Date();
   const vencendoHoje = operational.filter((i) => {
@@ -235,10 +261,10 @@ export function getReclameAquiKpis(items = loadAllReclamacoes()) {
     : 0;
 
   return [
-    { id: 'vencendo', label: 'Vencendo hoje', value: String(vencendoHoje), tone: 'danger', icon: 'ti-clock-exclamation' },
-    { id: 'nao-resp', label: 'Não respondidas', value: String(naoRespondidas), tone: 'warning', icon: 'ti-message-exclamation' },
-    { id: 'respondidas', label: 'Respondidas', value: String(respondidas), tone: 'info', icon: 'ti-message-check' },
-    { id: 'passivel', label: 'Passível de nota', value: String(passivelNota), tone: 'purple', icon: 'ti-star' },
+    { id: 'vencendo', label: 'Vencendo hoje', value: String(counts?.kpis?.vencendoHoje ?? vencendoHoje), tone: 'danger', icon: 'ti-clock-exclamation' },
+    { id: 'nao-resp', label: 'Não respondidas', value: String(counts?.kpis?.naoRespondidas ?? naoRespondidas), tone: 'warning', icon: 'ti-message-exclamation' },
+    { id: 'respondidas', label: 'Respondidas', value: String(counts?.kpis?.respondidas ?? respondidas), tone: 'info', icon: 'ti-message-check' },
+    { id: 'passivel', label: 'Passível de nota', value: String(counts?.kpis?.passivelNota ?? passivelNota), tone: 'purple', icon: 'ti-star' },
     { id: 'nota', label: 'Nota média', value: String(notaMedia), tone: 'success', icon: 'ti-star' },
     { id: 'prazo', label: 'Respondidas no prazo', value: `${pctNoPrazo}%`, tone: 'yellow', icon: 'ti-percentage' },
   ];

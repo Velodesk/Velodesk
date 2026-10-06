@@ -478,6 +478,8 @@ export const ticketFusaoApi = {
 export const reclamacoesApi = {
   list: (orgao, params = {}) =>
     api.get(`/reclamacoes/${encodeURIComponent(orgao)}`, { params }).then((r) => r.data),
+  contagens: (orgao) =>
+    api.get(`/reclamacoes/${encodeURIComponent(orgao)}/contagens`).then((r) => r.data),
   search: (orgao, q, params = {}) =>
     api.get(`/reclamacoes/${encodeURIComponent(orgao)}/search`, {
       params: { q, ...params },
