@@ -154,14 +154,13 @@ export async function processGmailHistory(
           if (rewrittenHtml) {
             payload.htmlBody = rewrittenHtml;
           }
-          const merged = [...inboundAttachments];
-          for (const inline of inlineAttachments) {
-            if (!merged.some((a) => a.url && a.url === inline.url)) {
-              merged.push(inline);
-            }
-          }
-          if (merged.length) {
-            payload.attachments = merged;
+          // inlineAttachments (logo, assinatura, estrelas do CSAT e demais imagens `cid:` do HTML
+          // citado) existem só para reescrever o corpo e renderizar a imagem — não são anexos do
+          // cliente, então NÃO entram em payload.attachments. Anexo = só o que o cliente anexou
+          // (downloadGmailAttachments, que já exclui imagens do corpo/do próprio VeloDesk).
+          void inlineAttachments;
+          if (inboundAttachments.length) {
+            payload.attachments = inboundAttachments;
           }
 
           try {
@@ -173,7 +172,7 @@ export async function processGmailHistory(
               messageId: payload.messageId,
               action: result.action,
               protocolo: result.chamadoProtocolo ?? null,
-              anexos: merged.length,
+              anexos: inboundAttachments.length,
             });
           } catch (err) {
             console.error('[gmailInbound] processInboundEmail falhou:', {
