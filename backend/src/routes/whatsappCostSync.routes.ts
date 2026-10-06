@@ -1,4 +1,4 @@
-/** whatsappCostSync.routes v1.0.0 — sync sob demanda + status da coleção `whatsapp_message_costs`. */
+/** whatsappCostSync.routes v1.1.0 — sync sob demanda + status + endpoint pro Cloud Scheduler. */
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { isMongoConnected } from '../config/database';
@@ -6,10 +6,49 @@ import { env } from '../config/env';
 import {
   getWhatsappCostStatus,
   purgeForeignWhatsappCostDocs,
+  syncWhatsappCostBackfill,
+  syncWhatsappCostDaily,
   syncWhatsappCostRange,
 } from '../services/twilio/whatsappCostSync.service';
 
 const router = Router();
+
+/**
+ * Endpoint pro Cloud Scheduler — ANTES do authMiddleware porque não tem JWT de usuário,
+ * autentica via Bearer secret próprio. Fail-closed: se o secret não estiver configurado,
+ * nega tudo (503) pra não deixar o endpoint aberto por engano.
+ *
+ * Body `{days: N}` roda backfill de N dias (1..90). Sem body, roda sync diário.
+ */
+router.post('/sync/scheduled', async (req: Request, res: Response) => {
+  const secret = env.whatsappCostSyncSchedulerSecret;
+  if (!secret) {
+    return res.status(503).json({ message: 'Scheduler secret não configurado' });
+  }
+  const header = String(req.headers.authorization ?? '').trim();
+  const token = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+  if (!token || token !== secret) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  if (!isMongoConnected()) return res.status(503).json({ message: 'Banco indisponível' });
+  try {
+    const rawDays = req.body?.days;
+    if (rawDays !== undefined && rawDays !== null) {
+      const n = Number(rawDays);
+      if (!Number.isFinite(n)) {
+        return res.status(400).json({ message: '`days` precisa ser número' });
+      }
+      const clamped = Math.max(1, Math.min(90, Math.trunc(n)));
+      const result = await syncWhatsappCostBackfill(clamped);
+      return res.json({ mode: 'backfill', days: clamped, ...result });
+    }
+    const result = await syncWhatsappCostDaily();
+    return res.json({ mode: 'daily', ...result });
+  } catch (err) {
+    console.error('[whatsapp-cost] POST /sync/scheduled falhou:', err);
+    return res.status(500).json({ message: (err as Error).message || 'Erro no sync' });
+  }
+});
 
 /** Mesma regra dos demais painéis: em produção só supervisor. Fora, qualquer autenticado. */
 function requireSupervisorInProduction(req: Request, res: Response, next: NextFunction) {

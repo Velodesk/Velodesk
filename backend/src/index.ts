@@ -79,7 +79,6 @@ import { startCloseResolvedTicketsJob } from './jobs/closeResolvedTickets.job';
 import { startAgentSessionCleanupJob } from './jobs/agentSessionCleanup.job';
 import { startCsatRepescagemJob } from './jobs/csatRepescagem.job';
 import { startCsatInicialJob } from './jobs/csatInicial.job';
-import { startWhatsappCostSyncJob } from './jobs/whatsappCostSync.job';
 import { startEmailSlaTriggerJob } from './jobs/emailSlaTrigger.job';
 import { startResolvePendenteTicketsJob } from './jobs/resolvePendenteTickets.job';
 import { startChamadoIaAnaliseJob } from './jobs/chamadoIaAnalise.job';
@@ -385,7 +384,6 @@ async function start() {
       startAgentSessionCleanupJob();
       startCsatRepescagemJob();
       startCsatInicialJob();
-      startWhatsappCostSyncJob();
       startEmailSlaTriggerJob();
       startResolvePendenteTicketsJob();
       startWhatsAppAudioTranscriptionWorker();
