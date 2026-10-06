@@ -5,6 +5,7 @@ import { isMongoConnected } from '../config/database';
 import { env } from '../config/env';
 import {
   getWhatsappCostStatus,
+  purgeForeignWhatsappCostDocs,
   syncWhatsappCostRange,
 } from '../services/twilio/whatsappCostSync.service';
 
@@ -48,6 +49,28 @@ router.post('/sync', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[whatsapp-cost] POST /sync falhou:', err);
     return res.status(500).json({ message: (err as Error).message || 'Erro no sync' });
+  }
+});
+
+/**
+ * Limpa os registros que não pertencem ao(s) número(s) do Desk — lixo ingerido pela v1.0.0
+ * do sync, que varria a conta Twilio compartilhada. Default é dry-run: só conta.
+ * Passe `{ "confirm": true }` no body pra apagar de verdade.
+ */
+router.post('/purge-foreign', async (req: Request, res: Response) => {
+  if (!isMongoConnected()) return res.status(503).json({ message: 'Banco indisponível' });
+  const confirm = req.body?.confirm === true;
+  try {
+    const result = await purgeForeignWhatsappCostDocs(!confirm);
+    return res.json({
+      ...result,
+      aviso: confirm
+        ? undefined
+        : 'Dry-run: nada foi apagado. Reenvie com {"confirm": true} pra executar.',
+    });
+  } catch (err) {
+    console.error('[whatsapp-cost] POST /purge-foreign falhou:', err);
+    return res.status(500).json({ message: (err as Error).message || 'Erro na limpeza' });
   }
 });
 
