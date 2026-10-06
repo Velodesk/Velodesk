@@ -4,7 +4,6 @@
 import React, { useRef, useState } from 'react';
 import { getStatusLabel } from '../../../services/especiais/reclameAquiData';
 import EspeciaisBulkActionPopover from '../shared/EspeciaisBulkActionPopover';
-import { formatComplaintDate, formatRaListDate } from './raTicketFormatters';
 
 const ORGAO_LABELS = {
   bacen: 'Bacen',
@@ -35,6 +34,17 @@ function RespostaButton({ action, item, onAction }) {
     );
   }
   return null;
+}
+
+function RaDataCell({ iso }) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return <td>—</td>;
+  return (
+    <td style={{ whiteSpace: 'nowrap' }}>
+      <span>{d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+      <span className="ra-table__assunto">{d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+    </td>
+  );
 }
 
 function RaRepeatIndicator({ item, clientRepeatCounts }) {
@@ -162,9 +172,7 @@ export default function ReclameAquiTableView({
                       </div>
                     </div>
                   </td>
-                  <td title={item.dataReclamacao ? formatComplaintDate(item.dataReclamacao) : undefined}>
-                    {formatRaListDate(item.dataReclamacao)}
-                  </td>
+                  <RaDataCell iso={item.dataReclamacao} />
                   <td>
                     <span className={`ra-badge ra-badge--${item.statusRa}`}>
                       {getStatusLabel(item.statusRa)}
