@@ -445,19 +445,6 @@ function buildAttachmentMetadados(payload: InboundEmailPayload): Record<string, 
   return items.length ? { emailAttachments: items } : {};
 }
 
-function appendAttachmentReferencesToBody(bodyText: string, payload: InboundEmailPayload): string {
-  const lines = (payload.attachments ?? [])
-    .filter((item) => item.filename || item.url)
-    .map((item) => {
-      const label = String(item.filename || 'anexo').trim() || 'anexo';
-      return `[Anexo: ${label}]`;
-    });
-  if (!lines.length) return bodyText;
-  const block = lines.join('\n');
-  const base = String(bodyText || '').trim();
-  return base ? `${base}\n\n${block}` : block;
-}
-
 export async function processInboundEmail(payload: InboundEmailPayload): Promise<InboundEmailProcessResult> {
   const messageId = normalizeMessageId(payload.messageId);
   if (!messageId) {
@@ -820,7 +807,8 @@ async function runInboundEmailFlow(
   retainOnlyNewAttachments(payload, existing);
   dropBrandInlineAttachments(payload);
 
-  const bodyText = appendAttachmentReferencesToBody(resolveEmailBodyForPersist(payload), payload);
+  // Anexos aparecem como itens clicáveis da mensagem — não repetir o nome deles como texto.
+  const bodyText = resolveEmailBodyForPersist(payload);
 
   const bacenParsed = isBacenRdrStructuredInboundEmail(payload, bodyText)
     ? parseBacenRdrInboundEmail(bodyText, payload.subject)
