@@ -1,6 +1,12 @@
 /**
- * whatsappCostSync.service v1.1.0 — pagina Twilio Messages API e persiste custo real
+ * whatsappCostSync.service v1.2.0 — pagina Twilio Messages API e persiste custo real
  * por mensagem no Mongo (`whatsapp_message_costs`). WFM consome pra agregar por período.
+ *
+ * v1.2.0 — FLUSH POR PÁGINA. Antes acumulava tudo em memória e fazia um único
+ * `bulkWrite` no fim: se o processo caísse no meio (504 do proxy, deploy, OOM) o run
+ * inteiro era perdido. Agora cada página é gravada assim que chega — se cortar no
+ * meio, o que já veio fica salvo e o próximo run é idempotente (upsert por `sid`
+ * reconhece os docs existentes).
  *
  * v1.1.0 — FILTRA PELO SENDER DO DESK. A conta Twilio é compartilhada com a empresa
  * inteira; sem filtro, o sync trazia todas as mensagens WhatsApp de todos os produtos
@@ -181,9 +187,65 @@ function toDocPayload(
   };
 }
 
+/** Totais acumulados ao longo do run — mutados pela função de flush. */
+interface RunTotals {
+  fetched: number;
+  matched: number;
+  inserted: number;
+  modified: number;
+  upserted: number;
+  comTicket: number;
+  semPrice: number;
+  pages: number;
+}
+
+/**
+ * Grava uma página de resultados: resolve ticketIds em batch, monta upserts, dispara
+ * bulkWrite e atualiza os contadores do run. Chamado ao fim de cada página da Twilio —
+ * se o processo cair no meio, o que já veio fica salvo e o próximo run reaproveita
+ * (upsert por `sid` é idempotente).
+ */
+async function flushPage(
+  pageItems: TwilioMessageInstance[],
+  totals: RunTotals,
+  now: Date,
+): Promise<void> {
+  if (!pageItems.length) return;
+
+  const sids = pageItems.map((m) => m.sid);
+  const ticketMap = await resolveTicketIdsBySids(sids);
+
+  const bulkOps: Array<{
+    updateOne: {
+      filter: { sid: string };
+      update: { $set: Partial<IWhatsappMessageCost> };
+      upsert: true;
+    };
+  }> = [];
+  for (const m of pageItems) {
+    const ticketId = ticketMap.get(m.sid) ?? null;
+    if (ticketId) totals.comTicket += 1;
+    const payload = toDocPayload(m, ticketId, now);
+    if (payload.price === null) totals.semPrice += 1;
+    bulkOps.push({
+      updateOne: { filter: { sid: m.sid }, update: { $set: payload }, upsert: true },
+    });
+  }
+
+  totals.fetched += pageItems.length;
+  const res = await WhatsappMessageCost.bulkWrite(bulkOps, { ordered: false });
+  totals.matched += res.matchedCount ?? 0;
+  totals.inserted += res.insertedCount ?? 0;
+  totals.modified += res.modifiedCount ?? 0;
+  totals.upserted += res.upsertedCount ?? 0;
+}
+
 /**
  * Sync completo de um range arbitrário. Idempotente: seguros dois runs no mesmo período.
  * Overlap de 1h automático na fronteira anterior — evita perder mensagens perto do limite.
+ *
+ * v1.2.0: grava a cada página. Em caso de corte no meio (504 do proxy, deploy), o que já
+ * veio fica salvo — o próximo run reaproveita via upsert e termina o que faltou.
  */
 export async function syncWhatsappCostRange(
   fromDate: Date,
@@ -206,12 +268,22 @@ export async function syncWhatsappCostRange(
   }
 
   const client = getTwilioClient();
-  // Dedup por sid: um número aparece como `From` no outbound e como `To` no inbound, então
-  // as duas varreduras nunca deveriam colidir — mas o Map protege de qualquer sobreposição.
-  const bySid = new Map<string, TwilioMessageInstance>();
-  let pages = 0;
+  const totals: RunTotals = {
+    fetched: 0,
+    matched: 0,
+    inserted: 0,
+    modified: 0,
+    upserted: 0,
+    comTicket: 0,
+    semPrice: 0,
+    pages: 0,
+  };
+  const now = new Date();
+  // Dedup entre páginas e entre as duas varreduras (From + To) do mesmo número — um sid
+  // nunca é gravado duas vezes no mesmo run, poupa idas ao Mongo.
+  const seenSids = new Set<string>();
 
-  /** Pagina a Messages API com um filtro fixo (From ou To) e acumula no Map. */
+  /** Pagina a Messages API com um filtro fixo (From ou To) e faz flush a cada página. */
   async function collectWithFilter(filter: { from: string } | { to: string }): Promise<void> {
     // Twilio SDK devolve `MessagePage | undefined` no nextPage, mas o generic Page do inicial não bate
     // exatamente — usamos `any` pontual pra silenciar o conflito de tipos (o shape é compatível em runtime).
@@ -224,10 +296,13 @@ export async function syncWhatsappCostRange(
     });
 
     while (page) {
-      pages += 1;
+      totals.pages += 1;
+      const pageItems: TwilioMessageInstance[] = [];
       for (const m of page.instances) {
         if (!isWhatsappMessage(m.from, m.to)) continue;
-        bySid.set(m.sid, {
+        if (seenSids.has(m.sid)) continue;
+        seenSids.add(m.sid);
+        pageItems.push({
           sid: m.sid,
           accountSid: m.accountSid,
           direction: String(m.direction ?? ''),
@@ -243,6 +318,7 @@ export async function syncWhatsappCostRange(
           dateUpdated: m.dateUpdated ?? null,
         });
       }
+      await flushPage(pageItems, totals, now);
       if (!page.nextPageUrl) break;
       page = await page.nextPage();
     }
@@ -253,60 +329,20 @@ export async function syncWhatsappCostRange(
     await collectWithFilter({ to: numero }); // inbound: cliente → Desk
   }
 
-  const collected = [...bySid.values()];
-  const sids = collected.map((m) => m.sid);
-  const ticketMap = await resolveTicketIdsBySids(sids);
-
-  const now = new Date();
-  let comTicket = 0;
-  let semPrice = 0;
-  const bulkOps: Array<{
-    updateOne: {
-      filter: { sid: string };
-      update: { $set: Partial<IWhatsappMessageCost> };
-      upsert: true;
-    };
-  }> = [];
-  for (const m of collected) {
-    const ticketId = ticketMap.get(m.sid) ?? null;
-    if (ticketId) comTicket += 1;
-    const payload = toDocPayload(m, ticketId, now);
-    if (payload.price === null) semPrice += 1;
-    bulkOps.push({
-      updateOne: {
-        filter: { sid: m.sid },
-        update: { $set: payload },
-        upsert: true,
-      },
-    });
-  }
-
-  let matched = 0;
-  let inserted = 0;
-  let modified = 0;
-  let upserted = 0;
-  if (bulkOps.length) {
-    const res = await WhatsappMessageCost.bulkWrite(bulkOps, { ordered: false });
-    matched = res.matchedCount ?? 0;
-    inserted = res.insertedCount ?? 0;
-    modified = res.modifiedCount ?? 0;
-    upserted = res.upsertedCount ?? 0;
-  }
-
   return {
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
     from: from.toISOString(),
     to: to.toISOString(),
     numeros,
-    fetched: collected.length,
-    matched,
-    inserted,
-    modified,
-    upserted,
-    comTicket,
-    semPrice,
-    pages,
+    fetched: totals.fetched,
+    matched: totals.matched,
+    inserted: totals.inserted,
+    modified: totals.modified,
+    upserted: totals.upserted,
+    comTicket: totals.comTicket,
+    semPrice: totals.semPrice,
+    pages: totals.pages,
   };
 }
 
@@ -317,7 +353,7 @@ export async function syncWhatsappCostDaily(): Promise<WhatsappCostSyncResult> {
   return syncWhatsappCostRange(from, to);
 }
 
-/** Backfill inicial de N dias — rodado só se a coleção estiver vazia no startup. */
+/** Backfill de N dias — chamado sob demanda via endpoint. */
 export async function syncWhatsappCostBackfill(dias = 30): Promise<WhatsappCostSyncResult> {
   const to = new Date();
   const from = new Date(to.getTime() - dias * 24 * 60 * 60 * 1000);

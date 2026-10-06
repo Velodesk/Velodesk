@@ -294,6 +294,13 @@ export const env = {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean),
+  /**
+   * Segredo compartilhado pro endpoint `POST /api/whatsapp-cost/sync/scheduled`, chamado
+   * pelo Cloud Scheduler da GCP. Sem JWT/user — o Scheduler apresenta este Bearer no
+   * header `Authorization`. Vazio em prod = endpoint fica OFF (devolve 503), evitando
+   * que fique aberto sem autenticação por engano.
+   */
+  whatsappCostSyncSchedulerSecret: String(process.env.WHATSAPP_COST_SYNC_SCHEDULER_SECRET || '').trim(),
   /** Batch periódico de re-varredura da IA de telefonia (sort pesado em telephony_calls).
    * Desativado por padrão: cada ligação já é classificada na chegada (telephonyInbound). */
   telephonyIaBatchEnabled: process.env.TELEPHONY_IA_BATCH_ENABLED === 'true',
