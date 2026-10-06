@@ -282,6 +282,8 @@ function buildReclamacaoPayload(
     workflowAtivo: Boolean(chamado.workflow?.active),
     workflow: buildReclamacaoWorkflowSnapshot(chamado),
     aberta: !terminal,
+    // Denormalizado: a listagem/contagem desta coleção não faz join com chamados_n1.
+    ticketStatus: status,
     meta: buildMetaForOrgao(orgao, meta),
   };
 }
