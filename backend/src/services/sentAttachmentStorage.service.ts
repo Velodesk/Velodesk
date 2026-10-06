@@ -38,12 +38,23 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-function decodeStorageKey(rawKey: string): string {
+function decodeRawStorageKey(rawKey: string): string {
   const decoded = decodeURIComponent(String(rawKey || '').trim());
   if (!decoded || decoded.includes('..') || decoded.includes('\\') || decoded.startsWith('/')) {
     throw new Error('Chave de anexo inválida');
   }
-  return decoded.replace(new RegExp(STORAGE_KEY_SEP, 'g'), '/');
+  return decoded;
+}
+
+/**
+ * O separador '__' da URL é ambíguo: o nome do arquivo pode conter '__' de verdade (acentos
+ * viram '_' em sanitizeFilename, e 'Ô' mal decodificado vira '__'). A chave real é sempre plana
+ * (uuid-nome), então a leitura literal vem primeiro; '__' → '/' fica só de fallback pra chaves
+ * legadas com subpasta. Sem isso o anexo existe no bucket mas a leitura dá 404.
+ */
+function sentStorageKeyCandidates(rawKey: string): string[] {
+  const literal = decodeRawStorageKey(rawKey);
+  return [...new Set([literal, literal.replace(new RegExp(STORAGE_KEY_SEP, 'g'), '/')])];
 }
 
 export interface PersistSentAttachmentInput {
@@ -71,7 +82,7 @@ export function parseSentAttachmentStorageKeyFromApiUrl(apiUrl: string): string 
   const match = raw.match(/\/(?:api\/)?uploads\/sent\/([^?#]+)/i);
   if (!match?.[1]) return null;
   try {
-    return decodeStorageKey(decodeURIComponent(match[1]));
+    return decodeRawStorageKey(match[1]);
   } catch {
     return null;
   }
@@ -112,29 +123,29 @@ export async function resolveSentAttachmentSendMeta(apiUrl: string): Promise<{
 export async function readSentAttachmentBuffer(
   storageKey: string,
 ): Promise<{ buffer: Buffer; filename: string; contentType: string } | null> {
-  const relative = decodeStorageKey(storageKey);
+  for (const relative of sentStorageKeyCandidates(storageKey)) {
+    try {
+      const filePath = resolveSentAttachmentPath(relative);
+      const stat = await fs.stat(filePath);
+      if (stat.isFile()) {
+        return {
+          buffer: await fs.readFile(filePath),
+          filename: path.basename(relative),
+          contentType: 'application/octet-stream',
+        };
+      }
+    } catch {
+      // tenta GCS
+    }
 
-  try {
-    const filePath = resolveSentAttachmentPath(storageKey);
-    const stat = await fs.stat(filePath);
-    if (stat.isFile()) {
+    const gcs = await readSentAttachmentFromGcs(relative);
+    if (gcs?.stream) {
       return {
-        buffer: await fs.readFile(filePath),
+        buffer: await streamToBuffer(gcs.stream as Readable),
         filename: path.basename(relative),
-        contentType: 'application/octet-stream',
+        contentType: gcs.contentType || 'application/octet-stream',
       };
     }
-  } catch {
-    // tenta GCS
-  }
-
-  const gcs = await readSentAttachmentFromGcs(relative);
-  if (gcs?.stream) {
-    return {
-      buffer: await streamToBuffer(gcs.stream as Readable),
-      filename: path.basename(relative),
-      contentType: gcs.contentType || 'application/octet-stream',
-    };
   }
 
   return null;
@@ -206,8 +217,7 @@ export async function persistSentAttachment(
   };
 }
 
-function resolveSentAttachmentPath(storageKey: string): string {
-  const relative = decodeStorageKey(storageKey);
+function resolveSentAttachmentPath(relative: string): string {
   const base = resolveBaseDir();
   const fullPath = path.resolve(base, relative);
   if (!fullPath.startsWith(base + path.sep) && fullPath !== base) {
@@ -223,30 +233,30 @@ export async function openSentAttachment(storageKey: string): Promise<{
   contentType?: string;
   filename: string;
 } | null> {
-  const relative = decodeStorageKey(storageKey);
+  for (const relative of sentStorageKeyCandidates(storageKey)) {
+    try {
+      const filePath = resolveSentAttachmentPath(relative);
+      const stat = await fs.stat(filePath);
+      if (stat.isFile()) {
+        return {
+          source: 'disk',
+          filePath,
+          filename: path.basename(relative),
+        };
+      }
+    } catch {
+      // tenta GCS
+    }
 
-  try {
-    const filePath = resolveSentAttachmentPath(storageKey);
-    const stat = await fs.stat(filePath);
-    if (stat.isFile()) {
+    const gcs = await readSentAttachmentFromGcs(relative);
+    if (gcs) {
       return {
-        source: 'disk',
-        filePath,
+        source: 'gcs',
+        stream: gcs.stream,
+        contentType: gcs.contentType,
         filename: path.basename(relative),
       };
     }
-  } catch {
-    // tenta GCS
-  }
-
-  const gcs = await readSentAttachmentFromGcs(relative);
-  if (gcs) {
-    return {
-      source: 'gcs',
-      stream: gcs.stream,
-      contentType: gcs.contentType,
-      filename: path.basename(relative),
-    };
   }
 
   return null;

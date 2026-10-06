@@ -59,6 +59,8 @@ import {
 } from './inbound-email/parseBacenRdrEmail.service';
 import { buildFastPathTriagem } from './agents/casosEspeciaisAgent.service';
 import { upsertFromChamado } from './reclamacoes/reclamacao.service';
+import { persistInboundAttachment } from './inboundAttachmentStorage.service';
+import { inspectAttachmentGuard } from './attachmentGuard.util';
 
 export const LEGACY_PROTOCOL_PATTERN = /VD-\d{8}-\d{4}/i;
 export const NUMERIC_PROTOCOL_PATTERN = /\[(\d{8,10})\]/;
@@ -336,6 +338,61 @@ async function recordEmailDeliveryFailure(payload: InboundEmailPayload, messageI
   });
 }
 
+/**
+ * Anexos que chegaram como buffer bruto (partes multipart do webhook, extraídas pelo multer) ainda
+ * não passaram pelo storage — sem `url`/`storageKey`, attachmentUrls/buildAttachmentMetadados os
+ * ignoram e o anexo real se perde em silêncio.
+ */
+async function persistInboundEmailAttachmentBuffers(
+  payload: InboundEmailPayload,
+  messageId: string,
+): Promise<void> {
+  const attachments = payload.attachments ?? [];
+  if (!attachments.some((item) => item.buffer)) return;
+
+  const persisted: typeof attachments = [];
+  for (const item of attachments) {
+    if (!item.buffer) {
+      persisted.push(item);
+      continue;
+    }
+    try {
+      const guard = inspectAttachmentGuard(item.filename, item.contentType, item.buffer);
+      if (!guard.ok) {
+        console.warn('[email-inbound] anexo multipart bloqueado pelo filtro', {
+          filename: item.filename,
+          reason: guard.reason,
+          messageId,
+        });
+        continue;
+      }
+      const saved = await persistInboundAttachment({
+        messageId,
+        filename: item.filename,
+        contentType: guard.detectedMime || item.contentType,
+        buffer: item.buffer,
+        scanStatus: guard.scanStatus,
+      });
+      persisted.push({
+        filename: saved.filename,
+        contentType: saved.contentType,
+        url: saved.url,
+        gcsUri: saved.gcsUri,
+        storageKey: saved.storageKey,
+        bytes: item.buffer.length,
+        scanStatus: saved.scanStatus,
+      });
+    } catch (err) {
+      console.warn('[email-inbound] falha ao persistir anexo multipart', {
+        filename: item.filename,
+        messageId,
+        error: (err as Error).message,
+      });
+    }
+  }
+  payload.attachments = persisted;
+}
+
 function attachmentUrls(payload: InboundEmailPayload): string[] {
   return (payload.attachments ?? [])
     .map((item) => item.url)
@@ -447,6 +504,7 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
   }
 
   try {
+    await persistInboundEmailAttachmentBuffers(payload, messageId);
     const priorityFromSubject = isCgovPrioritySubject(payload.subject)
       || isBacenRdrPrioritySubject(payload.subject);
     const result = await runInboundEmailFlow(

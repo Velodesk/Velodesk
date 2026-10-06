@@ -11,10 +11,11 @@ export function parseMailgunInboundEmail(body: Record<string, unknown>): Inbound
     const key = `attachment-${i}`;
     const file = body[key];
     if (file && typeof file === 'object' && 'originalname' in (file as object)) {
-      const f = file as { originalname?: string; mimetype?: string };
+      const f = file as { originalname?: string; mimetype?: string; buffer?: Buffer };
       attachments.push({
         filename: String(f.originalname ?? `anexo-${i}`).trim(),
         contentType: String(f.mimetype ?? 'application/octet-stream').trim(),
+        buffer: Buffer.isBuffer(f.buffer) ? f.buffer : undefined,
       });
     }
   }

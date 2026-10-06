@@ -80,7 +80,13 @@ router.post(
   inboundEmailAuthMiddleware,
   async (req, res: Response) => {
     try {
-      const payload = parseInboundEmailPayload(req.body as Record<string, unknown>);
+      // multer(...).any() move as partes de arquivo para req.files, fora de req.body — sem isto os
+      // adapters (que leem body[fieldname]) nunca veem os anexos reais enviados pelo provedor.
+      const bodyWithFiles: Record<string, unknown> = { ...(req.body as Record<string, unknown>) };
+      for (const file of (req.files as Express.Multer.File[] | undefined) ?? []) {
+        bodyWithFiles[file.fieldname] = file;
+      }
+      const payload = parseInboundEmailPayload(bodyWithFiles);
 
       if (!payload.from.email) {
         return res.status(400).json({ message: 'Remetente inválido' });

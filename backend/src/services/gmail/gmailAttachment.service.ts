@@ -7,6 +7,9 @@ import {
   attachmentMatchesKnownFingerprints,
   attachmentSizeNameFingerprint,
   isBrandInlineAttachmentFilename,
+  isKnownDeskAssetHash,
+  isOwnInlineContentId,
+  normalizeContentId,
 } from '../attachmentFilter.util';
 import { inspectAttachmentGuard } from '../attachmentGuard.util';
 import { persistInboundAttachment } from '../inboundAttachmentStorage.service';
@@ -31,7 +34,35 @@ function getPartHeader(part: gmail_v1.Schema$MessagePart, name: string): string 
   return String(found?.value ?? '').trim();
 }
 
-function shouldSkipGmailAttachmentPart(part: gmail_v1.Schema$MessagePart): boolean {
+/**
+ * Content-IDs referenciados como `cid:` no HTML do e-mail. Quando o cliente responde, o corpo cita
+ * o HTML que o VeloDesk enviou (logo, assinatura, estrelas do CSAT) e o cliente de e-mail reanexa
+ * essas imagens — muitas vezes com Content-Disposition: attachment e o mesmo Content-ID. Imagem
+ * referenciada no HTML é parte do corpo, nunca anexo. Já um anexo real (mesmo que o Gmail grave
+ * Content-ID nele) não é referenciado por `cid:` no corpo.
+ */
+export function collectReferencedCids(part: gmail_v1.Schema$MessagePart | undefined): Set<string> {
+  const cids = new Set<string>();
+  const visit = (node: gmail_v1.Schema$MessagePart | undefined) => {
+    if (!node) return;
+    const mime = String(node.mimeType ?? '').toLowerCase();
+    const data = node.body?.data;
+    if (mime === 'text/html' && data) {
+      const html = decodeBase64Url(String(data)).toString('utf8');
+      for (const match of html.matchAll(/cid:([^"'\s>)]+)/gi)) {
+        cids.add(normalizeContentId(match[1]));
+      }
+    }
+    for (const child of node.parts ?? []) visit(child);
+  };
+  visit(part);
+  return cids;
+}
+
+function shouldSkipGmailAttachmentPart(
+  part: gmail_v1.Schema$MessagePart,
+  referencedCids: Set<string> = new Set(),
+): boolean {
   const filename = String(part.filename ?? '').trim();
   if (!filename) return true;
 
@@ -41,14 +72,19 @@ function shouldSkipGmailAttachmentPart(part: gmail_v1.Schema$MessagePart): boole
 
   const disposition = getPartHeader(part, 'Content-Disposition').toLowerCase();
   const isExplicitAttachment = disposition.includes('attachment');
+  const contentId = getPartHeader(part, 'Content-ID');
 
   if (disposition.includes('inline') && !isExplicitAttachment) {
     return true;
   }
 
-  // Content-ID indica inline (logo/CID) — mas não quando disposition=attachment
-  if (!isExplicitAttachment && getPartHeader(part, 'Content-ID')) {
-    return true;
+  if (contentId) {
+    // Imagem gerada pelo próprio VeloDesk ou referenciada no corpo HTML = corpo, não anexo.
+    if (isOwnInlineContentId(contentId) || referencedCids.has(normalizeContentId(contentId))) {
+      return true;
+    }
+    // Sem disposition=attachment, Content-ID indica inline (logo/CID).
+    if (!isExplicitAttachment) return true;
   }
 
   return false;
@@ -57,6 +93,7 @@ function shouldSkipGmailAttachmentPart(part: gmail_v1.Schema$MessagePart): boole
 export function listGmailAttachmentParts(
   part: gmail_v1.Schema$MessagePart | undefined,
   acc: GmailAttachmentPartRef[] = [],
+  referencedCids: Set<string> = collectReferencedCids(part),
 ): GmailAttachmentPartRef[] {
   if (!part) return acc;
 
@@ -64,7 +101,7 @@ export function listGmailAttachmentParts(
   // o próprio .eml anexado e/ou trazer anexos aninhados nas sub-partes.
   const filename = String(part.filename ?? '').trim();
   const attachmentId = String(part.body?.attachmentId ?? '').trim();
-  if (filename && attachmentId && !shouldSkipGmailAttachmentPart(part)) {
+  if (filename && attachmentId && !shouldSkipGmailAttachmentPart(part, referencedCids)) {
     acc.push({
       filename,
       mimeType: String(part.mimeType ?? 'application/octet-stream').trim(),
@@ -73,7 +110,7 @@ export function listGmailAttachmentParts(
   }
 
   for (const child of part.parts ?? []) {
-    listGmailAttachmentParts(child, acc);
+    listGmailAttachmentParts(child, acc, referencedCids);
   }
   return acc;
 }
@@ -119,6 +156,16 @@ export async function downloadGmailAttachments(
         attachmentHashFingerprint(contentHash),
         attachmentSizeNameFingerprint(part.filename, buffer.length),
       ];
+
+      // Mesmo conteúdo de um asset de e-mail do VeloDesk (logo/símbolo/estrela do CSAT) reanexado
+      // pelo cliente de e-mail na resposta — nunca é anexo do cliente.
+      if (isKnownDeskAssetHash(contentHash)) {
+        console.info('[gmailAttachment] imagem do próprio VeloDesk ignorada', {
+          filename: part.filename,
+          messageId: messageIdForStorage,
+        });
+        continue;
+      }
 
       if (fingerprints.some((fp) => seenInMessage.has(fp))) {
         console.info('[gmailAttachment] anexo duplicado na mesma mensagem — ignorado', {
@@ -190,13 +237,6 @@ export interface GmailInlineImagePartRef {
   mimeType: string;
   attachmentId: string;
   contentId: string;
-}
-
-function normalizeContentId(raw: string): string {
-  return String(raw || '')
-    .trim()
-    .replace(/^<|>$/g, '')
-    .toLowerCase();
 }
 
 function isImageMime(mimeType: string): boolean {

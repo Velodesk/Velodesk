@@ -1,4 +1,7 @@
 /** attachmentFilter.util v1.3.0 — fingerprints incluem anexosMensagemPublica outbound */
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import type { IChamadoN1 } from '../models/ChamadoN1';
 
 const BRAND_INLINE_FILENAME_PATTERNS = [
@@ -14,6 +17,53 @@ export function isBrandInlineAttachmentFilename(filename: string): boolean {
   const name = String(filename || '').trim();
   if (!name) return false;
   return BRAND_INLINE_FILENAME_PATTERNS.some((pattern) => pattern.test(name));
+}
+
+export function normalizeContentId(raw: string): string {
+  let value = String(raw || '').trim().replace(/^<|>$/g, '');
+  try {
+    value = decodeURIComponent(value);
+  } catch {
+    /* mantém o valor cru */
+  }
+  return value.toLowerCase();
+}
+
+/**
+ * CIDs gerados pelo próprio VeloDesk em e-mails de saída (compose-inline-N@velodesk,
+ * email-assinatura-N@velodesk, estrelas do CSAT etc.). Quando o cliente responde, o e-mail dele
+ * cita o nosso HTML e os clientes de e-mail reanexam essas imagens — nunca são anexo do cliente.
+ */
+export function isOwnInlineContentId(contentId: string): boolean {
+  return /@velodesk$/i.test(normalizeContentId(contentId));
+}
+
+let deskAssetHashes: Set<string> | null = null;
+
+function loadDeskAssetHashes(): Set<string> {
+  if (deskAssetHashes) return deskAssetHashes;
+  const hashes = new Set<string>();
+  const dirs = [
+    path.join(process.cwd(), 'assets', 'email'),
+    path.join(__dirname, '..', '..', 'assets', 'email'),
+  ];
+  for (const dir of dirs) {
+    try {
+      for (const file of fs.readdirSync(dir)) {
+        if (!/\.(png|jpe?g|gif|webp)$/i.test(file)) continue;
+        hashes.add(crypto.createHash('sha256').update(fs.readFileSync(path.join(dir, file))).digest('hex'));
+      }
+    } catch {
+      /* diretório inexistente nesse ambiente */
+    }
+  }
+  deskAssetHashes = hashes;
+  return hashes;
+}
+
+/** Conteúdo idêntico a um asset de e-mail do VeloDesk (logo, símbolo, estrela do CSAT). */
+export function isKnownDeskAssetHash(contentHash: string): boolean {
+  return loadDeskAssetHashes().has(String(contentHash || '').trim().toLowerCase());
 }
 
 export function filterRealAttachmentUrls(urls: string[] | undefined | null): string[] {
