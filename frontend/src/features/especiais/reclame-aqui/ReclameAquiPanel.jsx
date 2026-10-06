@@ -24,8 +24,10 @@ import ReclameAquiToolbar from './ReclameAquiToolbar';
 import ReclameAquiKpiRow from './ReclameAquiKpiRow';
 import ReclameAquiTableView from './ReclameAquiTableView';
 import ReclameAquiReportsView from './ReclameAquiReportsView';
+import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
 
-function buildView(items) {
+function buildView(rawItems) {
+  const items = sortOldestFirst(rawItems, 'dataReclamacao');
   return {
     items,
     kpis: getReclameAquiKpis(items),

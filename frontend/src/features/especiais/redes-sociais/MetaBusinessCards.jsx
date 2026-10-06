@@ -5,30 +5,6 @@ import React from 'react';
 
 const META_BUSINESS_CARDS = [
   {
-    id: 'facebook',
-    label: 'Facebook',
-    desc: 'Comentários, mensagens e menções na página da Velotax.',
-    icon: 'ti-brand-facebook',
-    color: '#1877F2',
-    ready: true,
-  },
-  {
-    id: 'instagram',
-    label: 'Instagram',
-    desc: 'Comentários, DMs e menções no perfil da Velotax.',
-    icon: 'ti-brand-instagram',
-    color: '#E4405F',
-    ready: true,
-  },
-  {
-    id: 'play-store',
-    label: 'Google Play Store',
-    desc: 'Avaliações e comentários do app na Play Store.',
-    icon: 'ti-brand-google-play',
-    color: '#00A050',
-    ready: true,
-  },
-  {
     id: 'gestao-redes',
     label: 'Gestão de Redes Sociais',
     desc: 'Gestão, quantificação e atendimento das redes sociais.',

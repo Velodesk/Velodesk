@@ -765,6 +765,12 @@ export function readCanalProvavelHint(chamado: IChamadoN1): string | null {
   return hint || null;
 }
 
+function readMetaDate(value: unknown): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 export function reclamacaoToPortalDto(doc: IReclamacao): Record<string, unknown> {
   const meta = (doc.meta && typeof doc.meta === 'object' ? doc.meta : {}) as Record<string, unknown>;
   return {
@@ -786,11 +792,12 @@ export function reclamacaoToPortalDto(doc: IReclamacao): Record<string, unknown>
     motivo: doc.motivo,
     motivo2: doc.motivo2,
     motivo3: doc.motivo3,
-    dataReclamacao: doc.dataReclamacao,
+    // Imports Hugme anteriores a 22d7107 só gravaram a data da planilha em meta.dataReclamacao.
+    dataReclamacao: doc.dataReclamacao ?? readMetaDate(meta.dataReclamacao),
     // Alias pro campo genérico acima — Procon/Consumidor.gov/Bacen exibem e editam essa data
     // como "dataDemanda" no front (CgDadosFields/BcDadosFields); sem isto, o PATCH grava em
     // dataReclamacao mas a tela nunca lê de volta, dando a impressão de que não salvou.
-    dataDemanda: doc.orgao !== 'reclame_aqui' ? doc.dataReclamacao : undefined,
+    dataDemanda: doc.orgao !== 'reclame_aqui' ? (doc.dataReclamacao ?? readMetaDate(meta.dataReclamacao)) : undefined,
     statusCanal: doc.statusCanal,
     ticketStatus: doc.ticketStatus,
     statusPc: meta.statusPc ?? (doc.orgao === 'procon' ? doc.statusCanal : undefined),

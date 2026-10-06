@@ -23,8 +23,10 @@ import ConsumidorGovToolbar from './ConsumidorGovToolbar';
 import ConsumidorGovKpiRow from './ConsumidorGovKpiRow';
 import ConsumidorGovTableView from './ConsumidorGovTableView';
 import ConsumidorGovReportsView from './ConsumidorGovReportsView';
+import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
 
-function buildView(items) {
+function buildView(rawItems) {
+  const items = sortOldestFirst(rawItems, 'dataDemanda');
   return {
     items,
     kpis: getConsumidorGovKpis(items),

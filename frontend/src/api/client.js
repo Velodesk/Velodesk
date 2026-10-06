@@ -388,6 +388,7 @@ export const agentsApi = {
   status: () => api.get('/agents/status').then((r) => r.data),
   pipeline: (payload) => api.post('/agents/pipeline', payload).then((r) => r.data),
   revisarSugestao: (payload) => api.post('/agents/revisar-sugestao', payload).then((r) => r.data),
+  enviarFeedback: (payload) => api.post('/agents/feedback', payload).then((r) => r.data),
   gestaoAlerts: (params) => api.get('/agents/gestao/alerts', { params }).then((r) => r.data),
 };
 

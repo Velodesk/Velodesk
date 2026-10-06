@@ -1,6 +1,10 @@
 /**
  * Desk CRM — raiz 5 colunas (layout referência)
- * VERSION: v3.44.2 | DATE: 2026-08-31
+ * VERSION: v3.45.0 | DATE: 2026-10-02
+ * — prop `hideComposer`: oculta o DeskComposePanel (usado pela Área de IA, /ia); na sugestão IA,
+ *   o botão "Usar resposta" aparece como "Aprovado" em verde; "Reprovado" abre o DeskAiFeedbackModal
+ *   (Enviar → POST /agents/feedback; Gerar → revisão da IA com o feedback).
+ * — prop `queueIds`: restringe as caixas exibidas no DeskQueuePanel (Área de IA: só Novos).
  * — handleCommitWithStatus/handleSendInternalNote: try/finally cobre toda a função,
  *   sem gap entre travar o lock (commitInProgressRef/sendInternalNoteInProgressRef) e o try;
  *   exceção antes do try deixava o lock preso pra sempre (todos os canais de envio) sem erro visível.
@@ -75,7 +79,7 @@ import {
 } from '../../services/ticketsCache';
 import { apiTicketToCockpit, cockpitTicketToApi } from '../../api/adapters/ticketAdapter';
 import { lookupClient, upsertClientFromContact } from '../../services/clientDb';
-import { clientsApi, colaboradoresApi, ticketsApi } from '../../api/client';
+import { agentsApi, clientsApi, colaboradoresApi, ticketsApi } from '../../api/client';
 import { persistClienteContact, applyClienteDocToTicket, mapClienteDocToContact } from '../../api/adapters/clienteAdapter';
 import {
   approveWorkflowDecision,
@@ -123,6 +127,7 @@ import { useWorkflowConfig } from '../../context/WorkflowConfigContext';
 import { htmlToPlainText, htmlHasComposeContent, normalizeComposePlain } from '../../services/desk/composeRichEditor';
 import { useTicketAiSuggestions } from '../../hooks/useTicketAiSuggestions';
 import DeskAiRevisionModal from './components/DeskAiRevisionModal';
+import DeskAiFeedbackModal from './components/DeskAiFeedbackModal';
 import { resolveAutomaticaConfig } from '../config/workflow/workflowConfigData';
 import { resolveWorkflowForTicket } from '../../services/desk/workflowEngine';
 import { getRuntimeWorkflows } from '../../services/desk/workflowRuntimeStore';
@@ -257,7 +262,7 @@ function buildDefaultSessionFromTicket(ticket, config) {
   };
 }
 
-export default function DeskV2Root() {
+export default function DeskV2Root({ hideComposer = false, queueIds = null } = {}) {
   const {
     refreshKey,
     refreshTickets,
@@ -313,6 +318,8 @@ export default function DeskV2Root() {
   }, []);
   const [aiRevisionOpen, setAiRevisionOpen] = useState(false);
   const [aiRevisionSubmitting, setAiRevisionSubmitting] = useState(false);
+  const [aiFeedbackOpen, setAiFeedbackOpen] = useState(false);
+  const [aiFeedbackBusy, setAiFeedbackBusy] = useState(null);
   const [queueStatuses, setQueueStatuses] = useState(() => getAllQueueStatuses());
   const suppressAutoSelectRef = useRef(true);
   const pendingAdvanceTicketIdRef = useRef(null);
@@ -2549,6 +2556,51 @@ export default function DeskV2Root() {
     }
   }, [ticketAi, showNotification]);
 
+  const handleOpenAiFeedback = useCallback(() => {
+    setAiFeedbackOpen(true);
+  }, []);
+
+  const handleCloseAiFeedback = useCallback(() => {
+    setAiFeedbackOpen(false);
+  }, []);
+
+  const handleAiFeedbackSend = useCallback(async (inputOperador) => {
+    setAiFeedbackBusy('enviar');
+    try {
+      await agentsApi.enviarFeedback({
+        ticketId: String(ticket?.id || ticket?._id || ''),
+        protocolo: getTicketProtocolLabel(ticket),
+        inputOperador,
+        respostaAntes: ticketAi.respostaSugerida,
+        tabulacao: ticketAi.tabulacao || undefined,
+        auditScore: ticketAi.auditScore ?? undefined,
+      });
+      showNotification('Feedback enviado para o aprendizado da IA.', 'success');
+      return { success: true };
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || 'Falha ao enviar feedback';
+      showNotification(msg, 'warning');
+      return { success: false, error: msg };
+    } finally {
+      setAiFeedbackBusy(null);
+    }
+  }, [ticket, ticketAi, showNotification]);
+
+  const handleAiFeedbackGenerate = useCallback(async (inputOperador) => {
+    setAiFeedbackBusy('gerar');
+    try {
+      const result = await ticketAi.requestRevision(inputOperador);
+      if (result.success) {
+        showNotification('Nova resposta gerada com base no feedback.', 'success');
+      } else if (result.error) {
+        showNotification(result.error, 'warning');
+      }
+      return result;
+    } finally {
+      setAiFeedbackBusy(null);
+    }
+  }, [ticketAi, showNotification]);
+
   const handleUseIaReply = useCallback((nucleo) => {
     const wrapped = wrapComposerOpeningForTicket({
       nucleo,
@@ -2575,7 +2627,7 @@ export default function DeskV2Root() {
   return (
     <div className={'app-shell' + (isTableQueueView ? ' app-shell--table-queue' : '')} id="deskAppShell">
       <DeskQueuePanel
-        queueStatuses={queueStatuses}
+        queueStatuses={queueIds ? queueStatuses.filter((s) => queueIds.includes(s.id)) : queueStatuses}
         activeQueue={activeQueue}
         collapsed={queueCollapsed}
         onSelectQueue={selectQueue}
@@ -2630,6 +2682,8 @@ export default function DeskV2Root() {
                 onSelectTicket={selectTicket}
                 onReload={reload}
                 refreshing={ticketsLoading}
+                entrySortOldestFirst={entrySortOldestFirst}
+                onToggleEntrySort={() => setEntrySortOldestFirst((v) => !v)}
               />
             ) : showTableQueueMain && isResolvedQueue ? (
               <DeskResolvedTicketTable
@@ -2774,7 +2828,10 @@ export default function DeskV2Root() {
                         iaAuditScore={ticketAi.auditScore}
                         onRequestRevision={handleOpenAiRevision}
                         onOpenWhatsAppChat={() => setWaChatOpen(true)}
+                        iaApproveMode={hideComposer}
+                        onReject={hideComposer ? handleOpenAiFeedback : undefined}
                       />
+                      {!hideComposer ? (
                       <DeskComposePanel
                         ticketId={ticket.id}
                         ticket={ticket}
@@ -2795,6 +2852,7 @@ export default function DeskV2Root() {
                         onSendInternalNote={canInternalCompose && !ticketReadOnly ? handleSendInternalNote : undefined}
                         sendInternalNoteBusy={sendInternalNoteBusy}
                       />
+                      ) : null}
                     </>
                   ) : mainTab === 'notas' ? (
                     <DeskInternalNotesPanel
@@ -2874,6 +2932,15 @@ export default function DeskV2Root() {
         submitting={aiRevisionSubmitting}
         onClose={handleCloseAiRevision}
         onSubmit={handleAiRevisionSubmit}
+      />
+
+      <DeskAiFeedbackModal
+        open={aiFeedbackOpen}
+        auditScore={ticketAi.auditScore}
+        busyAction={aiFeedbackBusy}
+        onClose={handleCloseAiFeedback}
+        onSend={handleAiFeedbackSend}
+        onGenerate={handleAiFeedbackGenerate}
       />
 
       <WorkflowComunicacaoModal

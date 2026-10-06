@@ -1262,12 +1262,14 @@ function resolveChamadoTitulo(body: Record<string, unknown>, fallback = ''): str
   return String(body.chamadoTitulo ?? body.title ?? fallback).trim();
 }
 
-function tabulacaoFromBody(body: Record<string, unknown>, fallbackTitle?: string): ITabulacao {
+// Motivo nunca herda o título do ticket: o título costuma ser o produto (ex.: App manda
+// "Emprestimo Pessoal"), o que deixava produto e motivo iguais. Sem motivo explícito, fica em branco.
+function tabulacaoFromBody(body: Record<string, unknown>, fallbackMotivo = ''): ITabulacao {
   const lateral = (body.lateralForm ?? {}) as Record<string, string>;
   return {
     tipoChamado: lateral.tipoChamado ?? lateral.classificacaoTipo ?? String(body.classificacaoTipo ?? ''),
     produto: lateral.produto ?? String(body.produto ?? ''),
-    motivo: lateral.motivo ?? fallbackTitle ?? String(body.title ?? ''),
+    motivo: lateral.motivo ?? fallbackMotivo,
     motivo2: lateral.motivo2 ?? '',
     motivo3: lateral.motivo3 ?? '',
     detalhe: lateral.detalhe ?? String(body.description ?? ''),
@@ -1283,7 +1285,7 @@ export async function createChamadoFromBody(
   authUser?: AuthPayload | null
 ): Promise<Partial<IChamadoN1>> {
   const titulo = resolveChamadoTitulo(body);
-  const tab = tabulacaoFromBody(body, titulo);
+  const tab = tabulacaoFromBody(body);
   const internal = Boolean(body.internal);
   const text = String(body.text ?? body.description ?? '');
   const attachments = Array.isArray(body.attachments)
@@ -1566,7 +1568,7 @@ export async function prepareChamadoFromBody(
         lateralForm: lateralFormMerged,
         ...body,
       },
-      resolveChamadoTitulo(body, chamado.chamadoTitulo || beforeTab.motivo)
+      beforeTab.motivo ?? ''
     ));
     Object.assign(pendingChanges, diffTabulacao(beforeTab, merged));
     chamado.tabulacao = [merged];

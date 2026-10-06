@@ -1,6 +1,6 @@
 /**
- * agentFeedback.service v1.0.0 — persistência de feedback para aprendizado
- * VERSION: v1.0.0 | DATE: 2026-07-13
+ * agentFeedback.service v1.1.0 — persistência de feedback para aprendizado
+ * VERSION: v1.1.0 | DATE: 2026-10-02 — `reprovacao_operador` entra nos exemplos do prompt
  */
 import { AgentFeedback } from '../../models/AgentFeedback';
 import type { TicketAiTabulationResult } from './agentTypes';
@@ -9,7 +9,7 @@ export interface SaveFeedbackParams {
   ticketId?: string;
   protocolo?: string;
   agentOrigem: 'atendimento' | 'auditoria';
-  tipoEvento: 'revisao_automatica' | 'revisao_solicitada' | 'bloqueio_critico' | 'envio_autonomo';
+  tipoEvento: 'revisao_automatica' | 'revisao_solicitada' | 'bloqueio_critico' | 'envio_autonomo' | 'reprovacao_operador';
   scoreAntes?: number;
   scoreDepois?: number;
   violacoes?: string[];
@@ -19,7 +19,7 @@ export interface SaveFeedbackParams {
   tabulacao?: TicketAiTabulationResult;
 }
 
-export async function saveAgentFeedback(params: SaveFeedbackParams): Promise<void> {
+export async function saveAgentFeedback(params: SaveFeedbackParams): Promise<boolean> {
   try {
     await AgentFeedback.create({
       ticketId: params.ticketId,
@@ -36,8 +36,10 @@ export async function saveAgentFeedback(params: SaveFeedbackParams): Promise<voi
       produto: params.tabulacao?.produto,
       motivo: params.tabulacao?.motivo,
     });
+    return true;
   } catch (err) {
     console.warn('[agent-feedback] falha ao persistir:', (err as Error).message);
+    return false;
   }
 }
 
@@ -48,7 +50,7 @@ export async function getFeedbackExamplesForPrompt(
 ): Promise<string> {
   try {
     const filter: Record<string, unknown> = {
-      tipoEvento: { $in: ['revisao_automatica', 'revisao_solicitada'] },
+      tipoEvento: { $in: ['revisao_automatica', 'revisao_solicitada', 'reprovacao_operador'] },
     };
     if (produto?.trim()) filter.produto = produto.trim();
     if (motivo?.trim()) filter.motivo = motivo.trim();
