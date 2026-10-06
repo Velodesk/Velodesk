@@ -1,0 +1,57 @@
+{
+  "name": "Velodesk-CRM",
+  "clusterType": "REPLICASET",
+  "mongoDBMajorVersion": "8.0",
+  "backupEnabled": false,
+  "pitEnabled": false,
+  "terminationProtectionEnabled": true,
+  "tags": [
+    {
+      "key": "application",
+      "value": "crm-prod"
+    }
+  ],
+  "replicationSpecs": [
+    {
+      "numShards": 1,
+      "zoneName": "Zone 1",
+      "regionConfigs": [
+        {
+          "providerName": "GCP",
+          "regionName": "EASTERN_US",
+          "priority": 7,
+          "electableSpecs": {
+            "instanceSize": "M10",
+            "nodeCount": 3
+          },
+          "readOnlySpecs": {
+            "instanceSize": "M10",
+            "nodeCount": 0
+          },
+          "analyticsSpecs": {
+            "instanceSize": "M10",
+            "nodeCount": 0
+          },
+          "autoScaling": {
+            "compute": {
+              "enabled": false,
+              "scaleDownEnabled": false
+            },
+            "diskGB": {
+              "enabled": true
+            }
+          },
+          "analyticsAutoScaling": {
+            "compute": {
+              "enabled": false,
+              "scaleDownEnabled": false
+            },
+            "diskGB": {
+              "enabled": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

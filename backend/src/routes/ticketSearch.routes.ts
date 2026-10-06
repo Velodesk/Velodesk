@@ -1,7 +1,8 @@
 /**
  * Rotas de busca avançada de tickets
- * VERSION: v1.3.0 | DATE: 2026-08-18
+ * VERSION: v1.4.0 | DATE: 2026-10-02
  * — by-cpf / desk-bar incluem chamados_reclamacoes
+ * — POST / aceita incluirLegadoOcta (switch da Busca de Tickets) e mescla o arquivo Legado Octa
  */
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
@@ -13,6 +14,8 @@ import {
   searchTicketsByCpf,
   searchTicketsByCpfDeskBar,
 } from '../services/ticketSearch.service';
+import { hasPermission, resolveUserPermissions } from '../services/permission.service';
+import { searchLegadoOcta } from '../services/legadoOctaSearch.service';
 import { findSimilarSubjectTickets } from '../services/agents/similarSubjectAgent.service';
 
 const router = Router();
@@ -64,11 +67,38 @@ async function handleSearch(req: Request, res: Response) {
     const limit = parseLimitFromRequest(req);
     const result = await searchTickets(req.user, { criterios, limit });
 
+    const body = (req.method === 'POST' && req.body && typeof req.body === 'object')
+      ? (req.body as Record<string, unknown>)
+      : {};
+    const incluirLegado = body.incluirLegadoOcta === true;
+    let legadoTickets: Awaited<ReturnType<typeof searchLegadoOcta>>['tickets'] = [];
+    let legadoAviso: string | undefined;
+    if (incluirLegado) {
+      // Mesma permissão do módulo Legado Octa — o switch não pode abrir o arquivo a quem não tem acesso.
+      const resolved = await resolveUserPermissions(req.user);
+      if (!hasPermission(resolved.permissoes, 'acesso', 'legado-octa')) {
+        legadoAviso = 'Sem permissão para consultar o Legado Octa.';
+      } else {
+        try {
+          const legado = await searchLegadoOcta(criterios, limit);
+          legadoTickets = legado.tickets;
+          legadoAviso = legado.aviso;
+        } catch (err) {
+          // Falha no legado não derruba a busca do Desk.
+          console.error('[ticket-search] legado-octa falhou:', err);
+          legadoAviso = 'Não foi possível consultar o Legado Octa agora.';
+        }
+      }
+    }
+
     return res.json({
       success: true,
-      tickets: result.tickets,
-      total: result.total,
+      tickets: [...result.tickets, ...legadoTickets],
+      total: result.total + legadoTickets.length,
       limit: result.limit,
+      legadoOcta: incluirLegado
+        ? { incluido: true, total: legadoTickets.length, aviso: legadoAviso }
+        : undefined,
       source: 'ticket_search',
     });
   } catch (err) {

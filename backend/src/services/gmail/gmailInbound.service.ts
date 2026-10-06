@@ -78,10 +78,15 @@ export async function processGmailHistory(
 
   try {
     do {
+      // historyTypes inclui 'labelAdded' porque e-mail de provedor externo (Outlook/Hotmail
+      // etc.) às vezes chega ao Gmail sem o label INBOX de imediato — a categorização anexa
+      // o label um instante depois, como um evento labelAdded separado. Pedir só messageAdded
+      // com labelId:'INBOX' filtra pro estado no momento da criação e perde essas mensagens
+      // pra sempre, sem log de erro (a raiz de um caso real de e-mail nunca virar ticket).
       const historyRes = await gmail.users.history.list({
         userId: 'me',
         startHistoryId,
-        historyTypes: ['messageAdded'],
+        historyTypes: ['messageAdded', 'labelAdded'],
         labelId: 'INBOX',
         pageToken,
       });
@@ -98,8 +103,27 @@ export async function processGmailHistory(
           break;
         }
 
+        // messagesAdded = mensagem criada já com INBOX; labelsAdded = INBOX anexado depois
+        // (categorização assíncrona) — dedupe por id caso o mesmo id apareça nos dois.
+        const candidateIds = new Set<string>();
+        const candidates: { id: string }[] = [];
         for (const added of record.messagesAdded ?? []) {
-          const msgRef = added.message;
+          const id = added.message?.id;
+          if (id && !candidateIds.has(id)) {
+            candidateIds.add(id);
+            candidates.push({ id });
+          }
+        }
+        for (const labelChange of record.labelsAdded ?? []) {
+          if (!(labelChange.labelIds ?? []).includes('INBOX')) continue;
+          const id = labelChange.message?.id;
+          if (id && !candidateIds.has(id)) {
+            candidateIds.add(id);
+            candidates.push({ id });
+          }
+        }
+
+        for (const msgRef of candidates) {
           if (!msgRef?.id) continue;
 
           const full = await gmail.users.messages.get({
@@ -203,6 +227,17 @@ export async function handleGmailPubSubPush(
   const notification = decodePubSubMessage(body);
   if (!notification?.historyId) {
     console.warn('[gmailInbound] notificação Pub/Sub sem historyId');
+    return { processed: 0, results: [], hasMore: false };
+  }
+
+  // O tópico Pub/Sub é compartilhado entre ambientes (dev=suporte@, prod=atendimento@): cada
+  // serviço recebe os pushes da caixa do outro. Sem este filtro, um historyId de outra caixa
+  // (faixa numérica diferente) poderia realinhar o ponteiro desta e travar o inbound em loop de
+  // 'history expirado'. Só ignora quando AMBOS os endereços são conhecidos e diferem.
+  const notifiedMailbox = String(notification.emailAddress ?? '').trim().toLowerCase();
+  const ownMailbox = String(getDelegatedUserEmail() ?? '').trim().toLowerCase();
+  if (notifiedMailbox && ownMailbox && notifiedMailbox !== ownMailbox) {
+    console.info('[gmailInbound] push de outra caixa ignorado', { notifiedMailbox, ownMailbox });
     return { processed: 0, results: [], hasMore: false };
   }
 

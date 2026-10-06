@@ -56,6 +56,16 @@ function extractCorpo(chamado: IChamadoN1): string {
     .join('\n');
 }
 
+/** Assunto real do e-mail recebido (o chamadoTitulo de tickets Bacen/Consumidor.Gov estruturados é o texto da reclamação, não o assunto). */
+function extractEmailSubject(chamado: IChamadoN1): string {
+  for (const reg of chamado.registro ?? []) {
+    const meta = reg.metadados && typeof reg.metadados === 'object' ? reg.metadados : {};
+    const subject = String((meta as Record<string, unknown>).emailSubject ?? '').trim();
+    if (subject) return subject;
+  }
+  return '';
+}
+
 function extractEmailFrom(chamado: IChamadoN1): string {
   for (const reg of chamado.registro ?? []) {
     const meta = reg.metadados && typeof reg.metadados === 'object' ? reg.metadados : {};
@@ -125,7 +135,11 @@ export function detectCasoEspecialSignal(chamado: IChamadoN1): CasoEspecialSigna
   // institucional. Regra de área=CORPO nunca fast-pathea: é texto livre do cliente, e
   // "contém a palavra X" não distingue notificação formal de ameaça vazia ou citação
   // retórica — essa distinção é o que o Agente 4 (LLM) decide quando a IA está ligada.
-  const subjectMatch = detectPrioritySubjectMatch(String(chamado.chamadoTitulo ?? ''), extractCorpo(chamado));
+  const corpo = extractCorpo(chamado);
+  const titleMatch = detectPrioritySubjectMatch(String(chamado.chamadoTitulo ?? ''), corpo);
+  const subjectMatch = titleMatch.matched
+    ? titleMatch
+    : detectPrioritySubjectMatch(extractEmailSubject(chamado), '');
   const subjectMatchWithOrgao = Boolean(subjectMatch.matched && subjectMatch.rule?.orgao);
   const subjectAreaMatchWithOrgao = Boolean(subjectMatchWithOrgao && subjectMatch.rule?.area === 'assunto');
   if (subjectMatch.matched && subjectMatch.rule) {
