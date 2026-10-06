@@ -82,6 +82,12 @@ Scripts npm na raiz: `docker:build`, `docker:up`, `docker:up:detached`, `docker:
 | `VELODESK_WEBHOOK_URL` | Webhook outbound → backend do App Velotax (mensagem/status de chamado). Mesma variável nos dois ambientes, valor diferente: **dev** → `https://velotax-server.ngrok.io/api/tickets/webhook`; **prod** → URL definitiva do App |
 | `VELODESK_WEBHOOK_SECRET` | Secret compartilhado enviado no header `X-Velodesk-Webhook-Secret` — combinado com o time do App |
 
+| `PLAY_REVIEWS_API_URL` | Base URL da API do parceiro (play-reviews) — única porta do Desk para o Google Play (leitura e reply) |
+| `PLAY_REVIEWS_API_KEY` | Secret — header `x-api-key` dessa API. O tráfego precisa sair pelo **IP fixo** liberado pelo parceiro |
+| `GOOGLE_PLAY_PACKAGE_NAME` | Pacote do app (ex.: `br.com.velotax.irpf.app`) |
+
+A captação do Google Play **não** roda no serviço principal: é o Cloud Run Job `velodesk-play-reviews-sync` (cron de 10 min) — ver `backend/scripts/deploy-play-reviews-job.sh`.
+
 Atlas → **Network Access** deve permitir Cloud Run (`0.0.0.0/0` ou VPC).
 
 Build alternativo (dois serviços separados): `cloudbuild.yaml` (`velodesk-api` + `velodesk-web`).

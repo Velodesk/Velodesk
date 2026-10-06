@@ -1,18 +1,24 @@
-/** redesSociais.routes v1.0.0 — leitura/gestão dos comentários e avaliações
+/** redesSociais.routes v1.1.0 — leitura/gestão dos comentários e avaliações
  * classificados de Facebook/Instagram/Google Play (desk_config.redes_sociais_comentarios) */
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
+import { permissionMiddleware } from '../middleware/permission';
 import { isDeskConfigConnected } from '../config/database';
 import {
   gerarRelatorio,
   listarComentarios,
   marcarComentarioIgnorado,
-  marcarComentarioRespondido,
+  responderComentario,
+  ErroResposta,
   type ListarComentariosFiltro,
 } from '../services/redesSociais/redesSociaisComentario.service';
 import type { RedesSociaisCanal } from '../models/RedesSociaisComentario';
 
 const router = Router();
+
+// O módulo de acesso é o portão real: sem ele nem leitura nem resposta (que publica no Google Play).
+router.use(authMiddleware);
+router.use(permissionMiddleware('acesso', 'especiais-redes-sociais'));
 
 const CANAIS_VALIDOS: RedesSociaisCanal[] = ['facebook', 'instagram', 'google_play'];
 
@@ -24,7 +30,7 @@ function deskConfigUnavailable(res: Response) {
   return res.status(503).json({ message: 'Banco desk_config indisponível' });
 }
 
-router.get('/comentarios', authMiddleware, async (req, res: Response) => {
+router.get('/comentarios', async (req, res: Response) => {
   try {
     if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
 
@@ -56,7 +62,7 @@ router.get('/comentarios', authMiddleware, async (req, res: Response) => {
   }
 });
 
-router.get('/relatorio', authMiddleware, async (req, res: Response) => {
+router.get('/relatorio', async (req, res: Response) => {
   try {
     if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
     const desde = req.query.desde ? new Date(String(req.query.desde)) : undefined;
@@ -72,22 +78,22 @@ router.get('/relatorio', authMiddleware, async (req, res: Response) => {
   }
 });
 
-router.patch('/comentarios/:id/responder', authMiddleware, async (req, res: Response) => {
+router.patch('/comentarios/:id/responder', async (req, res: Response) => {
   try {
     if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
     const resposta = String(req.body?.resposta || '').trim();
     if (!resposta) return res.status(400).json({ message: 'Informe a resposta' });
 
-    const item = await marcarComentarioRespondido(String(req.params.id), resposta, actorName(req));
-    if (!item) return res.status(404).json({ message: 'Comentário não encontrado' });
+    const item = await responderComentario(String(req.params.id), resposta, actorName(req));
     return res.json(item);
   } catch (err) {
-    console.error('[redes-sociais] PATCH /comentarios/:id/responder', err);
-    return res.status(400).json({ message: (err as Error).message });
+    console.error('[redes-sociais] PATCH /comentarios/:id/responder', (err as Error).message);
+    const status = err instanceof ErroResposta ? err.status : 400;
+    return res.status(status).json({ message: (err as Error).message });
   }
 });
 
-router.patch('/comentarios/:id/ignorar', authMiddleware, async (req, res: Response) => {
+router.patch('/comentarios/:id/ignorar', async (req, res: Response) => {
   try {
     if (!isDeskConfigConnected()) return deskConfigUnavailable(res);
     const item = await marcarComentarioIgnorado(String(req.params.id));

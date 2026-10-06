@@ -41,6 +41,16 @@ export interface IRedesSociaisComentario extends Document {
   resposta?: string;
   respondidoEm?: Date;
   respondidoPor?: string;
+  /** Quando a resposta foi confirmada pelo Google Play (só canal google_play). */
+  publicadoEm?: Date;
+  /** Onde a resposta nasceu: 'desk' (Velodesk) ou 'play_console' (respondida fora do Desk). */
+  origemResposta?: 'desk' | 'play_console';
+  /** Último erro ao publicar no Google Play; limpo no próximo sucesso. */
+  erroPublicacao?: string;
+  /** lastModified do review na origem (Play) — detecta edição feita pelo usuário. */
+  ultimaModificacaoOrigem?: Date;
+  /** Usuário editou o review depois de já termos resposta — pode exigir nova resposta. */
+  editadoAposResposta?: boolean;
   ignorado: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -63,6 +73,11 @@ const RedesSociaisComentarioSchema = new Schema<IRedesSociaisComentario>(
     resposta: { type: String },
     respondidoEm: { type: Date },
     respondidoPor: { type: String },
+    publicadoEm: { type: Date },
+    origemResposta: { type: String, enum: ['desk', 'play_console'] },
+    erroPublicacao: { type: String },
+    ultimaModificacaoOrigem: { type: Date },
+    editadoAposResposta: { type: Boolean, default: false },
     ignorado: { type: Boolean, default: false },
   },
   { timestamps: true, versionKey: false },

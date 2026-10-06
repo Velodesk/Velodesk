@@ -1,11 +1,14 @@
 /**
  * AvaliacoesPanel — avaliações reais da Google Play (via GET /api/redes-sociais/comentarios
- * ?canal=google_play), classificadas por IA. Responder/ignorar grava no Velodesk — publicar
- * de fato no Google Play ainda não está integrado, só o registro da resposta aqui.
+ * ?canal=google_play), classificadas por IA. Responder publica no Google Play (via API do
+ * parceiro) e só então marca como respondida; se a publicação falhar, o erro aparece no card
+ * e a avaliação continua sem resposta. Ignorar grava apenas no Velodesk.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { redesSociaisApi } from '../../../api/client';
 import { useNotifications } from '../../../context/NotificationContext';
+
+const RESPOSTA_MAX_CHARS = 350; // limite do Google Play
 
 const STATUS_TABS = [
   { id: 'todas', label: 'Todas' },
@@ -91,16 +94,21 @@ export default function AvaliacoesPanel() {
       showNotification('Escreva uma resposta antes de publicar.', 'warning');
       return;
     }
+    if (texto.length > RESPOSTA_MAX_CHARS) {
+      showNotification(`O Google Play aceita no máximo ${RESPOSTA_MAX_CHARS} caracteres (atual: ${texto.length}).`, 'warning');
+      return;
+    }
     setSavingId(review._id);
     try {
       await redesSociaisApi.responder(review._id, texto);
       showNotification(
-        'Resposta registrada no Velodesk. Publicação direto no Google Play ainda não implementada.',
-        'info',
+        'Resposta publicada no Google Play.',
+        'success',
       );
       load();
     } catch (err) {
-      showNotification(err?.response?.data?.message || 'Não foi possível salvar a resposta.', 'error');
+      showNotification(err?.response?.data?.message || 'Não foi possível publicar a resposta no Google Play.', 'error');
+      load(); // traz o erroPublicacao gravado no card
     } finally {
       setSavingId(null);
     }
@@ -173,8 +181,17 @@ export default function AvaliacoesPanel() {
                     value={drafts[review._id] ?? ''}
                     onChange={(e) => updateDraft(review._id, e.target.value)}
                     placeholder="Escreva a resposta pública…"
+                    maxLength={RESPOSTA_MAX_CHARS}
                     disabled={savingId === review._id}
                   />
+                  <small className="av-review__counter">
+                    {(drafts[review._id] ?? '').length}/{RESPOSTA_MAX_CHARS}
+                  </small>
+                  {review.erroPublicacao ? (
+                    <p className="av-review__error" role="alert">
+                      Falha ao publicar no Google Play: {review.erroPublicacao}
+                    </p>
+                  ) : null}
                   <div className="av-review__actions">
                     <button
                       type="button"
@@ -200,6 +217,9 @@ export default function AvaliacoesPanel() {
                   <div className="av-review__answered-box">
                     {review.ignorado ? <strong>Ignorada</strong> : <><strong>Velotax:</strong> {review.resposta}</>}
                   </div>
+                  {review.editadoAposResposta ? (
+                    <p className="av-review__warn">O cliente editou a avaliação depois da resposta — confira se ela ainda se aplica.</p>
+                  ) : null}
                   {!review.ignorado ? (
                     <button type="button" className="av-review__edit-link" onClick={() => handleEditarResposta(review._id)}>
                       Editar resposta
