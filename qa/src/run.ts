@@ -162,7 +162,8 @@ async function main() {
   // estado da rodada anterior ANTES dele ser sobrescrito logo abaixo, pra não repetir alarme
   // de um problema que já foi notificado e continua idêntico.
   const estadoAnterior = ctx.temBanco ? await lerEstadoAnteriorMongo() : null;
-  await enviarRelatorioTelegram(montarMensagemResumo(coletor.resultados, estadoAnterior));
+  const mensagemRodada = montarMensagemResumo(coletor.resultados, coletor.metricas, estadoAnterior);
+  await enviarRelatorioTelegram(mensagemRodada.texto, { comBotaoDetalhes: mensagemRodada.comBotaoDetalhes });
 
   console.log(`\n${resumoTexto(coletor)}`);
   console.log(`\nPlanilha atualizada: ${PLANILHA}`);

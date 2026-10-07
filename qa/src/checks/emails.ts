@@ -6,7 +6,7 @@ import type { Contexto } from '../contexto';
 import {
   colChamados, colClientes, colConteudos, colDisparos, filtroExcluirEspeciais, filtroQa, buscarComRetry,
 } from '../db';
-import { ok, falha, parcial, bloqueado, comTicket, listarAchados } from '../resultado';
+import { ok, falha, parcial, bloqueado, comTicket, listarAchados, type Ocorrencia } from '../resultado';
 
 const VINTE_QUATRO_H = 24 * 60 * 60 * 1000;
 const TEMPLATE_CSAT = 'Encerramento mais satisfação';
@@ -243,6 +243,7 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
     const corteInferior = new Date(Date.now() - JANELA_DIAS * 24 * 60 * 60 * 1000);
 
     const problemas: string[] = [];
+    const ocorrencias: Ocorrencia[] = [];
 
     for (const { tpl, statusCrit, canalCrit, slaCrit } of alvos) {
       const statusAlvo: string[] = statusCrit.valores;
@@ -330,6 +331,13 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
         problemas.push(
           `"${tpl.nome}": gatilho não cobre o canal ${detalhe} — esses tickets nunca são avaliados.`,
         );
+        const totalNaoCoberto = [...canaisNaoCobertos.values()].reduce((a, b) => a + b, 0);
+        ocorrencias.push({
+          item: tpl.nome,
+          resumo: `${totalNaoCoberto} ticket(s) sem e-mail`,
+          canais: [...canaisNaoCobertos.keys()],
+          impacto: totalNaoCoberto,
+        });
       }
 
       if (!elegiveis.length) continue;
@@ -347,6 +355,14 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
           `"${tpl.nome}": prazo (${prazoLabel}) não cumprido em ${faltando.length}/${elegiveis.length} ` +
             `ticket(s) elegível(eis) nos últimos ${JANELA_DIAS} dias — ex.: protocolo ${faltando[0]?.chamadoProtocolo}.`,
         );
+        const pct = ((faltando.length / elegiveis.length) * 100).toFixed(1).replace(/\.0$/, '');
+        ocorrencias.push({
+          item: tpl.nome,
+          resumo:
+            `${faltando.length} de ${elegiveis.length} e-mails atrasados ` +
+            `(${pct}%, últimos ${JANELA_DIAS} dias)`,
+          impacto: faltando.length,
+        });
       }
     }
 
@@ -359,6 +375,6 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
     if (!problemas.length) {
       return ok(`${alvos.length} modelo(s) de encerramento por status/SLA conferido(s) — canal e prazo cumpridos.`);
     }
-    return falha(listarAchados(problemas));
+    return { ...falha(listarAchados(problemas)), ocorrencias };
   });
 }

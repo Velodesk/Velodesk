@@ -45,7 +45,7 @@ gcloud run jobs deploy "$JOB_NAME" \
   --max-retries 0 \
   --task-timeout 25m \
   --memory 2Gi \
-  --set-env-vars "QA_BASE_URL=https://velodesk-278491073220.us-east1.run.app,QA_EMAIL_ALLOWLIST=villanova.nsv@gmail.com,QA_LOGIN_EMAIL=qateste@velotax.com.br,QA_RESPONSAVEL=Q.A.Velodesk,OPENAI_MODEL=gpt-4.1-mini,GEMINI_MODEL=gemini-2.5-flash" \
+  --set-env-vars "QA_BASE_URL=https://velodesk-278491073220.us-east1.run.app,QA_EMAIL_ALLOWLIST=villanova.nsv@gmail.com,QA_LOGIN_EMAIL=qateste@velotax.com.br,QA_RESPONSAVEL=Q.A.Velodesk,OPENAI_MODEL=gpt-4.1-mini,GEMINI_MODEL=gemini-2.5-flash,QA_PAINEL_URL=https://sentinela-hfsqj6konq-ue.a.run.app/" \
   --set-secrets "QA_LOGIN_PASSWORD=QA_LOGIN_PASSWORD:1,QA_INBOUND_QA_TESTE_SECRET=INBOUND_TICKET_QA_TESTE_SECRET:latest,QA_CLIENT_CPF=QA_CLIENT_CPF:1,OPENAI_API_KEY=OPENAI_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,TELEGRAM_BOT_TOKEN=qa-telegram-token:latest,TELEGRAM_CHAT_ID=qa-telegram-chat-id:latest,MONGODB_URI=MONGO_URI:2"
 
 echo "== 3/4 — service account dedicada pro Scheduler disparar o Job =="

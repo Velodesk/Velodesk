@@ -12,6 +12,7 @@
     "qa": "tsx src/run.ts",
     "qa:leitura": "tsx src/run.ts --somente-leitura",
     "qa:sem-navegador": "tsx src/run.ts --pular-ui",
+    "qa:dry-telegram": "tsx src/dryRunTelegram.ts",
     "typecheck": "tsc --noEmit",
     "navegador": "playwright install --with-deps chromium"
   },

@@ -97,6 +97,9 @@ export const cfg = {
   rodada: opt('QA_RODADA', ''),
   timezone: 'America/Sao_Paulo',
   agente: 'Claudio Q.A. (automático)',
+
+  /** Painel do suporte (Sentinela) linkado no botão "Ver detalhes" da notificação do Telegram. */
+  painelUrl: opt('QA_PAINEL_URL', 'https://sentinela-hfsqj6konq-ue.a.run.app/'),
 } as const;
 
 export type Config = typeof cfg;
