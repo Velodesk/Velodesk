@@ -152,7 +152,7 @@ function MessageAttachments({ attachments, scanStatuses, messageOrigin, messageT
   );
 }
 
-function MessageBubbleText({ text, attachments, scanStatuses, messageOrigin, messageType }) {
+export function MessageBubbleText({ text, attachments, scanStatuses, messageOrigin, messageType }) {
   const raw = normalizeMessageDisplayText(text);
   const hasText = Boolean(String(raw || '').trim());
 

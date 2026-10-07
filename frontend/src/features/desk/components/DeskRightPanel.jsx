@@ -1,6 +1,7 @@
 /**
- * DeskRightPanel v1.15.0 — CE: motivo do órgão para RA/Procon/Bacen/C.Gov
- * VERSION: v1.15.0 | DATE: 2026-08-21
+ * DeskRightPanel v1.16.0 — prop `iaLayout` (Área de IA): sugestão de tabulação abaixo do Detalhe, Motivo/Detalhe
+ * sempre visíveis, sem Responsável/Assumir, sem Processos e sem rodapé de envio
+ * VERSION: v1.16.0 | DATE: 2026-10-07
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_TIPO, hasApplyableTabulation, isCasosEspeciaisCanal, isTabulationComplete, mergeRightFieldsWithDefaults, parseTabulationDisplay, resolveOrgaoMotivoCategoria, sanitizeResponsavel } from '../../../services/tabulationConfig';
@@ -18,14 +19,14 @@ import DeskRightPanelServiceStatus from './DeskRightPanelServiceStatus';
 const CANAL_OPTIONS_FALLBACK = ['WhatsApp', 'Telefone', 'E-mail', 'Portal'];
 const TIPO_OPTIONS_FALLBACK = ['Reclamação', 'Solicitação', 'Dúvida', 'Informação'];
 
-function SelectField({ id, label, fieldKey, value, options, readonly, onFieldChange, showPlaceholder = false, optionItems = null }) {
+function SelectField({ id, label, fieldKey, value, options, readonly, onFieldChange, showPlaceholder = false, optionItems = null, disabled = false }) {
   return (
     <div className="rp-field" key={id}>
       <label htmlFor={id}>{label}</label>
       {readonly ? (
         <input type="text" id={id} readOnly value={value || ''} />
       ) : (
-        <select id={id} value={value || ''} onChange={(e) => onFieldChange(fieldKey, e.target.value)}>
+        <select id={id} value={value || ''} disabled={disabled} onChange={(e) => onFieldChange(fieldKey, e.target.value)}>
           {showPlaceholder && <option value="">Selecionar</option>}
           {optionItems
             ? optionItems.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)
@@ -73,6 +74,7 @@ export default function DeskRightPanel({
   iaAuditScore = null,
   tabulationReadonly = false,
   ticketReadOnly = false,
+  iaLayout = false,
 }) {
   const { loading, config, getMotivos, getDetalhes, getProdutoNames, getTipoChamadoOptions, getCanalContatoOptions } = useTabulation();
   useDeskColaboradores();
@@ -153,6 +155,104 @@ export default function DeskRightPanel({
   const showReplyWorkflow = inWorkflow && ticketHasComunicacaoWorkflow(ticket) && typeof onReplyWorkflowRequest === 'function';
   // Última mensagem enviada pelo time de workflow ("WF:") = ainda não respondida pelo agente responsável.
   const hasUnreadWorkflowMessage = showReplyWorkflow && resolveComunicacaoResumo(ticket)?.ultimaOrigem === 'workflow';
+
+  const iaComplianceChip = typeof iaAuditScore === 'number' && iaHasSuggestion && !iaTabulationLoading ? (
+    <span className="ia-tabulation-card__score">{iaAuditScore}%</span>
+  ) : null;
+
+  if (iaLayout) {
+    return (
+      <aside className="crm-right-panel crm-right-panel--ia" id="crmRightPanel">
+        <div className="crm-right-panel__scroll">
+          <section className="rp-section rp-section--ia-card">
+            <div className="rp-section__label">Classificação do ticket</div>
+            {loading && (
+              <p className="rp-field-hint">Carregando opções de tabulação…</p>
+            )}
+            <SelectField
+              id="selCanal"
+              label="Canal"
+              fieldKey="canal"
+              value={effectiveRightFields.canal}
+              options={canalOptions.length ? canalOptions : CANAL_OPTIONS_FALLBACK}
+              readonly={tabulationReadonly}
+              onFieldChange={onFieldChange}
+            />
+            <SelectField
+              id="selTipo"
+              label="Tipo"
+              fieldKey="tipo"
+              value={effectiveRightFields.tipo || DEFAULT_TIPO}
+              options={tipoOptions.length ? tipoOptions : TIPO_OPTIONS_FALLBACK}
+              readonly={tabulationReadonly}
+              onFieldChange={onFieldChange}
+            />
+            <SelectField
+              id="selProduto"
+              label="Produto"
+              fieldKey="produto"
+              value={effectiveRightFields.produto}
+              options={produtoOptions}
+              showPlaceholder
+              readonly={tabulationReadonly}
+              onFieldChange={onFieldChange}
+            />
+            <SelectField
+              id="selMotivo"
+              label="Motivo"
+              fieldKey="motivo"
+              value={effectiveRightFields.motivo}
+              options={
+                effectiveRightFields.motivo && !motivoOptions.includes(effectiveRightFields.motivo)
+                  ? [effectiveRightFields.motivo, ...motivoOptions]
+                  : motivoOptions
+              }
+              showPlaceholder
+              disabled={!motivoOptions.length && !effectiveRightFields.motivo}
+              readonly={tabulationReadonly}
+              onFieldChange={onFieldChange}
+            />
+            {!skipTreeMotivo ? (
+              <SelectField
+                id="selDetalhe"
+                label="Detalhe"
+                fieldKey="detalhe"
+                value={effectiveRightFields.detalhe}
+                options={detalheOptions}
+                showPlaceholder
+                disabled={!detalheOptions.length}
+                readonly={tabulationReadonly}
+                onFieldChange={onFieldChange}
+              />
+            ) : null}
+            {iaShowSection ? (
+              <div className={'ia-tabulation-card' + (iaTabulationLoading ? ' is-loading' : '')}>
+                <div className="ia-tabulation-card__head">
+                  <span>
+                    Sugestão de tabulação
+                    {iaTabulationFonte === 'auditoria' && iaHasTabulationSuggestion && !iaTabulationLoading ? ' · Auditoria' : ''}
+                  </span>
+                  {iaComplianceChip}
+                </div>
+                <p className="ia-tabulation-card__text" id="iaTabulationText">{tabulationText}</p>
+                <button
+                  type="button"
+                  className="ia-tabulation-card__apply"
+                  id="btnApplyTabulation"
+                  disabled={!canApplyTabulation || tabulationReadonly}
+                  onClick={onApplyTabulation}
+                >
+                  Aplicar tabulação
+                </button>
+              </div>
+            ) : null}
+          </section>
+
+          <DeskRightPanelServiceStatus />
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className="crm-right-panel" id="crmRightPanel">

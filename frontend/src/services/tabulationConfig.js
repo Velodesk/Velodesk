@@ -382,8 +382,9 @@ export function applyTabulationSuggestion(prev, tabulation, config) {
 
 const SEND_STATUSES_REQUIRING_TABULATION = new Set(['em-andamento', 'resolvidos']);
 
-export function validateTabulationForSendStatus(statusId, rightFields, config) {
-  if (statusId === 'resolvidos') {
+/** `options.skipResponsavel`: Área de IA — o backend atribui quem aprova antes de resolver. */
+export function validateTabulationForSendStatus(statusId, rightFields, config, options = {}) {
+  if (statusId === 'resolvidos' && !options.skipResponsavel) {
     const responsavel = sanitizeResponsavel(rightFields?.responsavel);
     if (!responsavel) {
       return {
