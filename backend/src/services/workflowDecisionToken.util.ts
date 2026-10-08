@@ -5,6 +5,7 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import type { IWorkflowPathSegment } from '../models/ChamadoN1';
+import { getCurrentRequestOrigin } from '../utils/requestOrigin';
 
 const PURPOSE = 'wf-decision';
 const TOKEN_TTL = '14d';
@@ -42,6 +43,11 @@ export function verifyWorkflowDecisionToken(token: string): WorkflowDecisionToke
 }
 
 export function buildWorkflowDecisionUrl(token: string, decision: 'approve' | 'reject'): string {
-  const base = env.twilioWebhookPublicBaseUrl.replace(/\/+$/, '');
+  // Prioridade: override explícito > origem da requisição (mesmo ambiente que enviou) > base padrão.
+  const base = (
+    process.env.WORKFLOW_DECISION_PUBLIC_BASE_URL?.trim()
+    || getCurrentRequestOrigin()
+    || env.twilioWebhookPublicBaseUrl
+  ).replace(/\/+$/, '');
   return `${base}/api/workflow-decisao?t=${encodeURIComponent(token)}&d=${decision}`;
 }
