@@ -27,7 +27,8 @@ import { getCasosEspeciaisExtracaoConsumidorGovPersona } from './personas/casosE
 import { logAiUsage } from '../aiUsage.service';
 import { resolveClienteRefFromBody } from '../cliente.service';
 import { readTabulacaoSnapshot } from '../chamado.mapper';
-import { loadTabulationConfig, validateTabulationResult } from './agentTabulation.util';
+import { buildTabulationCatalog, loadTabulationConfig, validateTabulationResult } from './agentTabulation.util';
+import type { TabulationActiveDto } from '../tabulation.service';
 
 export type CasoEspecialExtracaoOrgao = 'procon' | 'bacen' | 'consumidor_gov';
 
@@ -46,13 +47,16 @@ const EXTRACAO_JSON_SCHEMA = {
     assunto: { type: 'string' },
     descricao: { type: 'string' },
     produto: { type: 'string' },
+    tabulacaoProduto: { type: 'string' },
+    tabulacaoMotivo: { type: 'string' },
     prazoLegalData: { type: 'string' },
     dataAberturaData: { type: 'string' },
     confianca: { type: 'string', enum: ['alta', 'media', 'baixa'] },
   },
   required: [
     'consumidor', 'cpf', 'email', 'telefone', 'cidade', 'uf', 'protocolo', 'orgaoInstituicao',
-    'assunto', 'descricao', 'produto', 'prazoLegalData', 'dataAberturaData', 'confianca',
+    'assunto', 'descricao', 'produto', 'tabulacaoProduto', 'tabulacaoMotivo',
+    'prazoLegalData', 'dataAberturaData', 'confianca',
   ],
 } as const;
 
@@ -68,6 +72,8 @@ interface ExtracaoParsed {
   assunto?: string;
   descricao?: string;
   produto?: string;
+  tabulacaoProduto?: string;
+  tabulacaoMotivo?: string;
   prazoLegalData?: string;
   dataAberturaData?: string;
   confianca?: 'alta' | 'media' | 'baixa';
@@ -117,7 +123,7 @@ function parseIsoDateOnly(value: string | undefined): Date | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
-function buildUserBlock(chamado: IChamadoN1, canalLabel: string): string {
+function buildUserBlock(chamado: IChamadoN1, canalLabel: string, tabConfig: TabulationActiveDto): string {
   const payload = adaptChamadoToTicketIa(chamado);
   const texto = payload ? buildTicketIaText(payload, 6000) : String(chamado.chamadoTitulo ?? '');
   return [
@@ -126,6 +132,10 @@ function buildUserBlock(chamado: IChamadoN1, canalLabel: string): string {
     '',
     'Texto do ticket (mensagem original + histórico):',
     texto,
+    '',
+    '## Catálogo de tabulação (lista fechada)',
+    '',
+    buildTabulationCatalog(tabConfig) || '(catálogo indisponível — deixe tabulacaoProduto e tabulacaoMotivo vazios)',
   ].join('\n');
 }
 
@@ -141,6 +151,7 @@ async function applyExtractedFieldsToChamado(
   chamado: IChamadoN1,
   parsed: ExtracaoParsed,
   canalLabel: string,
+  tabConfig: TabulationActiveDto,
 ): Promise<string[]> {
   const filled: string[] = [];
 
@@ -154,8 +165,10 @@ async function applyExtractedFieldsToChamado(
     }
   }
 
-  const produtoExtraido = String(parsed.produto ?? '').trim();
-  const motivoExtraido = String(parsed.assunto ?? '').trim();
+  // Prefere a escolha da LLM feita direto sobre o catálogo fechado; cai pro texto livre
+  // (produto/assunto) só se ela não escolheu nada.
+  const produtoExtraido = String(parsed.tabulacaoProduto || parsed.produto || '').trim();
+  const motivoExtraido = String(parsed.tabulacaoMotivo || parsed.assunto || '').trim();
   if (produtoExtraido || motivoExtraido) {
     const idx = chamado.tabulacao?.length ? chamado.tabulacao.length - 1 : 0;
     const snapshot = readTabulacaoSnapshot(chamado.tabulacao?.[idx]);
@@ -165,7 +178,6 @@ async function applyExtractedFieldsToChamado(
       || snapshot.motivo.trim().toLowerCase() === canalLabel.trim().toLowerCase();
 
     if (produtoVazio || motivoEhPlaceholder) {
-      const tabConfig = await loadTabulationConfig();
       // Motivo só é validado pelo catálogo DENTRO do produto — se o chamado já tem um produto
       // (não vazio), resolve o motivo extraído contra ESSE produto, não contra o que a LLM
       // eventualmente também tenha citado (que pode divergir do que já está tabulado).
@@ -235,12 +247,13 @@ export async function extractCasosEspeciaisFields(params: {
     const personaFn = PERSONA_BY_ORGAO[orgao];
     const canalLabel = orgao === 'procon' ? 'Procon' : orgao === 'bacen' ? 'Bacen' : 'Consumidor.gov';
 
+    const tabConfig = await loadTabulationConfig();
     const openai = createOpenAiClient();
     const response = await openai.responses.create({
       model: env.openaiModel,
       input: [
         { role: 'system', content: personaFn() },
-        { role: 'user', content: buildUserBlock(chamado, canalLabel) },
+        { role: 'user', content: buildUserBlock(chamado, canalLabel, tabConfig) },
       ],
       text: {
         format: {
@@ -326,7 +339,7 @@ export async function extractCasosEspeciaisFields(params: {
     // Cliente (CPF) e tabulação (produto/motivo) vivem no CHAMADO, não no doc de reclamação —
     // roda independente de `set` ter algo pro doc de reclamação (ex.: doc já veio todo
     // preenchido pelo parser determinístico, mas o chamado ainda não tem cliente identificado).
-    const chamadoFilled = await applyExtractedFieldsToChamado(chamado, parsed, canalLabel);
+    const chamadoFilled = await applyExtractedFieldsToChamado(chamado, parsed, canalLabel, tabConfig);
     filled.push(...chamadoFilled);
 
     if (!filled.length) {
