@@ -156,7 +156,7 @@ function buildAssignmentEmailHtml(params: {
   const buttons = params.approveUrl && params.rejectUrl
     ? `<p style="margin:24px 0 6px;font-size:13px;color:#374151;">Revise as informações e decida:</p>
        <div>${buildButtonHtml(params.approveUrl, '✔ Aprovar', '#15803d')}${buildButtonHtml(params.rejectUrl, '✖ Reprovar', '#b91c1c')}</div>
-       <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">O clique abre uma página de confirmação — a decisão só é registrada depois de confirmada lá.</p>`
+       <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">Um clique registra a decisão no workflow na hora — não é preciso entrar no Velodesk.</p>`
     : `<p style="margin:20px 0 0;font-size:13px;color:#6b7280;">Acesse o Velodesk, painel de Workflow, para revisar e decidir.</p>`;
 
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;border-collapse:separate;border-spacing:0;font-family:Arial,sans-serif;">
