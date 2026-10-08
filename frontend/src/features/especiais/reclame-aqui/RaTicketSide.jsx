@@ -4,6 +4,7 @@
 import React from 'react';
 import { getStatusLabel } from '../../../services/especiais/reclameAquiData';
 import RaDadosEditableFields from './RaDadosEditableFields';
+import { formatComplaintDate } from './raTicketFormatters';
 import RaClassificacaoFields from './RaClassificacaoFields';
 import RaNotaContatoCard from './RaNotaContatoCard';
 import RaResponsavelCard from './RaResponsavelCard';
@@ -29,6 +30,9 @@ export default function RaTicketSide({
 }) {
   if (!raItem) return null;
 
+  // Data em que o ticket entrou na caixa de atendimento (criação do ticket).
+  const dataTicket = ticket?.createdAt || raItem.createdAt;
+
   return (
     <aside className="ra-crm-side">
       <div className="ra-ticket__side">
@@ -39,6 +43,10 @@ export default function RaTicketSide({
           </span>
           <dl>
             <RaDadosEditableFields raItem={raItem} onSaved={onRaItemUpdated} />
+            <div>
+              <dt>Data do Ticket</dt>
+              <dd>{dataTicket ? formatComplaintDate(dataTicket) : '—'}</dd>
+            </div>
             {raItem.workflowAtivo ? (
               <div>
                 <dt>Workflow</dt>
