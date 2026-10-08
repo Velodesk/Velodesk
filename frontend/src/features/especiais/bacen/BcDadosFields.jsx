@@ -6,7 +6,6 @@ import React, { useEffect, useState } from 'react';
 import { reclamacoesApi } from '../../../api/client';
 import { useNotifications } from '../../../context/NotificationContext';
 import { patchDemanda } from '../../../services/especiais/bacenStore';
-import { formatBcDeadlineLabel } from '../../../services/especiais/bacenTicketService';
 import { formatComplaintDate } from './bcTicketFormatters';
 
 function formatLocal(value, uf) {
@@ -25,7 +24,7 @@ function toDatetimeLocalInput(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function BcDadosFields({ bcItem, onSaved }) {
+export default function BcDadosFields({ bcItem, ticket, onSaved }) {
   const { showNotification } = useNotifications();
   const [editingField, setEditingField] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -43,7 +42,8 @@ export default function BcDadosFields({ bcItem, onSaved }) {
   if (!bcItem) return null;
 
   const protocoloDisplay = bcItem.protocoloBacen ? `#${bcItem.protocoloBacen}` : '—';
-  const deadlineLabel = formatBcDeadlineLabel(bcItem.prazoLegal);
+  // Data em que o ticket entrou na caixa de atendimento (criação do ticket).
+  const dataTicket = ticket?.createdAt || bcItem.createdAt;
   const localDisplay = formatLocal(bcItem.cidade, bcItem.uf);
 
   const patchField = async (patch, localOverlay = {}) => {
@@ -202,8 +202,8 @@ export default function BcDadosFields({ bcItem, onSaved }) {
       </div>
 
       <div>
-        <dt>Prazo de resposta</dt>
-        <dd className="ra-ticket__deadline-value">{deadlineLabel}</dd>
+        <dt>Data do Ticket</dt>
+        <dd>{dataTicket ? formatComplaintDate(dataTicket) : '—'}</dd>
       </div>
 
       {bcItem.workflowAtivo ? (
