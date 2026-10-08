@@ -43,5 +43,5 @@ export function verifyWorkflowDecisionToken(token: string): WorkflowDecisionToke
 
 export function buildWorkflowDecisionUrl(token: string, decision: 'approve' | 'reject'): string {
   const base = env.twilioWebhookPublicBaseUrl.replace(/\/+$/, '');
-  return `${base}/workflow-decisao?t=${encodeURIComponent(token)}&d=${decision}`;
+  return `${base}/api/workflow-decisao?t=${encodeURIComponent(token)}&d=${decision}`;
 }
