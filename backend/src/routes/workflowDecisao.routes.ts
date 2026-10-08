@@ -1,7 +1,7 @@
 /**
- * workflowDecisao.routes v1.0.0 — página pública (sem login) aberta pelos botões Aprovar/Reprovar
- * do e-mail de workflow. GET só mostra a confirmação (scanners de e-mail pré-visitam links, então
- * GET nunca decide); o POST do formulário é que efetiva a decisão. Identidade = token assinado.
+ * workflowDecisao.routes v2.0.0 — botões Aprovar/Reprovar do e-mail de workflow. O clique (GET) decide
+ * na hora e mostra só um recibo; sem login e sem passar pelo painel. Identidade = token assinado
+ * (ticket + etapa + destinatário). Robôs de pré-visualização caem numa tela de confirmação (POST).
  */
 import { Router, type Request, type Response } from 'express';
 import { isAllMongoReady, waitForMongoReady } from '../config/database';
@@ -76,32 +76,86 @@ function errorPage(res: Response, err: unknown): void {
   page(res, 500, 'Workflow', '<p class="msg">Não foi possível processar sua decisão. Tente pelo painel do Velodesk.</p>');
 }
 
+
+/**
+ * Pré-visualizadores/antivírus de e-mail abrem links sozinhos (Safe Links, proxies de imagem,
+ * Proofpoint…). Se um deles disparasse a decisão, aprovaria/reprovaria sem ninguém clicar —
+ * esses casos caem na tela de confirmação em vez de decidir.
+ */
+const SCANNER_UA = /bot|crawl|spider|preview|proxy|scanner|proofpoint|barracuda|mimecast|safelinks|microsoft office|googleimageproxy|facebookexternalhit|slurp|curl|wget|python|java\/|go-http/i;
+
+function looksLikeScanner(req: Request): boolean {
+  const ua = String(req.get('user-agent') || '').trim();
+  return !ua || SCANNER_UA.test(ua);
+}
+
+const EMAIL_CLICK_NOTE = {
+  approve: '',
+  reject: 'Reprovado pelo botão do e-mail de notificação (sem motivo informado).',
+};
+
+async function applyDecisionFromToken(
+  token: string,
+  decision: 'approve' | 'reject',
+): Promise<{ protocolo: string }> {
+  const { payload, chamado } = await loadFromToken(token);
+
+  const colaborador = await findColaboradorByEmail(payload.email);
+  if (!colaborador || colaborador.desligado) {
+    throw new WorkflowEmailDecisionError('Seu cadastro não está ativo no Velodesk.', 403);
+  }
+  const user = await User.findOne({ email: payload.email }).select('_id').lean();
+  const authUser: AuthPayload = {
+    userId: user?._id ? String(user._id) : '',
+    email: payload.email,
+    role: 'agent',
+    name: resolveColaboradorDisplayName(colaborador) || payload.email,
+  };
+
+  await decideWorkflowViaEmail(chamado, payload.stepSig, decision, authUser, EMAIL_CLICK_NOTE[decision]);
+  await chamado.save();
+  void publishTicketEvent(chamado._id.toString(), 'workflow');
+  return { protocolo: chamado.chamadoProtocolo || String(chamado._id) };
+}
+
+function decisionDonePage(res: Response, decision: 'approve' | 'reject', protocolo: string): void {
+  const approve = decision === 'approve';
+  page(
+    res,
+    200,
+    'Decisão registrada',
+    `<h2 style="margin:0 0 12px">${approve ? '✔ Aprovado' : '✖ Reprovado'}</h2>
+<p class="msg">O ticket <strong>#${esc(protocolo)}</strong> foi ${approve ? 'aprovado' : 'reprovado'} no workflow. Pode fechar esta janela.</p>`,
+  );
+}
+
+// Clique no botão do e-mail: decide na hora, sem passar pelo painel.
 router.get('/', async (req: Request, res: Response) => {
   const token = String(req.query.t || '');
   const decision = parseDecision(req.query.d);
   if (!decision) return page(res, 400, 'Workflow', '<p class="msg">Link inválido.</p>');
   try {
-    const { chamado, definicao, node } = await loadFromToken(token);
-    const approve = decision === 'approve';
-    const protocolo = chamado.chamadoProtocolo || String(chamado._id);
-    page(
-      res,
-      200,
-      approve ? 'Confirmar aprovação' : 'Confirmar reprovação',
-      `<h2 style="margin:0 0 12px">${approve ? 'Confirmar aprovação' : 'Confirmar reprovação'}</h2>
+    if (looksLikeScanner(req)) {
+      const { chamado, definicao, node } = await loadFromToken(token);
+      const approve = decision === 'approve';
+      return page(
+        res,
+        200,
+        approve ? 'Confirmar aprovação' : 'Confirmar reprovação',
+        `<h2 style="margin:0 0 12px">${approve ? 'Confirmar aprovação' : 'Confirmar reprovação'}</h2>
 <dl>
-<dt>Ticket</dt><dd>#${esc(protocolo)}${chamado.chamadoTitulo ? ` — ${esc(chamado.chamadoTitulo)}` : ''}</dd>
+<dt>Ticket</dt><dd>#${esc(chamado.chamadoProtocolo || String(chamado._id))}</dd>
 <dt>Workflow</dt><dd>${esc(definicao.titulo)}</dd>
 <dt>Etapa</dt><dd>${esc(node.passo?.nome)}</dd>
 </dl>
 <form method="post" action="${esc(req.baseUrl)}">
 <input type="hidden" name="t" value="${esc(token)}"><input type="hidden" name="d" value="${decision}">
-${approve
-        ? '<label style="font-size:13px;color:#374151">Observação (opcional)</label><textarea name="motivo"></textarea>'
-        : '<label style="font-size:13px;color:#374151">Motivo da reprovação (obrigatório)</label><textarea name="motivo" required></textarea>'}
 <p><button type="submit" class="${approve ? 'ok' : 'no'}">${approve ? 'Confirmar aprovação' : 'Confirmar reprovação'}</button></p>
 </form>`,
-    );
+      );
+    }
+    const { protocolo } = await applyDecisionFromToken(token, decision);
+    decisionDonePage(res, decision, protocolo);
   } catch (err) {
     errorPage(res, err);
   }
@@ -110,35 +164,10 @@ ${approve
 router.post('/', async (req: Request, res: Response) => {
   const token = String(req.body?.t || '');
   const decision = parseDecision(req.body?.d);
-  const motivo = String(req.body?.motivo || '').slice(0, 4000);
   if (!decision) return page(res, 400, 'Workflow', '<p class="msg">Link inválido.</p>');
   try {
-    const { payload, chamado } = await loadFromToken(token);
-
-    const colaborador = await findColaboradorByEmail(payload.email);
-    if (!colaborador || colaborador.desligado) {
-      throw new WorkflowEmailDecisionError('Seu cadastro não está ativo no Velodesk.', 403);
-    }
-    const user = await User.findOne({ email: payload.email }).select('_id').lean();
-    const authUser: AuthPayload = {
-      userId: user?._id ? String(user._id) : '',
-      email: payload.email,
-      role: 'agent',
-      name: resolveColaboradorDisplayName(colaborador) || payload.email,
-    };
-
-    await decideWorkflowViaEmail(chamado, payload.stepSig, decision, authUser, motivo);
-    await chamado.save();
-    void publishTicketEvent(chamado._id.toString(), 'workflow');
-
-    const protocolo = chamado.chamadoProtocolo || String(chamado._id);
-    page(
-      res,
-      200,
-      'Decisão registrada',
-      `<h2 style="margin:0 0 12px">${decision === 'approve' ? '✔ Aprovado' : '✖ Reprovado'}</h2>
-<p class="msg">Sua decisão no ticket <strong>#${esc(protocolo)}</strong> foi registrada no Velodesk. Você já pode fechar esta página.</p>`,
-    );
+    const { protocolo } = await applyDecisionFromToken(token, decision);
+    decisionDonePage(res, decision, protocolo);
   } catch (err) {
     errorPage(res, err);
   }
