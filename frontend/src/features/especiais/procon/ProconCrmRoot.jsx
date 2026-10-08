@@ -25,6 +25,12 @@ import PcTicketList from './PcTicketList';
 import PcTicketMain from './PcTicketMain';
 import PcTicketSide from './PcTicketSide';
 import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
+import {
+  ESPECIAIS_LIST_NARROW_QUERY,
+  ESPECIAIS_QUEUE_NARROW_QUERY,
+  readCollapsedPreference,
+  useNarrowAutoCollapse,
+} from '../shared/useNarrowAutoCollapse';
 
 export default function ProconCrmRoot() {
   const { id } = useParams();
@@ -36,11 +42,13 @@ export default function ProconCrmRoot() {
   const [listSearchDraft, setListSearchDraft] = useState('');
   const [activeSort, setActiveSort] = useState('data');
   const [queueCollapsed, setQueueCollapsed] = useState(
-    () => localStorage.getItem('velodeskPcQueueCollapsed') === '1',
+    () => readCollapsedPreference('velodeskPcQueueCollapsed', ESPECIAIS_QUEUE_NARROW_QUERY),
   );
   const [listCollapsed, setListCollapsed] = useState(
-    () => localStorage.getItem('velodeskPcListCollapsed') === '1',
+    () => readCollapsedPreference('velodeskPcListCollapsed', ESPECIAIS_LIST_NARROW_QUERY),
   );
+  useNarrowAutoCollapse(ESPECIAIS_QUEUE_NARROW_QUERY, 'velodeskPcQueueCollapsed', setQueueCollapsed);
+  useNarrowAutoCollapse(ESPECIAIS_LIST_NARROW_QUERY, 'velodeskPcListCollapsed', setListCollapsed);
   const [listVersion, setListVersion] = useState(0);
   const syncedOnceRef = useRef(false);
 

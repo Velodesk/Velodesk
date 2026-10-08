@@ -380,6 +380,34 @@ function ComposeBottomBar({
     void onAttachFiles(files);
   }, [onAttachFiles]);
 
+  const attachButton = (showAiAssistant || showSendInternalNote) ? (
+    <>
+      <button
+        type="button"
+        className="btn-secondary crm-compose-bottom-bar__attach"
+        id="btnCrmAttachFile"
+        aria-label="Anexar arquivo"
+        title="Anexar arquivo"
+        disabled={attachDisabled || attachUploading}
+        onClick={handleAttachClick}
+      >
+        <i className="ti ti-paperclip" aria-hidden="true" />
+        <span className="crm-compose-bottom-bar__attach-label">
+          {attachUploading ? 'Enviando…' : 'Anexo'}
+        </span>
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="crm-compose-toolbar__file-input"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={handleFileChange}
+      />
+    </>
+  ) : null;
+
   return (
     <div
       className={
@@ -399,20 +427,7 @@ function ComposeBottomBar({
                 {onSelectMacro ? (
                   <ComposeMacrosMenu onSelect={onSelectMacro} disabled={attachDisabled} />
                 ) : null}
-                <button
-                  type="button"
-                  className="btn-secondary crm-compose-bottom-bar__attach"
-                  id="btnCrmAttachFile"
-                  aria-label="Anexar arquivo"
-                  title="Anexar arquivo"
-                  disabled={attachDisabled || attachUploading}
-                  onClick={handleAttachClick}
-                >
-                  <i className="ti ti-paperclip" aria-hidden="true" />
-                  <span className="crm-compose-bottom-bar__attach-label">
-                    {attachUploading ? 'Enviando…' : 'Anexo'}
-                  </span>
-                </button>
+                {attachButton}
                 <button
                   type="button"
                   className="btn-secondary crm-compose-bottom-bar__ai"
@@ -423,29 +438,11 @@ function ComposeBottomBar({
                 >
                   <span className="crm-compose-bottom-bar__ai-label">Revisor de Texto</span>
                 </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="crm-compose-toolbar__file-input"
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  onChange={handleFileChange}
-                />
               </>
             ) : null}
             {showSendInternalNote ? (
               <>
-                <button
-                  type="button"
-                  className="btn-secondary crm-compose-bottom-bar__attach crm-compose-bottom-bar__attach--layout-slot"
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  disabled
-                >
-                  <i className="ti ti-paperclip" aria-hidden="true" />
-                  <span className="crm-compose-bottom-bar__attach-label">Anexo</span>
-                </button>
+                {attachButton}
                 <button
                   type="button"
                   className="btn-secondary crm-compose-bottom-bar__ai"
@@ -483,6 +480,10 @@ function InternalNoteFields({
   overlayFooter = true,
   editorRef: externalEditorRef,
   onFormatStateChange,
+  attachments = [],
+  onRemoveAttachment,
+  onAttachFiles,
+  attachUploading = false,
 }) {
   const tid = String(ticketId);
   const localEditorRef = useRef(null);
@@ -540,6 +541,11 @@ function InternalNoteFields({
         onChange={handleInternalChange}
         onKeyDown={handleInternalKeyDown}
       />
+      <ComposePendingAttachments
+        items={attachments}
+        onRemove={onRemoveAttachment}
+        disabled={readOnly}
+      />
       {includeBottomBar ? (
       <ComposeBottomBar
         overlay
@@ -547,6 +553,9 @@ function InternalNoteFields({
         onSendInternalNote={onSendInternalNote}
         sendInternalNoteBusy={sendInternalNoteBusy}
         sendInternalNoteDisabled={sendInternalNoteDisabled}
+        onAttachFiles={readOnly ? undefined : onAttachFiles}
+        attachUploading={attachUploading}
+        attachDisabled={attachDisabled || readOnly}
         formatToolbar={(
           <ComposeFormatToolbar
             applyAction={internalFormat.applyAction}
@@ -574,6 +583,8 @@ export default function DeskComposePanel({
   internalText,
   composeAttachments = [],
   onComposeAttachmentsChange,
+  internalAttachments = [],
+  onInternalAttachmentsChange,
   onComposeModeChange,
   onComposeTextChange,
   onComposeReviewed,
@@ -605,6 +616,7 @@ export default function DeskComposePanel({
   const [refinarOpen, setRefinarOpen] = useState(false);
   const [refinarDraft, setRefinarDraft] = useState('');
   const [attachUploading, setAttachUploading] = useState(false);
+  const [attachUploadingInternal, setAttachUploadingInternal] = useState(false);
   const showPublic = variant === 'full' || variant === 'public-only';
   const showInternal = variant === 'full' || variant === 'internal-only';
   const showCliente = variant === 'full' && showClienteTab;
@@ -754,14 +766,61 @@ export default function DeskComposePanel({
     ticketReadOnly,
   ]);
 
+  const handleRemoveInternalAttachment = useCallback((url) => {
+    if (!onInternalAttachmentsChange) return;
+    onInternalAttachmentsChange((internalAttachments || []).filter((item) => item.url !== url));
+  }, [internalAttachments, onInternalAttachmentsChange]);
+
+  const handleInternalAttachFiles = useCallback(async (files) => {
+    if (!onInternalAttachmentsChange || internalLocked) return;
+    const ticketKey = String(ticketId || '').trim();
+    if (!ticketKey) {
+      showNotification('Salve o ticket antes de anexar arquivos.', 'warning');
+      return;
+    }
+    setAttachUploadingInternal(true);
+    try {
+      const result = await uploadsApi.uploadSent(ticketKey, files);
+      const uploaded = Array.isArray(result?.attachments) ? result.attachments : [];
+      const nextItems = uploaded.map((item, index) => ({
+        url: String(item?.url || result?.urls?.[index] || '').trim(),
+        name: String(item?.filename || files[index]?.name || 'Anexo').trim(),
+      })).filter((item) => item.url);
+      if (!nextItems.length) {
+        showNotification('Não foi possível enviar o anexo.', 'error');
+        return;
+      }
+      onInternalAttachmentsChange([...(internalAttachments || []), ...nextItems]);
+      showNotification(
+        nextItems.length === 1 ? 'Anexo adicionado.' : `${nextItems.length} anexos adicionados.`,
+        'success',
+      );
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Falha ao enviar anexo.';
+      showNotification(msg, 'error');
+    } finally {
+      setAttachUploadingInternal(false);
+    }
+  }, [
+    internalAttachments,
+    onInternalAttachmentsChange,
+    internalLocked,
+    showNotification,
+    ticketId,
+  ]);
+
   const sharedBottomBar = useSharedBottomBar ? (
     <ComposeBottomBar
       overlay
       showAiAssistant={composeMode === 'public' && !ticketReadOnly}
       onOpenRefinar={ticketReadOnly ? undefined : handleOpenRefinar}
-      onAttachFiles={composeMode === 'public' && !(ticketReadOnly || publicLocked) ? handleAttachFiles : undefined}
-      attachUploading={attachUploading}
-      attachDisabled={publicLocked || ticketReadOnly}
+      onAttachFiles={
+        composeMode === 'public'
+          ? (!(ticketReadOnly || publicLocked) ? handleAttachFiles : undefined)
+          : (composeMode === 'internal' && !internalLocked ? handleInternalAttachFiles : undefined)
+      }
+      attachUploading={composeMode === 'public' ? attachUploading : attachUploadingInternal}
+      attachDisabled={composeMode === 'public' ? (publicLocked || ticketReadOnly) : internalLocked}
       onSelectMacro={composeMode === 'public' && !(ticketReadOnly || publicLocked) ? handleApplyMacro : undefined}
       showSendInternalNote={composeMode === 'internal' && Boolean(onSendInternalNote) && !internalLocked}
       onSendInternalNote={onSendInternalNote}
@@ -955,6 +1014,10 @@ export default function DeskComposePanel({
                   overlayFooter={!useSharedBottomBar}
                   editorRef={useSharedBottomBar ? internalEditorRef : undefined}
                   onFormatStateChange={useSharedBottomBar ? handleInternalFormatStateChange : undefined}
+                  attachments={internalAttachments}
+                  onRemoveAttachment={handleRemoveInternalAttachment}
+                  onAttachFiles={internalLocked ? undefined : handleInternalAttachFiles}
+                  attachUploading={attachUploadingInternal}
                 />
               </div>
               ) : null}

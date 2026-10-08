@@ -51,10 +51,11 @@
     --rp-border-strong: 1.5px solid #000058;
     --rp-panel-gap-y: 8px;
     --rp-panel-gap-right: 8px;
-    --rp-panel-width: 220px;
-    --desk-col-queue: 168px;
+    /* Colunas proporcionais à largura da tela (notebook ↔ monitor grande), com piso e teto. */
+    --rp-panel-width: clamp(184px, 12.5vw, 300px);
+    --desk-col-queue: clamp(118px, 8vw, 196px);
     --desk-queue-rail-inset: 0px;
-    --desk-col-list: 236px;
+    --desk-col-list: clamp(168px, 12vw, 290px);
     --desk-panel-collapsed-w: 36px;
     --desk-compose-min-h: 80px;
     --desk-compose-max-h: min(108px, 18vh);
@@ -2930,9 +2931,10 @@
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .tabs-top {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 0 12px;
     background: #fff;
     border-bottom: 0.5px solid #E4E6EA;
     padding: 0 16px;
@@ -2941,6 +2943,7 @@
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .tabs-top__tabs {
     display: flex;
+    flex-wrap: wrap;
     min-width: 0;
 }
 
@@ -2977,6 +2980,8 @@
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .tab-btn {
     display: flex;
+    flex-shrink: 0;
+    white-space: nowrap;
     align-items: center;
     gap: 6px;
     padding: 11px 16px;
@@ -8633,12 +8638,10 @@ body.desk-v2-mode #cockpitFocusContext {
 
 /* ?? Notebook / viewport compacto ?? */
 @media (max-width: 1480px), (max-height: 860px) {
+    /* Só densidade (espaçamentos/fontes): as larguras das colunas já escalam via clamp(). */
     #velodeskDeskV2Root {
-        --rp-panel-width: 196px;
         --rp-panel-gap-y: 4px;
         --rp-panel-gap-right: 6px;
-        --desk-col-queue: 128px;
-        --desk-col-list: 184px;
         --desk-compose-min-h: 64px;
         --desk-compose-max-h: min(84px, 14vh);
         --compose-footer-height: 38px;
@@ -8864,14 +8867,6 @@ body.desk-v2-mode #cockpitFocusContext {
     :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-bottom-bar {
         padding: 4px 8px;
         margin-top: 0.35rem;
-    }
-}
-
-@media (max-width: 1280px) {
-    #velodeskDeskV2Root {
-        --rp-panel-width: 184px;
-        --desk-col-queue: 118px;
-        --desk-col-list: 168px;
     }
 }
 
@@ -10654,3 +10649,430 @@ body.desk-v2-mode #cockpitFocusContext {
 .desk-attachment-preview__btn--primary:hover {
     background: #000058;
 }
+
+/* ── Área de IA (/ia) — revisão da sugestão: IaTicketReview + DeskRightPanel iaLayout ── */
+#velodeskDeskV2Root .ia-review {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    font-family: 'Poppins', sans-serif;
+}
+
+#velodeskDeskV2Root .ia-review__header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px 24px;
+    background: #fff;
+    border-bottom: 1px solid #E4E6EA;
+    flex-shrink: 0;
+}
+
+#velodeskDeskV2Root .ia-review__identity { min-width: 0; }
+
+#velodeskDeskV2Root .ia-review__title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#velodeskDeskV2Root .ia-review__name {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #000058;
+}
+
+#velodeskDeskV2Root .ia-review__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin: 6px 0 0;
+    font-size: 0.8rem;
+    color: #4b5563;
+    font-variant-numeric: tabular-nums;
+}
+
+#velodeskDeskV2Root .ia-review__meta strong { color: #111827; }
+
+#velodeskDeskV2Root .ia-review__opened {
+    margin: 2px 0 0;
+    font-size: 0.78rem;
+    color: #6b7280;
+}
+
+#velodeskDeskV2Root .ia-review__header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+#velodeskDeskV2Root .ia-review__stage {
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: #EEF2FF;
+    color: #1634FF;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+#velodeskDeskV2Root .ia-review__history-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border: none;
+    border-radius: 8px;
+    background: #E85D04;
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#velodeskDeskV2Root .ia-review__history-btn:hover:not(:disabled) { background: #C45203; }
+#velodeskDeskV2Root .ia-review__history-btn:disabled { background: #d1d5db; color: #9ca3af; cursor: not-allowed; }
+
+#velodeskDeskV2Root .ia-review__body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px 24px 24px;
+}
+
+#velodeskDeskV2Root .ia-review__card {
+    background: #fff;
+    border: 1px solid #E4E6EA;
+    border-radius: 12px;
+}
+
+#velodeskDeskV2Root .ia-review__client { padding: 14px 18px 16px; }
+
+#velodeskDeskV2Root .ia-review__card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+#velodeskDeskV2Root .ia-review__card-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#velodeskDeskV2Root .ia-review__eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #1634FF;
+}
+
+#velodeskDeskV2Root .ia-review__channel-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: #F3F4F6;
+    color: #374151;
+    font-size: 0.75rem;
+}
+
+#velodeskDeskV2Root .ia-review__link {
+    border: none;
+    background: none;
+    padding: 0;
+    color: #1634FF;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+#velodeskDeskV2Root .ia-review__conversation {
+    padding: 0;
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+#velodeskDeskV2Root .ia-review__empty {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #9ca3af;
+}
+
+#velodeskDeskV2Root .ia-review__suggestion {
+    border-color: #1634FF;
+    box-shadow: 0 0 0 1px rgba(22, 52, 255, 0.12);
+    overflow: hidden;
+}
+
+#velodeskDeskV2Root .ia-review__suggestion-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    background: #F5F7FF;
+    border-bottom: 1px solid #E4E6EA;
+}
+
+#velodeskDeskV2Root .ia-review__suggestion-icon {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: #1634FF;
+    color: #fff;
+    font-size: 1.05rem;
+    flex-shrink: 0;
+}
+
+#velodeskDeskV2Root .ia-review__suggestion-title { flex: 1; min-width: 0; }
+
+#velodeskDeskV2Root .ia-review__suggestion-title h2 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #111827;
+}
+
+#velodeskDeskV2Root .ia-review__suggestion-title p {
+    margin: 1px 0 0;
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+#velodeskDeskV2Root .ia-review__compliance {
+    display: grid;
+    gap: 5px;
+    justify-items: end;
+    min-width: 140px;
+    font-size: 0.75rem;
+    color: #4b5563;
+}
+
+#velodeskDeskV2Root .ia-review__compliance-bar {
+    display: block;
+    width: 140px;
+    height: 5px;
+    border-radius: 999px;
+    background: #E5E7EB;
+    overflow: hidden;
+}
+
+#velodeskDeskV2Root .ia-review__compliance-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+}
+
+#velodeskDeskV2Root .ia-review__compliance--high strong { color: #15803d; }
+#velodeskDeskV2Root .ia-review__compliance--high .ia-review__compliance-bar > span { background: #15803d; }
+#velodeskDeskV2Root .ia-review__compliance--medium strong { color: #B45309; }
+#velodeskDeskV2Root .ia-review__compliance--medium .ia-review__compliance-bar > span { background: #D97706; }
+#velodeskDeskV2Root .ia-review__compliance--low strong { color: #B91C1C; }
+#velodeskDeskV2Root .ia-review__compliance--low .ia-review__compliance-bar > span { background: #DC2626; }
+
+#velodeskDeskV2Root .ia-review__suggestion-body { padding: 18px 20px; }
+
+#velodeskDeskV2Root .ia-review__reply {
+    margin: 0;
+    white-space: pre-wrap;
+    font-size: 0.92rem;
+    line-height: 1.6;
+    color: #111827;
+}
+
+#velodeskDeskV2Root .ia-review__editor {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #1634FF;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: #111827;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+#velodeskDeskV2Root .ia-review__editor:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(22, 52, 255, 0.12);
+}
+
+#velodeskDeskV2Root .ia-review__placeholder {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 0.88rem;
+    color: #6b7280;
+}
+
+#velodeskDeskV2Root .ia-review__placeholder.is-error { color: #B91C1C; }
+
+#velodeskDeskV2Root .ia-review__spin { animation: ia-review-spin 0.9s linear infinite; }
+
+@keyframes ia-review-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    #velodeskDeskV2Root .ia-review__spin { animation: none; }
+}
+
+#velodeskDeskV2Root .ia-review__suggestion-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px 18px;
+    border-top: 1px solid #E4E6EA;
+}
+
+#velodeskDeskV2Root .ia-review__decision {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#velodeskDeskV2Root .ia-review__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 9px 18px;
+    border-radius: 8px;
+    border: 1.5px solid transparent;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#velodeskDeskV2Root .ia-review__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+#velodeskDeskV2Root .ia-review__btn:focus-visible { outline: 2px solid #1634FF; outline-offset: 2px; }
+
+#velodeskDeskV2Root .ia-review__btn--ghost {
+    background: #fff;
+    border-color: #D1D5DB;
+    color: #111827;
+}
+
+#velodeskDeskV2Root .ia-review__btn--ghost:hover:not(:disabled) { background: #F9FAFB; }
+
+#velodeskDeskV2Root .ia-review__btn--reject {
+    background: #fff;
+    border-color: #DC2626;
+    color: #B91C1C;
+}
+
+#velodeskDeskV2Root .ia-review__btn--reject:hover:not(:disabled) { background: #FEF2F2; }
+
+#velodeskDeskV2Root .ia-review__btn--approve {
+    background: #15803d;
+    border-color: #15803d;
+    color: #fff;
+    min-width: 170px;
+}
+
+#velodeskDeskV2Root .ia-review__btn--approve:hover:not(:disabled) { background: #116530; }
+
+/* Painel direito no layout IA: seções viram cartões separados */
+#velodeskDeskV2Root .crm-right-panel--ia {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+#velodeskDeskV2Root .crm-right-panel--ia .crm-right-panel__scroll { gap: 12px; }
+
+#velodeskDeskV2Root .crm-right-panel--ia .rp-section {
+    background: #fff;
+    border: 1px solid #E4E6EA;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+#velodeskDeskV2Root .crm-right-panel--ia .rp-service-status {
+    position: static;
+    margin-top: 0;
+}
+
+#velodeskDeskV2Root .crm-right-panel--ia .rp-section__label { margin-bottom: 12px; }
+
+#velodeskDeskV2Root .crm-right-panel--ia .rp-field { margin-bottom: 12px; }
+
+#velodeskDeskV2Root .crm-right-panel--ia .rp-field select:disabled {
+    background-color: #F9FAFB;
+    color: #9ca3af;
+    cursor: not-allowed;
+}
+
+#velodeskDeskV2Root .ia-tabulation-card {
+    margin-top: 4px;
+    padding: 12px;
+    border: 1px solid #DCE4FF;
+    border-radius: 10px;
+    background: #F5F7FF;
+}
+
+#velodeskDeskV2Root .ia-tabulation-card__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #1634FF;
+}
+
+#velodeskDeskV2Root .ia-tabulation-card__score {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #DCFCE7;
+    color: #15803d;
+    font-size: 0.7rem;
+    letter-spacing: 0;
+}
+
+#velodeskDeskV2Root .ia-tabulation-card__text {
+    margin: 8px 0 10px;
+    font-size: 0.82rem;
+    color: #111827;
+}
+
+#velodeskDeskV2Root .ia-tabulation-card.is-loading .ia-tabulation-card__text { color: #6b7280; }
+
+#velodeskDeskV2Root .ia-tabulation-card__apply {
+    width: 100%;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 8px;
+    background: #1634FF;
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#velodeskDeskV2Root .ia-tabulation-card__apply:hover:not(:disabled) { background: #0F27CC; }
+#velodeskDeskV2Root .ia-tabulation-card__apply:disabled { opacity: 0.5; cursor: not-allowed; }

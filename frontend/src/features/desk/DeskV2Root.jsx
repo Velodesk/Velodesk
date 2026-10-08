@@ -1,6 +1,9 @@
 /**
  * Desk CRM — raiz 5 colunas (layout referência)
- * VERSION: v3.45.0 | DATE: 2026-10-02
+ * VERSION: v3.47.0 | DATE: 2026-10-07
+ * — Coluna de caixas recolhe sozinha em telas até 1100px (notebook), sem gravar a preferência.
+ * — Área de IA (hideComposer): ticket aberto no IaTicketReview (sem abas de tickets, perfil e abas Conversa/Notas)
+ *   e DeskRightPanel com iaLayout; "Aprovar e enviar" faz commit como Resolvido com aprovacaoIa.
  * — prop `hideComposer`: oculta o DeskComposePanel (usado pela Área de IA, /ia); na sugestão IA,
  *   o botão "Usar resposta" aparece como "Aprovado" em verde; "Reprovado" abre o DeskAiFeedbackModal
  *   (Enviar → POST /agents/feedback; Gerar → revisão da IA com o feedback).
@@ -128,6 +131,7 @@ import { htmlToPlainText, htmlHasComposeContent, normalizeComposePlain } from '.
 import { useTicketAiSuggestions } from '../../hooks/useTicketAiSuggestions';
 import DeskAiRevisionModal from './components/DeskAiRevisionModal';
 import DeskAiFeedbackModal from './components/DeskAiFeedbackModal';
+import IaTicketReview from '../ia/components/IaTicketReview';
 import { resolveAutomaticaConfig } from '../config/workflow/workflowConfigData';
 import { resolveWorkflowForTicket } from '../../services/desk/workflowEngine';
 import { getRuntimeWorkflows } from '../../services/desk/workflowRuntimeStore';
@@ -255,11 +259,18 @@ function buildDefaultSessionFromTicket(ticket, config) {
     composeText: '',
     internalText: '',
     composeAttachments: [],
+    internalAttachments: [],
     composeReviewedPlain: '',
     sendStatus: 'em-andamento',
     rightFields: buildDefaultRightFields(config, ticket, getAgentName),
     waChatOpen: false,
   };
+}
+
+const NARROW_DESK_QUERY = '(max-width: 1100px)';
+
+function isNarrowDeskViewport() {
+  return typeof window !== 'undefined' && Boolean(window.matchMedia?.(NARROW_DESK_QUERY).matches);
 }
 
 export default function DeskV2Root({ hideComposer = false, queueIds = null } = {}) {
@@ -293,7 +304,9 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   const [entrySortOldestFirst, setEntrySortOldestFirst] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [queueCollapsed, setQueueCollapsed] = useState(() => localStorage.getItem('velodeskCrmQueueCollapsed') === '1');
+  const [queueCollapsed, setQueueCollapsed] = useState(() => (
+    localStorage.getItem('velodeskCrmQueueCollapsed') === '1' || isNarrowDeskViewport()
+  ));
   const [listCollapsed, setListCollapsed] = useState(() => localStorage.getItem('velodeskCrmTicketListCollapsed') === '1');
   const [createOpen, setCreateOpen] = useState(false);
   const [mainTab, setMainTab] = useState('conversa');
@@ -301,6 +314,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   const [composeText, setComposeText] = useState('');
   const [internalText, setInternalText] = useState('');
   const [composeAttachments, setComposeAttachments] = useState([]);
+  const [internalAttachments, setInternalAttachments] = useState([]);
   const [composeReviewedPlain, setComposeReviewedPlain] = useState('');
   const [sendStatus, setSendStatus] = useState('em-andamento');
   const [rightFields, setRightFields] = useState({});
@@ -320,6 +334,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   const [aiRevisionSubmitting, setAiRevisionSubmitting] = useState(false);
   const [aiFeedbackOpen, setAiFeedbackOpen] = useState(false);
   const [aiFeedbackBusy, setAiFeedbackBusy] = useState(null);
+  const [iaSending, setIaSending] = useState(false);
   const [queueStatuses, setQueueStatuses] = useState(() => getAllQueueStatuses());
   const suppressAutoSelectRef = useRef(true);
   const pendingAdvanceTicketIdRef = useRef(null);
@@ -479,12 +494,13 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       composeText,
       internalText,
       composeAttachments,
+      internalAttachments,
       composeReviewedPlain,
       sendStatus,
       rightFields,
       waChatOpen,
     };
-  }, [mainTab, composeMode, composeText, internalText, composeAttachments, composeReviewedPlain, sendStatus, rightFields, waChatOpen]);
+  }, [mainTab, composeMode, composeText, internalText, composeAttachments, internalAttachments, composeReviewedPlain, sendStatus, rightFields, waChatOpen]);
 
   const persistComposeDraft = useCallback((patch) => {
     if (!activeTabId) return;
@@ -513,6 +529,12 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     const items = Array.isArray(next) ? next : [];
     setComposeAttachments(items);
     persistComposeDraft({ composeAttachments: items });
+  }, [persistComposeDraft]);
+
+  const handleInternalAttachmentsChange = useCallback((next) => {
+    const items = Array.isArray(next) ? next : [];
+    setInternalAttachments(items);
+    persistComposeDraft({ internalAttachments: items });
   }, [persistComposeDraft]);
 
   const handleComposeModeChange = useCallback((mode) => {
@@ -549,6 +571,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     setComposeText(session.composeText ?? defaults.composeText);
     setInternalText(session.internalText ?? defaults.internalText);
     setComposeAttachments(Array.isArray(session.composeAttachments) ? session.composeAttachments : defaults.composeAttachments);
+    setInternalAttachments(Array.isArray(session.internalAttachments) ? session.internalAttachments : defaults.internalAttachments);
     setComposeReviewedPlain(session.composeReviewedPlain ?? defaults.composeReviewedPlain ?? '');
     setSendStatus(session.sendStatus ?? defaults.sendStatus);
     setRightFields(nextRightFields);
@@ -1189,6 +1212,18 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     };
   }, [appliedSearch, activeSort, entrySortOldestFirst, bumpTicketCacheView]);
 
+  // Notebook / janela estreita: recolhe a coluna de caixas sozinho (sem gravar a preferência);
+  // ao voltar para tela larga, restaura o que o agente tinha escolhido.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia(NARROW_DESK_QUERY);
+    const onChange = (event) => {
+      setQueueCollapsed(event.matches || localStorage.getItem('velodeskCrmQueueCollapsed') === '1');
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
   const handleQueueCollapse = (collapsed) => {
     localStorage.setItem('velodeskCrmQueueCollapsed', collapsed ? '1' : '0');
     setQueueCollapsed(collapsed);
@@ -1199,7 +1234,12 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     setListCollapsed(collapsed);
   };
 
-  const handleCommitWithStatus = async (statusId) => {
+  // options.composeOverride: texto público enviado no lugar da caixa de texto (Área de IA, que não
+  // tem composer). options.iaApproval: aprovação da sugestão IA — dispensa o Revisor de Texto e a
+  // exigência de responsável (o backend atribui quem aprova, ver POST /tickets/:id/commit).
+  const handleCommitWithStatus = async (statusId, options = {}) => {
+    const iaApproval = options.iaApproval === true;
+    const hasComposeOverride = typeof options.composeOverride === 'string';
     if (!ticket || !entry || commitInProgressRef.current) return null;
     if (isTicketReadOnly(ticket)) {
       showNotification('Ticket fechado — não aceita modificações.', 'warning');
@@ -1225,14 +1265,17 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     const plannedNextId = getAutoCloseOnSave()
       ? pickNextTicketFromEntries(savedListTicketId, workingListBeforeSave)
       : null;
-    const messageHtml = String(composeText || '').trim();
+    const messageHtml = String(hasComposeOverride ? options.composeOverride : composeText || '').trim();
     const internalNoteHtml = String(internalText || '').trim();
     const messageText = htmlToPlainText(messageHtml).trim();
-    const attachmentUrls = (composeAttachments || [])
+    const attachmentUrls = (hasComposeOverride ? [] : composeAttachments || [])
+      .map((item) => String(item?.url || '').trim())
+      .filter(Boolean);
+    const internalAttachmentUrls = (internalAttachments || [])
       .map((item) => String(item?.url || '').trim())
       .filter(Boolean);
     const hasPublicPayload = Boolean(messageText || attachmentUrls.length);
-    const hasInternalPayload = htmlHasComposeContent(internalNoteHtml);
+    const hasInternalPayload = htmlHasComposeContent(internalNoteHtml) || Boolean(internalAttachmentUrls.length);
     const messagePayload = messageHtml || '';
     const internalNotePayload = internalNoteHtml || '';
 
@@ -1260,7 +1303,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     const hasCanceladoOption = sendStatusOptionsForGate.some((opt) => opt.id === 'cancelado');
     const canceladoBypass = status === 'cancelado' && hasCanceladoOption;
 
-    const tabulationCheck = validateTabulationForSendStatus(status, mergedFieldsForCommit, config);
+    const tabulationCheck = validateTabulationForSendStatus(status, mergedFieldsForCommit, config, { skipResponsavel: iaApproval });
     if (!tabulationCheck.ok && !canceladoBypass) {
       deskLog.warn('AÇÃO', 'commit → bloqueado (tabulação)', {
         ticketId: ticket.id,
@@ -1276,6 +1319,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       if (
         COMPOSE_AI_REVIEW_REQUIRED
         && !canceladoBypass
+        && !iaApproval
         && !isComposePublicReviewSatisfied({
           composeHtml: messageHtml,
           composeReviewedPlain,
@@ -1331,6 +1375,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
             type: 'internal',
             origin: 'agente',
             text: internalNotePayload,
+            attachments: internalAttachmentUrls,
             timestamp: ts,
             author,
           });
@@ -1370,6 +1415,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
             composeReviewedPlain: hasPublicPayload ? '' : session.composeReviewedPlain,
             internalText: hasInternalPayload ? '' : session.internalText,
             composeAttachments: hasPublicPayload ? [] : session.composeAttachments,
+            internalAttachments: hasInternalPayload ? [] : session.internalAttachments,
           };
         }
         replaceOpenTabId(draftId, newId, {
@@ -1382,6 +1428,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         if (hasPublicPayload) setComposeReviewedPlain('');
         if (hasInternalPayload) setInternalText('');
         if (hasPublicPayload) setComposeAttachments([]);
+        if (hasInternalPayload) setInternalAttachments([]);
         showNotification(
           hasPublicPayload || hasInternalPayload ? 'Ticket enviado e salvo.' : 'Ticket salvo.',
           'success',
@@ -1444,6 +1491,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
           composeReviewedPlain,
           internalText,
           composeAttachments,
+          internalAttachments,
           sessionKey: sessionKeyForCommit,
           tabSession: sessionKeyForCommit ? tabSessionsRef.current[sessionKeyForCommit] : null,
         }
@@ -1453,6 +1501,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       if (hasPublicPayload) setComposeReviewedPlain('');
       if (hasInternalPayload) setInternalText('');
       if (hasPublicPayload) setComposeAttachments([]);
+      if (hasInternalPayload) setInternalAttachments([]);
       if (sessionKeyForCommit) {
         const session = tabSessionsRef.current[sessionKeyForCommit];
         if (session) {
@@ -1462,6 +1511,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
             composeReviewedPlain: hasPublicPayload ? '' : session.composeReviewedPlain,
             internalText: hasInternalPayload ? '' : session.internalText,
             composeAttachments: hasPublicPayload ? [] : session.composeAttachments,
+            internalAttachments: hasInternalPayload ? [] : session.internalAttachments,
           };
         }
       }
@@ -1480,6 +1530,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         internalText: hasInternalPayload ? internalNotePayload : '',
         author: getAgentName(),
         ...(attachmentUrls.length ? { attachments: attachmentUrls } : {}),
+        ...(internalAttachmentUrls.length ? { internalAttachments: internalAttachmentUrls } : {}),
+        ...(iaApproval ? { aprovacaoIa: true } : {}),
       });
 
       // Commit confirmado — não restaurar mais a caixa de texto se algo falhar daqui pra
@@ -1531,6 +1583,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         }
         if (composeRestoreOnError.hasInternalPayload) {
           setInternalText(composeRestoreOnError.internalText);
+          setInternalAttachments(composeRestoreOnError.internalAttachments);
         }
         if (composeRestoreOnError.sessionKey && composeRestoreOnError.tabSession) {
           tabSessionsRef.current[composeRestoreOnError.sessionKey] = composeRestoreOnError.tabSession;
@@ -1558,8 +1611,11 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     }
 
     const internalNoteHtml = String(internalText || '').trim();
-    if (!htmlHasComposeContent(internalNoteHtml)) {
-      showNotification('Digite uma anotação interna antes de enviar.', 'warning');
+    const internalAttachmentUrls = (internalAttachments || [])
+      .map((item) => String(item?.url || '').trim())
+      .filter(Boolean);
+    if (!htmlHasComposeContent(internalNoteHtml) && !internalAttachmentUrls.length) {
+      showNotification('Digite uma anotação interna ou anexe um arquivo antes de enviar.', 'warning');
       return;
     }
 
@@ -1579,6 +1635,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       const author = getAgentName();
       const clearComposeAfterSend = () => {
         setInternalText('');
+        setInternalAttachments([]);
         if (activeTabId) {
           const sessionKey = String(activeTabId);
           const session = tabSessionsRef.current[sessionKey];
@@ -1586,6 +1643,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
             tabSessionsRef.current[sessionKey] = {
               ...session,
               internalText: '',
+              internalAttachments: [],
             };
           }
         }
@@ -1595,6 +1653,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         const appended = appendInternalNoteToCachedTicket(ticketId, {
           text: internalNoteHtml,
           author,
+          attachments: internalAttachmentUrls,
         });
         if (!appended) {
           showNotification('Não foi possível registrar a nota no rascunho.', 'error');
@@ -1606,7 +1665,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         return;
       }
 
-      const updated = await sendInternalNote(ticketId, internalNoteHtml, author);
+      const updated = await sendInternalNote(ticketId, internalNoteHtml, author, internalAttachmentUrls);
       bumpTicketCacheView();
       clearComposeAfterSend();
       if (!updated) {
@@ -2615,7 +2674,18 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
 
   const showTableQueueMain = isTableQueueView && tableQueueBrowsing && !createOpen;
   const showTicketMain = Boolean(ticket) && !showTableQueueMain;
-  const showOpenTabsBar = openTabs.length > 0 && !createOpen && !showTableQueueMain;
+  const showOpenTabsBar = openTabs.length > 0 && !createOpen && !showTableQueueMain && !hideComposer;
+
+  // Área de IA: "Aprovar e enviar" manda a resposta (editada ou não) e resolve o ticket.
+  const handleIaApproveSend = async (text) => {
+    if (iaSending) return;
+    setIaSending(true);
+    try {
+      await handleCommitWithStatus('resolvidos', { composeOverride: String(text || ''), iaApproval: true });
+    } finally {
+      setIaSending(false);
+    }
+  };
 
   const handleTicketRenderCrash = useCallback(() => {
     const crashedId = activeTabId;
@@ -2708,6 +2778,33 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
                   </div>
                 )}
               >
+              {hideComposer ? (
+              <div className="crm-ticket-view desk-crm-ticket-scope ia-review-scope">
+                <IaTicketReview
+                  ticket={ticket}
+                  client={client}
+                  messages={displayMsgs}
+                  ticketStatus={ticketStatus}
+                  channelLabel={mergeRightFieldsWithDefaults(rightFields, ticket, getAgentName).canal}
+                  onOpenHistory={() => setHistoryOpen(true)}
+                  ai={ticketAi}
+                  onApproveSend={handleIaApproveSend}
+                  onReject={handleOpenAiFeedback}
+                  sending={iaSending}
+                  readOnly={ticketReadOnly}
+                />
+                <ClientTicketHistoryModal
+                  open={historyOpen}
+                  onClose={() => setHistoryOpen(false)}
+                  ticket={ticket}
+                  client={client}
+                  onSelectTicket={selectTicket}
+                  sourceTicketId={ticket?.id || ticket?._id}
+                  onFundirTickets={handleFundirTickets}
+                  merging={mergeInProgress}
+                />
+              </div>
+              ) : (
               <div className="crm-ticket-view desk-crm-ticket-scope">
             <DeskClientProfileBar
               ticket={ticket}
@@ -2841,6 +2938,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
                         internalText={internalText}
                         composeAttachments={composeAttachments}
                         onComposeAttachmentsChange={handleComposeAttachmentsChange}
+                        internalAttachments={internalAttachments}
+                        onInternalAttachmentsChange={handleInternalAttachmentsChange}
                         onComposeModeChange={handleComposeModeChange}
                         onComposeTextChange={handleComposeTextChange}
                         onComposeReviewed={handleComposeReviewed}
@@ -2875,6 +2974,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
               )}
             </div>
           </div>
+              )}
               </DeskTicketErrorBoundary>
             )}
           </>
@@ -2922,6 +3022,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
           iaAuditScore={ticketAi.auditScore}
           tabulationReadonly={tabulationReadonly}
           ticketReadOnly={ticketReadOnly}
+          iaLayout={hideComposer}
         />
         </DeskTicketErrorBoundary>
       )}
