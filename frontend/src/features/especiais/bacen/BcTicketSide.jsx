@@ -35,7 +35,7 @@ export default function BcTicketSide({
           <span className={`ra-badge ra-badge--${bcItem.statusBc}`}>
             {getStatusLabel(bcItem.statusBc)}
           </span>
-          <BcDadosFields bcItem={bcItem} onSaved={onBcItemUpdated} />
+          <BcDadosFields bcItem={bcItem} ticket={ticket} onSaved={onBcItemUpdated} />
         </section>
 
         <BcClassificacaoFields

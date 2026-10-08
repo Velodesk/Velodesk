@@ -1,4 +1,7 @@
-/** sentAttachmentStorage v1.4.0 — outbound do agente sem fila ClamAV (skipAntivirusScan) */
+/** sentAttachmentStorage v1.5.0 — outbound do agente sem fila ClamAV (skipAntivirusScan)
+ * — v1.5.0: `__` na chave não vira mais `/` na leitura. Nome com acento ("solicitação" →
+ *   "solicita__o") dava 404 no bucket e o anexo ficava de fora do e-mail ao cliente.
+ *   Nome do arquivo também perde os acentos antes de sanitizar ("solicitacao"). */
 import fs from 'fs/promises';
 import { createReadStream } from 'fs';
 import path from 'path';
@@ -27,7 +30,11 @@ function resolveBaseDir(): string {
 
 function sanitizeFilename(name: string): string {
   const base = path.basename(String(name || 'anexo').trim()) || 'anexo';
-  return base.replace(/[^\w.\-()+\s]/g, '_').slice(0, 180);
+  return base
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^\w.\-()+\s]/g, '_')
+    .slice(0, 180);
 }
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
@@ -40,7 +47,7 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
 
 function decodeRawStorageKey(rawKey: string): string {
   const decoded = decodeURIComponent(String(rawKey || '').trim());
-  if (!decoded || decoded.includes('..') || decoded.includes('\\') || decoded.startsWith('/')) {
+  if (!decoded || decoded.includes('..') || decoded.includes('\\') || decoded.includes('/')) {
     throw new Error('Chave de anexo inválida');
   }
   return decoded;

@@ -443,6 +443,14 @@ export const emailOutboundApi = {
   ),
 };
 
+export const whatsappTemplatesApi = {
+  list: () => api.get('/whatsapp-templates').then((r) => r.data),
+  get: (id) => api.get(`/whatsapp-templates/${encodeURIComponent(id)}`).then((r) => r.data),
+  create: (data) => api.post('/whatsapp-templates', data).then((r) => r.data),
+  update: (id, data) => api.put(`/whatsapp-templates/${encodeURIComponent(id)}`, data).then((r) => r.data),
+  remove: (id) => api.delete(`/whatsapp-templates/${encodeURIComponent(id)}`).then((r) => r.data),
+};
+
 export const redesSociaisApi = {
   listComentarios: (params = {}) => api.get('/redes-sociais/comentarios', { params }).then((r) => r.data),
   relatorio: (params = {}) => api.get('/redes-sociais/relatorio', { params }).then((r) => r.data),

@@ -25,6 +25,12 @@ import BcTicketList from './BcTicketList';
 import BcTicketMain from './BcTicketMain';
 import BcTicketSide from './BcTicketSide';
 import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
+import {
+  ESPECIAIS_LIST_NARROW_QUERY,
+  ESPECIAIS_QUEUE_NARROW_QUERY,
+  readCollapsedPreference,
+  useNarrowAutoCollapse,
+} from '../shared/useNarrowAutoCollapse';
 
 export default function BacenCrmRoot() {
   const { id } = useParams();
@@ -36,11 +42,13 @@ export default function BacenCrmRoot() {
   const [listSearchDraft, setListSearchDraft] = useState('');
   const [activeSort, setActiveSort] = useState('data');
   const [queueCollapsed, setQueueCollapsed] = useState(
-    () => localStorage.getItem('velodeskBcQueueCollapsed') === '1',
+    () => readCollapsedPreference('velodeskBcQueueCollapsed', ESPECIAIS_QUEUE_NARROW_QUERY),
   );
   const [listCollapsed, setListCollapsed] = useState(
-    () => localStorage.getItem('velodeskBcListCollapsed') === '1',
+    () => readCollapsedPreference('velodeskBcListCollapsed', ESPECIAIS_LIST_NARROW_QUERY),
   );
+  useNarrowAutoCollapse(ESPECIAIS_QUEUE_NARROW_QUERY, 'velodeskBcQueueCollapsed', setQueueCollapsed);
+  useNarrowAutoCollapse(ESPECIAIS_LIST_NARROW_QUERY, 'velodeskBcListCollapsed', setListCollapsed);
   const [listVersion, setListVersion] = useState(0);
   const syncedOnceRef = useRef(false);
 

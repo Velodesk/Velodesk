@@ -1548,11 +1548,12 @@ export function shouldHideWorkflowSystemThreadMessage(text) {
 
 function mapAgentInternalNote(note, ticket) {
   const text = String(note.text || '').trim();
-  if (!text) return null;
+  const attachments = Array.isArray(note.attachments) ? note.attachments.filter(Boolean) : [];
+  if (!text && !attachments.length) return null;
   const plain = /<[a-z][\s\S]*>/i.test(text)
     ? text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
     : text;
-  if (!plain) return null;
+  if (!plain && !attachments.length) return null;
 
   const isWorkflowInfo = isWorkflowInfoNoteText(text);
   const author = note.author || 'Agente';
@@ -1565,6 +1566,7 @@ function mapAgentInternalNote(note, ticket) {
     badge: isWorkflowInfo ? 'Pedido de info' : 'Interna',
     timestamp: note.timestamp || ticket.updatedAt,
     body: isWorkflowInfo ? text.replace(/^\[Workflow\]\s*/i, '') : text,
+    attachments,
     tags: isWorkflowInfo ? ['Workflow'] : [],
     ticketId: String(ticket.id || ticket._id),
     ticketTitle: getTicketTitle(ticket),

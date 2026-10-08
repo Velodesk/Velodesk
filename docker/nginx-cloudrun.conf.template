@@ -69,6 +69,15 @@ server {
         proxy_hide_header Cross-Origin-Embedder-Policy;
     }
 
+    # Página pública de decisão de workflow (botões Aprovar/Reprovar do e-mail).
+    location /workflow-decisao {
+        proxy_pass ${BACKEND_URL};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_hide_header Cross-Origin-Opener-Policy;
+        proxy_hide_header Cross-Origin-Embedder-Policy;
+    }
+
     location / {
         add_header Cross-Origin-Opener-Policy "same-origin-allow-popups" always;
         try_files $uri $uri/ /index.html;

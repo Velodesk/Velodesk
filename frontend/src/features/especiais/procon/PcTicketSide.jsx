@@ -1,9 +1,11 @@
 /**
  * PcTicketSide — sidebar direita do ticket Procon
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { reclamacoesApi } from '../../../api/client';
+import { useNotifications } from '../../../context/NotificationContext';
+import { patchDemanda } from '../../../services/especiais/proconStore';
 import { getStatusLabel } from '../../../services/especiais/proconData';
-import { formatPcDeadlineLabel } from '../../../services/especiais/proconTicketService';
 import { formatComplaintDate } from './pcTicketFormatters';
 import PcClassificacaoFields from './PcClassificacaoFields';
 import PcResponsavelCard from './PcResponsavelCard';
@@ -14,6 +16,15 @@ function formatLocal(value, uf) {
   const state = String(uf || '').trim();
   if (city && state) return `${city} / ${state}`;
   return city || state || '';
+}
+
+/** Converte ISO -> valor aceito por <input type="datetime-local"> (hora local). */
+function toDatetimeLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function PcTicketSide({
@@ -33,10 +44,44 @@ export default function PcTicketSide({
   onPcItemUpdated,
   initialMessagePrompt,
 }) {
+  const { showNotification } = useNotifications();
+  const [editingData, setEditingData] = useState(false);
+  const [savingData, setSavingData] = useState(false);
+  const [dataDemanda, setDataDemanda] = useState(pcItem?.dataDemanda || '');
+
+  useEffect(() => {
+    setEditingData(false);
+    setDataDemanda(pcItem?.dataDemanda || '');
+  }, [pcItem?.id]);
+
   if (!pcItem) return null;
 
+  const handleDataDemandaChange = async (raw) => {
+    const iso = raw ? new Date(raw).toISOString() : '';
+    setDataDemanda(iso);
+    if (iso === (pcItem.dataDemanda || '') || !pcItem.id || savingData) return;
+    setSavingData(true);
+    try {
+      const updated = await reclamacoesApi.patch('procon', pcItem.id, {
+        dataReclamacao: iso || null,
+        updatedAt: pcItem.updatedAt,
+      });
+      const merged = { ...pcItem, ...updated, dataDemanda: iso || null };
+      // Grava no store local antes do reload disparado por onPcItemUpdated — sem isso,
+      // o reload relê o item obsoleto do cache e reverte a data recém-salva.
+      patchDemanda(merged);
+      onPcItemUpdated?.(merged);
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Não foi possível salvar.';
+      showNotification(msg, 'error');
+    } finally {
+      setSavingData(false);
+    }
+  };
+
   const protocoloDisplay = pcItem.protocoloProcon ? `#${pcItem.protocoloProcon}` : '—';
-  const deadlineLabel = formatPcDeadlineLabel(pcItem.prazoLegal);
+  // Data em que o ticket entrou na caixa de atendimento (criação do ticket).
+  const dataTicket = ticket?.createdAt || pcItem.createdAt;
   const localDisplay = formatLocal(pcItem.cidade, pcItem.uf);
 
   return (
@@ -75,12 +120,36 @@ export default function PcTicketSide({
               </div>
             ) : null}
             <div>
-              <dt>Prazo de resposta</dt>
-              <dd className="ra-ticket__deadline-value">{deadlineLabel}</dd>
+              <dt>Data do Ticket</dt>
+              <dd>{dataTicket ? formatComplaintDate(dataTicket) : '—'}</dd>
             </div>
             <div>
               <dt>Data da demanda</dt>
-              <dd>{formatComplaintDate(pcItem.dataDemanda)}</dd>
+              {editingData ? (
+                <dd>
+                  <input
+                    type="datetime-local"
+                    className="ra-registro__input"
+                    autoFocus
+                    value={toDatetimeLocalInput(dataDemanda)}
+                    onChange={(e) => handleDataDemandaChange(e.target.value)}
+                    onBlur={() => setEditingData(false)}
+                    disabled={savingData}
+                  />
+                </dd>
+              ) : (
+                <dd className="ra-dados-editable-value">
+                  <span>{formatComplaintDate(pcItem.dataDemanda)}</span>
+                  <button
+                    type="button"
+                    className="ra-dados-edit-btn"
+                    aria-label="Editar data da demanda"
+                    onClick={() => setEditingData(true)}
+                  >
+                    <i className="ti ti-pencil" aria-hidden="true" />
+                  </button>
+                </dd>
+              )}
             </div>
             {pcItem.workflowAtivo ? (
               <div>

@@ -15018,9 +15018,11 @@ label[for$="-classificacao-motivo3"] {
 
 /* Reclame Aqui ? shell CRM (fila + lista + ticket + sidebar) */
 #especiais-reclame-aqui, #especiais-procon, #especiais-consumidor-gov, #especiais-bacen {
-    --ra-crm-col-queue: 168px;
-    --ra-crm-col-list: 236px;
-    --ra-crm-col-side: 300px;
+    /* Colunas proporcionais à tela; em notebook/zoom alto a fila (≤1100px) e a lista (≤960px)
+       recolhem sozinhas — ver useNarrowAutoCollapse. */
+    --ra-crm-col-queue: clamp(118px, 8vw, 196px);
+    --ra-crm-col-list: clamp(168px, 12vw, 290px);
+    --ra-crm-col-side: clamp(240px, 17vw, 360px);
 }
 
 #especiais-reclame-aqui .ra-crm-shell , #especiais-procon .ra-crm-shell, #especiais-consumidor-gov .ra-crm-shell, #especiais-bacen .ra-crm-shell {
@@ -15579,41 +15581,6 @@ label[for$="-classificacao-motivo3"] {
     color: #94a3b8;
     font-size: 0.82rem;
     list-style: none;
-}
-
-@media (max-width: 1200px) {
-    #especiais-reclame-aqui, #especiais-procon, #especiais-consumidor-gov, #especiais-bacen {
-        --ra-crm-col-queue: 128px;
-        --ra-crm-col-list: 184px;
-        --ra-crm-col-side: 260px;
-    }
-}
-
-@media (max-width: 960px) {
-    #especiais-reclame-aqui .ra-crm-shell , #especiais-procon .ra-crm-shell, #especiais-consumidor-gov .ra-crm-shell, #especiais-bacen .ra-crm-shell {
-        flex-wrap: wrap;
-        height: auto;
-        min-height: 100%;
-        overflow: auto;
-    }
-
-    #especiais-reclame-aqui .ra-crm-queue, #especiais-procon .ra-crm-queue, #especiais-consumidor-gov .ra-crm-queue, #especiais-bacen .ra-crm-queue,
-    #especiais-reclame-aqui .ra-crm-list , #especiais-procon .ra-crm-list, #especiais-consumidor-gov .ra-crm-list, #especiais-bacen .ra-crm-list {
-        width: 50%;
-        height: 220px;
-    }
-
-    #especiais-reclame-aqui .ra-crm-main , #especiais-procon .ra-crm-main, #especiais-consumidor-gov .ra-crm-main, #especiais-bacen .ra-crm-main {
-        width: 100%;
-        min-height: 50vh;
-        order: 3;
-    }
-
-    #especiais-reclame-aqui .ra-crm-side , #especiais-procon .ra-crm-side, #especiais-consumidor-gov .ra-crm-side, #especiais-bacen .ra-crm-side {
-        width: 100%;
-        max-height: 38vh;
-        order: 4;
-    }
 }
 
 /* RA ticket ? footer sidebar + Abrir conversa */
