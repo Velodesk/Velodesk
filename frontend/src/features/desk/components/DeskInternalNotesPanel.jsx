@@ -10,8 +10,8 @@ import {
 import {
   isSameTicketNote,
   NoteAvatar,
-  NoteBody,
 } from './DeskNoteCardParts';
+import { MessageBubbleText } from './DeskConversation';
 
 export default function DeskInternalNotesPanel({ ticket, client }) {
   const [infoRevision, setInfoRevision] = useState(0);
@@ -62,7 +62,12 @@ export default function DeskInternalNotesPanel({ ticket, client }) {
                   Ticket #{note.ticketId} · {note.ticketTitle}
                 </p>
               ) : null}
-              <NoteBody body={note.body} boldSegments={note.boldSegments} />
+              <MessageBubbleText
+                text={note.body}
+                attachments={note.attachments}
+                messageOrigin="agente"
+                messageType="internal"
+              />
               {note.tags?.length ? (
                 <div className="crm-note-card__tags">
                   {note.tags.map((tag) => (
