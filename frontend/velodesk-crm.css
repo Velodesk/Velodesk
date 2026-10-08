@@ -51,10 +51,11 @@
     --rp-border-strong: 1.5px solid #000058;
     --rp-panel-gap-y: 8px;
     --rp-panel-gap-right: 8px;
-    --rp-panel-width: 220px;
-    --desk-col-queue: 168px;
+    /* Colunas proporcionais à largura da tela (notebook ↔ monitor grande), com piso e teto. */
+    --rp-panel-width: clamp(184px, 12.5vw, 300px);
+    --desk-col-queue: clamp(118px, 8vw, 196px);
     --desk-queue-rail-inset: 0px;
-    --desk-col-list: 236px;
+    --desk-col-list: clamp(168px, 12vw, 290px);
     --desk-panel-collapsed-w: 36px;
     --desk-compose-min-h: 80px;
     --desk-compose-max-h: min(108px, 18vh);
@@ -2930,9 +2931,10 @@
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .tabs-top {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 0 12px;
     background: #fff;
     border-bottom: 0.5px solid #E4E6EA;
     padding: 0 16px;
@@ -2941,6 +2943,7 @@
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .tabs-top__tabs {
     display: flex;
+    flex-wrap: wrap;
     min-width: 0;
 }
 
@@ -2977,6 +2980,8 @@
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .tab-btn {
     display: flex;
+    flex-shrink: 0;
+    white-space: nowrap;
     align-items: center;
     gap: 6px;
     padding: 11px 16px;
@@ -8633,12 +8638,10 @@ body.desk-v2-mode #cockpitFocusContext {
 
 /* ?? Notebook / viewport compacto ?? */
 @media (max-width: 1480px), (max-height: 860px) {
+    /* Só densidade (espaçamentos/fontes): as larguras das colunas já escalam via clamp(). */
     #velodeskDeskV2Root {
-        --rp-panel-width: 196px;
         --rp-panel-gap-y: 4px;
         --rp-panel-gap-right: 6px;
-        --desk-col-queue: 128px;
-        --desk-col-list: 184px;
         --desk-compose-min-h: 64px;
         --desk-compose-max-h: min(84px, 14vh);
         --compose-footer-height: 38px;
@@ -8864,14 +8867,6 @@ body.desk-v2-mode #cockpitFocusContext {
     :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-bottom-bar {
         padding: 4px 8px;
         margin-top: 0.35rem;
-    }
-}
-
-@media (max-width: 1280px) {
-    #velodeskDeskV2Root {
-        --rp-panel-width: 184px;
-        --desk-col-queue: 118px;
-        --desk-col-list: 168px;
     }
 }
 
@@ -10667,6 +10662,7 @@ body.desk-v2-mode #cockpitFocusContext {
 
 #velodeskDeskV2Root .ia-review__header {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: flex-start;
     gap: 16px;

@@ -25,6 +25,12 @@ import CgTicketList from './CgTicketList';
 import CgTicketMain from './CgTicketMain';
 import CgTicketSide from './CgTicketSide';
 import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
+import {
+  ESPECIAIS_LIST_NARROW_QUERY,
+  ESPECIAIS_QUEUE_NARROW_QUERY,
+  readCollapsedPreference,
+  useNarrowAutoCollapse,
+} from '../shared/useNarrowAutoCollapse';
 
 export default function ConsumidorGovCrmRoot() {
   const { id } = useParams();
@@ -36,11 +42,13 @@ export default function ConsumidorGovCrmRoot() {
   const [listSearchDraft, setListSearchDraft] = useState('');
   const [activeSort, setActiveSort] = useState('data');
   const [queueCollapsed, setQueueCollapsed] = useState(
-    () => localStorage.getItem('velodeskCgQueueCollapsed') === '1',
+    () => readCollapsedPreference('velodeskCgQueueCollapsed', ESPECIAIS_QUEUE_NARROW_QUERY),
   );
   const [listCollapsed, setListCollapsed] = useState(
-    () => localStorage.getItem('velodeskCgListCollapsed') === '1',
+    () => readCollapsedPreference('velodeskCgListCollapsed', ESPECIAIS_LIST_NARROW_QUERY),
   );
+  useNarrowAutoCollapse(ESPECIAIS_QUEUE_NARROW_QUERY, 'velodeskCgQueueCollapsed', setQueueCollapsed);
+  useNarrowAutoCollapse(ESPECIAIS_LIST_NARROW_QUERY, 'velodeskCgListCollapsed', setListCollapsed);
   const [listVersion, setListVersion] = useState(0);
   const syncedOnceRef = useRef(false);
 

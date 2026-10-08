@@ -1,6 +1,7 @@
 /**
  * Desk CRM — raiz 5 colunas (layout referência)
- * VERSION: v3.46.0 | DATE: 2026-10-07
+ * VERSION: v3.47.0 | DATE: 2026-10-07
+ * — Coluna de caixas recolhe sozinha em telas até 1100px (notebook), sem gravar a preferência.
  * — Área de IA (hideComposer): ticket aberto no IaTicketReview (sem abas de tickets, perfil e abas Conversa/Notas)
  *   e DeskRightPanel com iaLayout; "Aprovar e enviar" faz commit como Resolvido com aprovacaoIa.
  * — prop `hideComposer`: oculta o DeskComposePanel (usado pela Área de IA, /ia); na sugestão IA,
@@ -265,6 +266,12 @@ function buildDefaultSessionFromTicket(ticket, config) {
   };
 }
 
+const NARROW_DESK_QUERY = '(max-width: 1100px)';
+
+function isNarrowDeskViewport() {
+  return typeof window !== 'undefined' && Boolean(window.matchMedia?.(NARROW_DESK_QUERY).matches);
+}
+
 export default function DeskV2Root({ hideComposer = false, queueIds = null } = {}) {
   const {
     refreshKey,
@@ -296,7 +303,9 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   const [entrySortOldestFirst, setEntrySortOldestFirst] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [queueCollapsed, setQueueCollapsed] = useState(() => localStorage.getItem('velodeskCrmQueueCollapsed') === '1');
+  const [queueCollapsed, setQueueCollapsed] = useState(() => (
+    localStorage.getItem('velodeskCrmQueueCollapsed') === '1' || isNarrowDeskViewport()
+  ));
   const [listCollapsed, setListCollapsed] = useState(() => localStorage.getItem('velodeskCrmTicketListCollapsed') === '1');
   const [createOpen, setCreateOpen] = useState(false);
   const [mainTab, setMainTab] = useState('conversa');
@@ -1192,6 +1201,18 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       clearTimeout(timer);
     };
   }, [appliedSearch, activeSort, entrySortOldestFirst, bumpTicketCacheView]);
+
+  // Notebook / janela estreita: recolhe a coluna de caixas sozinho (sem gravar a preferência);
+  // ao voltar para tela larga, restaura o que o agente tinha escolhido.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia(NARROW_DESK_QUERY);
+    const onChange = (event) => {
+      setQueueCollapsed(event.matches || localStorage.getItem('velodeskCrmQueueCollapsed') === '1');
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   const handleQueueCollapse = (collapsed) => {
     localStorage.setItem('velodeskCrmQueueCollapsed', collapsed ? '1' : '0');
