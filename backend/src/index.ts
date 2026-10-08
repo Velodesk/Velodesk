@@ -64,6 +64,7 @@ import reclameAquiHugmeRoutes from './routes/reclameAquiHugme.routes';
 import processosRoutes from './routes/processos.routes';
 import csatPageRoutes from './routes/csatPage.routes';
 import workflowDecisaoRoutes from './routes/workflowDecisao.routes';
+import { requestOriginMiddleware } from './utils/requestOrigin';
 import csatRoutes from './routes/csat.routes';
 import moduleStatusRoutes from './routes/moduleStatus.routes';
 import { logPopCatalogStartup } from './services/processos/popCatalog.service';
@@ -104,6 +105,7 @@ app.use(
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(requestOriginMiddleware);
 app.use(blockNoticiarioRoutes);
 
 app.use(csatPageRoutes);
