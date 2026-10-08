@@ -4,6 +4,7 @@
  * GET nunca decide); o POST do formulário é que efetiva a decisão. Identidade = token assinado.
  */
 import { Router, type Request, type Response } from 'express';
+import { isAllMongoReady, waitForMongoReady } from '../config/database';
 import { ChamadoN1 } from '../models/ChamadoN1';
 import { User } from '../models/User';
 import type { AuthPayload } from '../middleware/auth';
@@ -21,6 +22,12 @@ import {
 import { publishTicketEvent } from '../services/presence/ticketEventsBroadcast.service';
 
 const router = Router();
+
+// Montada antes do gate global de Mongo no index.ts — espera o banco (cold start) aqui.
+router.use(async (_req, _res, next) => {
+  if (!isAllMongoReady()) await waitForMongoReady();
+  next();
+});
 
 const esc = (v: unknown) => escapeHtmlAttribute(String(v ?? ''));
 
@@ -69,7 +76,7 @@ function errorPage(res: Response, err: unknown): void {
   page(res, 500, 'Workflow', '<p class="msg">Não foi possível processar sua decisão. Tente pelo painel do Velodesk.</p>');
 }
 
-router.get('/workflow-decisao', async (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   const token = String(req.query.t || '');
   const decision = parseDecision(req.query.d);
   if (!decision) return page(res, 400, 'Workflow', '<p class="msg">Link inválido.</p>');
@@ -87,7 +94,7 @@ router.get('/workflow-decisao', async (req: Request, res: Response) => {
 <dt>Workflow</dt><dd>${esc(definicao.titulo)}</dd>
 <dt>Etapa</dt><dd>${esc(node.passo?.nome)}</dd>
 </dl>
-<form method="post" action="/workflow-decisao">
+<form method="post" action="${esc(req.baseUrl)}">
 <input type="hidden" name="t" value="${esc(token)}"><input type="hidden" name="d" value="${decision}">
 ${approve
         ? '<label style="font-size:13px;color:#374151">Observação (opcional)</label><textarea name="motivo"></textarea>'
@@ -100,7 +107,7 @@ ${approve
   }
 });
 
-router.post('/workflow-decisao', async (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   const token = String(req.body?.t || '');
   const decision = parseDecision(req.body?.d);
   const motivo = String(req.body?.motivo || '').slice(0, 4000);

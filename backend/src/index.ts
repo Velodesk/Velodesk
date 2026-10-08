@@ -107,7 +107,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(blockNoticiarioRoutes);
 
 app.use(csatPageRoutes);
-app.use(workflowDecisaoRoutes);
+app.use('/api/workflow-decisao', workflowDecisaoRoutes);
 app.use('/api/inbound', inboundRoutes);
 app.use('/api/spellcheck', spellcheckRoutes);
 app.use('/api/compose', composeRoutes);
