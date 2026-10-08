@@ -2220,7 +2220,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   );
 
   const matchedWorkflowTemplate = useMemo(() => {
-    if (!ticket || isDraftTicket(ticket) || isTicketWorkflowActive(ticket)) return null;
+    // Rascunho também oferece o botão: o início fica pendente no cache e é efetivado no save.
+    if (!ticket || isTicketWorkflowActive(ticket)) return null;
     if (!isClientIdentifiedForWorkflow(ticket, client)) return null;
     const fields = mergeRightFieldsWithDefaults(rightFields, ticket, getAgentName);
     return resolveWorkflowForTicket(ticket, fields, workflowDefinitions);
@@ -2267,6 +2268,24 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       || sanitizeResponsavel(ticket.responsibleAgent)
       || sanitizeResponsavel(fields.responsavel);
     if (preservedResponsavel) fields.responsavel = preservedResponsavel;
+
+    // Rascunho (ainda sem ID no Mongo): guarda o início do workflow no cache do rascunho.
+    // O save cria o ticket e ativa o workflow no mesmo fluxo (flushPendingWorkflowOnSave).
+    if (isDraftTicket(ticket)) {
+      const draftId = ticket.id || ticket._id;
+      const base = { ...(findTicketEntry(draftId)?.ticket || ticket) };
+      applyRightFieldsToTicket(base, fields);
+      if (solicitacaoProdutos && Object.keys(solicitacaoProdutos).length) {
+        base.lateralForm = { ...(base.lateralForm || {}), solicitacaoProdutos };
+      }
+      applyPendingWorkflowStartToTicket(base, template, requisicaoValores, getAgentName());
+      patchTicket(draftId, base);
+      bumpTicketCacheView();
+      showNotification(`Workflow "${template.title}" será iniciado ao salvar o ticket.`, 'success');
+      pendingWorkflowTemplateRef.current = null;
+      setWorkflowStartTemplate(null);
+      return true;
+    }
 
     setStartingWorkflow(true);
     try {
@@ -2374,7 +2393,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   }, [comunicacaoBusy, showNotification, syncTicketViews, ticket]);
 
   const handleStartWorkflow = useCallback(() => {
-    if (!ticket || isDraftTicket(ticket) || startingWorkflow || isTicketWorkflowActive(ticket)) return;
+    if (!ticket || startingWorkflow || isTicketWorkflowActive(ticket)) return;
     if (isTicketReadOnly(ticket)) {
       showNotification('Ticket fechado — não aceita modificações.', 'warning');
       return;
@@ -2508,13 +2527,20 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   ]);
 
   const handleCancelWorkflow = useCallback(async () => {
-    if (!ticket || isDraftTicket(ticket) || cancelingWorkflow) return;
+    if (!ticket || cancelingWorkflow) return;
 
     if (ticket.workflow?.pendingPersist || ticket._pendingWorkflowStart) {
-      await updateTicketInCache(ticket.id, (t) => discardPendingWorkflowStart({ ...t }));
+      if (isDraftTicket(ticket)) {
+        // Rascunho só existe no cache local — não passa pela API.
+        patchTicket(ticket.id, discardPendingWorkflowStart({ ...(findTicketEntry(ticket.id)?.ticket || ticket) }));
+        bumpTicketCacheView();
+      } else {
+        await updateTicketInCache(ticket.id, (t) => discardPendingWorkflowStart({ ...t }));
+      }
       showNotification('Workflow cancelado.', 'success');
       return;
     }
+    if (isDraftTicket(ticket)) return;
 
     setCancelingWorkflow(true);
     try {
@@ -2531,7 +2557,9 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       setCancelingWorkflow(false);
     }
   }, [
+    bumpTicketCacheView,
     cancelingWorkflow,
+    patchTicket,
     showNotification,
     syncTicketViews,
     ticket,
