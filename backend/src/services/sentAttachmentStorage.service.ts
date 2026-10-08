@@ -57,23 +57,6 @@ function decodeStorageKey(rawKey: string): string {
   return decoded;
 }
 
-/**
- * Chaves atuais (persistSentAttachment) nunca têm "/" de verdade — só as de antes da
- * v1.4 (subpasta por ticket) tinham. Mas um nome sanitizado por sanitizeFilename pode
- * acabar com "__" por coincidência (ex.: acento virando "_" do lado de outro "_"), e aí
- * decodeStorageKey interpreta isso como barra e corrompe o caminho. Tenta a versão com
- * barra primeiro (compatibilidade com anexos antigos de verdade aninhados) e cai pra
- * chave crua (sem a substituição) se o arquivo não existir nesse caminho.
- */
-function decodeStorageKeyCandidates(rawKey: string): string[] {
-  const decoded = decodeURIComponent(String(rawKey || '').trim());
-  if (!decoded || decoded.includes('..') || decoded.includes('\\') || decoded.startsWith('/')) {
-    throw new Error('Chave de anexo inválida');
-  }
-  const withSlash = decoded.replace(new RegExp(STORAGE_KEY_SEP, 'g'), '/');
-  return withSlash === decoded ? [decoded] : [withSlash, decoded];
-}
-
 export interface PersistSentAttachmentInput {
   ticketId: string;
   filename: string;
@@ -140,24 +123,29 @@ export async function resolveSentAttachmentSendMeta(apiUrl: string): Promise<{
 export async function readSentAttachmentBuffer(
   storageKey: string,
 ): Promise<{ buffer: Buffer; filename: string; contentType: string } | null> {
-  const found = await resolveExistingSentAttachmentPath(storageKey);
-  if (found) {
-    return {
-      buffer: await fs.readFile(found.filePath),
-      filename: path.basename(found.relative),
-      contentType: 'application/octet-stream',
-    };
-  }
+  const relative = decodeStorageKey(storageKey);
 
-  for (const relative of decodeStorageKeyCandidates(storageKey)) {
-    const gcs = await readSentAttachmentFromGcs(relative);
-    if (gcs?.stream) {
+  try {
+    const filePath = resolveSentAttachmentPath(storageKey);
+    const stat = await fs.stat(filePath);
+    if (stat.isFile()) {
       return {
-        buffer: await streamToBuffer(gcs.stream as Readable),
+        buffer: await fs.readFile(filePath),
         filename: path.basename(relative),
-        contentType: gcs.contentType || 'application/octet-stream',
+        contentType: 'application/octet-stream',
       };
     }
+  } catch {
+    // tenta GCS
+  }
+
+  const gcs = await readSentAttachmentFromGcs(relative);
+  if (gcs?.stream) {
+    return {
+      buffer: await streamToBuffer(gcs.stream as Readable),
+      filename: path.basename(relative),
+      contentType: gcs.contentType || 'application/octet-stream',
+    };
   }
 
   return null;
@@ -229,28 +217,14 @@ export async function persistSentAttachment(
   };
 }
 
-function resolveSentAttachmentPathFor(relative: string): string {
+function resolveSentAttachmentPath(storageKey: string): string {
+  const relative = decodeStorageKey(storageKey);
   const base = resolveBaseDir();
   const fullPath = path.resolve(base, relative);
   if (!fullPath.startsWith(base + path.sep) && fullPath !== base) {
     throw new Error('Caminho de anexo inválido');
   }
   return fullPath;
-}
-
-/** Primeiro candidato que existir em disco, ou o primeiro da lista (pra GCS/erro) se nenhum existir. */
-async function resolveExistingSentAttachmentPath(storageKey: string): Promise<{ relative: string; filePath: string } | null> {
-  const candidates = decodeStorageKeyCandidates(storageKey);
-  for (const relative of candidates) {
-    const filePath = resolveSentAttachmentPathFor(relative);
-    try {
-      const stat = await fs.stat(filePath);
-      if (stat.isFile()) return { relative, filePath };
-    } catch {
-      // tenta o próximo candidato
-    }
-  }
-  return null;
 }
 
 export async function openSentAttachment(storageKey: string): Promise<{
@@ -260,25 +234,30 @@ export async function openSentAttachment(storageKey: string): Promise<{
   contentType?: string;
   filename: string;
 } | null> {
-  const found = await resolveExistingSentAttachmentPath(storageKey);
-  if (found) {
-    return {
-      source: 'disk',
-      filePath: found.filePath,
-      filename: path.basename(found.relative),
-    };
-  }
+  const relative = decodeStorageKey(storageKey);
 
-  for (const relative of decodeStorageKeyCandidates(storageKey)) {
-    const gcs = await readSentAttachmentFromGcs(relative);
-    if (gcs) {
+  try {
+    const filePath = resolveSentAttachmentPath(storageKey);
+    const stat = await fs.stat(filePath);
+    if (stat.isFile()) {
       return {
-        source: 'gcs',
-        stream: gcs.stream,
-        contentType: gcs.contentType,
+        source: 'disk',
+        filePath,
         filename: path.basename(relative),
       };
     }
+  } catch {
+    // tenta GCS
+  }
+
+  const gcs = await readSentAttachmentFromGcs(relative);
+  if (gcs) {
+    return {
+      source: 'gcs',
+      stream: gcs.stream,
+      contentType: gcs.contentType,
+      filename: path.basename(relative),
+    };
   }
 
   return null;
