@@ -4,11 +4,9 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import EspeciaisDeskTicketView from '../shared/EspeciaisDeskTicketView';
 import RaModeracaoPanel from './RaModeracaoPanel';
-import { mapChannelStatusToBadgeClass } from '../shared/especiaisStatusBadge';
 import { useNotifications } from '../../../context/NotificationContext';
 import { lookupClient } from '../../../services/clientDb';
 import { fundirTickets } from '../../../services/desk/ticketFusaoService';
-import { getStatusLabel } from '../../../services/especiais/reclameAquiData';
 import {
   formatRaDeadlineLabel,
   publishRaPublicResponse,
@@ -58,8 +56,6 @@ export default function RaTicketMain({
   }, [raItem?.analiseRelacionados]);
 
   const channelConfig = useMemo(() => ({
-    statusLabel: raItem ? getStatusLabel(raItem.statusRa) : '—',
-    statusClass: mapChannelStatusToBadgeClass(raItem?.statusRa),
     deadlineLabel: raItem ? formatRaDeadlineLabel(raItem.prazoRa) : '',
     deadlinePrefix: 'Prazo de resposta no Reclame Aqui',
     onPublishPublic: publishRaPublicResponse,
