@@ -2,7 +2,7 @@
  * PcResponsavelCard — responsável do ticket Procon + assumir ticket
  */
 import React, { useState } from 'react';
-import { reclamacoesApi } from '../../../api/client';
+import { reclamacoesApi, ticketsApi } from '../../../api/client';
 import { useNotifications } from '../../../context/NotificationContext';
 import { getAgentName } from '../../../services/clientDb';
 import { sanitizeResponsavel } from '../../../services/tabulationConfig';
@@ -32,10 +32,16 @@ export default function PcResponsavelCard({ pcItem, onSaved }) {
     }
     setAssuming(true);
     try {
-      const updated = await reclamacoesApi.patch('procon', pcItem.id, {
-        responsavel: loggedAgent,
-        updatedAt: pcItem.updatedAt,
-      });
+      // Commit/envio valida o responsável no CHAMADO — sem atribuí-lo, Salvar/Enviar seguem
+      // bloqueados e o nome antigo volta no próximo sync.
+      if (pcItem.ticketId) {
+        await ticketsApi.update(pcItem.ticketId, {
+          responsibleAgent: loggedAgent,
+          lateralForm: { responsavel: loggedAgent },
+          author: loggedAgent,
+        });
+      }
+      const updated = await reclamacoesApi.patch('procon', pcItem.id, { responsavel: loggedAgent });
       const merged = { ...pcItem, ...updated };
       patchDemanda(merged);
       onSaved?.(merged);
