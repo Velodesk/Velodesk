@@ -118,8 +118,6 @@ export default function DeskMyTicketsTable({
   onSelectTicket,
   onReload,
   refreshing = false,
-  entrySortOldestFirst = false,
-  onToggleEntrySort,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [mergeSelectedIds, setMergeSelectedIds] = useState(() => new Set());
@@ -156,8 +154,8 @@ export default function DeskMyTicketsTable({
   );
 
   const sections = useMemo(
-    () => groupMyTicketsByStatus(filteredEntries, entrySortOldestFirst),
-    [filteredEntries, entrySortOldestFirst],
+    () => groupMyTicketsByStatus(filteredEntries),
+    [filteredEntries],
   );
 
   const total = filteredEntries.length;
@@ -232,7 +230,7 @@ export default function DeskMyTicketsTable({
           <span className="desk-my-tickets-table__subtitle">
             {total === 0
               ? (searchActive ? 'Nenhum ticket encontrado na busca' : 'Nenhum ticket atribuído a você')
-              : `${total} ticket${total === 1 ? '' : 's'} · ${entrySortOldestFirst ? 'mais antigos primeiro' : 'ordenados por SLA'}`}
+              : `${total} ticket${total === 1 ? '' : 's'} · mais antigos primeiro`}
           </span>
         </div>
         <div className="desk-my-tickets-table__header-actions">
@@ -258,16 +256,6 @@ export default function DeskMyTicketsTable({
             selectedTicketIds={mergeSelectedIds}
             onApplied={() => onReload?.()}
           />
-          <button
-            type="button"
-            className={'ticket-list-entry-sort' + (entrySortOldestFirst ? ' is-active' : '')}
-            onClick={onToggleEntrySort}
-            title={entrySortOldestFirst ? 'Entrada: mais antigos primeiro' : 'Ordenar por entrada na caixa (mais antigos primeiro)'}
-            aria-label="Ordenar por entrada na caixa"
-            aria-pressed={entrySortOldestFirst}
-          >
-            <i className="ti ti-sort-ascending" aria-hidden="true" />
-          </button>
           <button
             type="button"
             className={'crm-icon-btn desk-my-tickets-table__refresh' + (refreshing ? ' is-refreshing' : '')}

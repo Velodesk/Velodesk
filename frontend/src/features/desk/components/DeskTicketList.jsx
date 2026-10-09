@@ -29,10 +29,8 @@ export default function DeskTicketList({
   searchActive,
   searchQuery = '',
   collapsed,
-  entrySortOldestFirst,
   onSelectTicket,
   onSortChange,
-  onToggleEntrySort,
   onSearchChange,
   onSearchSubmit,
   onCollapse,
@@ -200,16 +198,6 @@ export default function DeskTicketList({
                 selectedTicketIds={mergeSelectedIds}
                 onApplied={() => onReload?.()}
               />
-              <button
-                type="button"
-                className={'ticket-list-entry-sort' + (entrySortOldestFirst ? ' is-active' : '')}
-                onClick={onToggleEntrySort}
-                title={entrySortOldestFirst ? 'Entrada: mais antigos primeiro' : 'Ordenar por entrada na caixa (mais antigos primeiro)'}
-                aria-label="Ordenar por entrada na caixa"
-                aria-pressed={entrySortOldestFirst}
-              >
-                <i className="ti ti-sort-ascending" aria-hidden="true" />
-              </button>
             </div>
           </div>
 

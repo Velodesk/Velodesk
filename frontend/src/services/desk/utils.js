@@ -1066,6 +1066,7 @@ function compareQueueEntryTime(a, b, dir = 1) {
   return String(a.ticket.id).localeCompare(String(b.ticket.id), 'pt-BR', { numeric: true });
 }
 
+// Filas do Desk chamam com sortDir 'asc': na aba Data a regra é mais antigo no topo, mais novo no fim.
 export function sortTicketEntries(entries, activeSort, sortDir = 'desc', forceEntrySort = false) {
   const dir = sortDir === 'asc' ? 1 : -1;
   return [...entries].sort((a, b) => {
@@ -1206,14 +1207,14 @@ export function formatTicketSlaRemaining(ticket) {
   return `${minutes} min`;
 }
 
-export function groupMyTicketsByStatus(entries, entrySortOldestFirst = false) {
+/** Seções de "Meus tickets": dentro de cada uma, sempre do mais antigo (topo) ao mais novo. */
+export function groupMyTicketsByStatus(entries) {
   return MY_TICKETS_STATUS_SECTIONS.map((section) => ({
     ...section,
     entries: sortTicketEntries(
       (entries || []).filter((entry) => matchesMyTicketsStatusSection(entry, section.id)),
-      'sla',
+      'data',
       'asc',
-      entrySortOldestFirst,
     ),
   })).filter((section) => section.entries.length > 0);
 }
@@ -1300,14 +1301,14 @@ function filterCustomQueueEntries(customBox, searchQuery) {
 export function filterTickets(activeQueue, searchQuery, activeSort, entrySortOldestFirst = false) {
   const q = String(searchQuery || '').trim();
   if (isMeusTicketsQueue(activeQueue)) {
-    return sortTicketEntries(filterMyTicketsEntries(q), 'sla', 'asc');
+    return sortTicketEntries(filterMyTicketsEntries(q), 'data', 'asc');
   }
   const customBox = getCustomQueueById(activeQueue);
   if (customBox) {
     return sortTicketEntries(
       filterCustomQueueEntries(customBox, searchQuery),
       activeSort,
-      'desc',
+      'asc',
       entrySortOldestFirst,
     );
   }
@@ -1323,7 +1324,7 @@ export function filterTickets(activeQueue, searchQuery, activeSort, entrySortOld
       }
       return matchesTicketSearch(entry, q);
     });
-  return sortTicketEntries(filtered, activeSort, 'desc', entrySortOldestFirst);
+  return sortTicketEntries(filtered, activeSort, 'asc', entrySortOldestFirst);
 }
 
 /** Busca global por Enter: CPF ou protocolo — ignora visão meus-chamados (cache local). */
@@ -1343,7 +1344,7 @@ export function resolveDeskSearchEntries(
     return matchesTicketSearch({ ticket: t }, trimmed, searchMode);
   });
 
-  return sortTicketEntries(filtered, activeSort, 'desc', entrySortOldestFirst);
+  return sortTicketEntries(filtered, activeSort, 'asc', entrySortOldestFirst);
 }
 
 function cockpitEntryFromApiTicket(apiTicket) {
@@ -1385,7 +1386,7 @@ export async function resolveDeskSearchEntriesAsync(
   local.forEach(pushEntry);
 
   if (!isApiMode() || !localStorage.getItem('velodesk_token')) {
-    return sortTicketEntries(entries, activeSort, 'desc', entrySortOldestFirst);
+    return sortTicketEntries(entries, activeSort, 'asc', entrySortOldestFirst);
   }
 
   const mode = searchMode || inferDeskSearchMode(trimmed);
@@ -1417,7 +1418,7 @@ export async function resolveDeskSearchEntriesAsync(
     }
   }
 
-  return sortTicketEntries(entries, activeSort, 'desc', entrySortOldestFirst);
+  return sortTicketEntries(entries, activeSort, 'asc', entrySortOldestFirst);
 }
 
 export function countByQueue(queueId) {
