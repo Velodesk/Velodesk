@@ -2,7 +2,7 @@
  * RaResponsavelCard — responsável do ticket RA + assumir ticket
  */
 import React, { useState } from 'react';
-import { reclamacoesApi } from '../../../api/client';
+import { reclamacoesApi, ticketsApi } from '../../../api/client';
 import { useNotifications } from '../../../context/NotificationContext';
 import { getAgentName } from '../../../services/clientDb';
 import { sanitizeResponsavel } from '../../../services/tabulationConfig';
@@ -32,10 +32,16 @@ export default function RaResponsavelCard({ raItem, onSaved }) {
     }
     setAssuming(true);
     try {
-      const updated = await reclamacoesApi.patch('reclame-aqui', raItem.id, {
-        responsavel: loggedAgent,
-        updatedAt: raItem.updatedAt,
-      });
+      // O commit/envio valida o responsável no CHAMADO (tabulação), não só na reclamação — sem
+      // atribuir o chamado, Salvar/Enviar seguem bloqueados e o nome antigo volta no próximo sync.
+      if (raItem.ticketId) {
+        await ticketsApi.update(raItem.ticketId, {
+          responsibleAgent: loggedAgent,
+          lateralForm: { responsavel: loggedAgent },
+          author: loggedAgent,
+        });
+      }
+      const updated = await reclamacoesApi.patch('reclame-aqui', raItem.id, { responsavel: loggedAgent });
       const merged = { ...raItem, ...updated };
       patchReclamacao(merged);
       onSaved?.(merged);
