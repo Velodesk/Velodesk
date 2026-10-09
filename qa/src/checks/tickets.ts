@@ -9,7 +9,7 @@
 import { cfg, exigirEmailSeguro } from '../config';
 import type { Contexto, Tabulacao } from '../contexto';
 import { MARCA_QA, colChamados, colContadores, filtroQa, buscarComRetry } from '../db';
-import { ok, falha, parcial, bloqueado, comTicket } from '../resultado';
+import { ok, falha, parcial, bloqueado, comTicket, situacaoPorLatencia } from '../resultado';
 
 const PREFIXO = 'qa-velodesk';
 
@@ -128,6 +128,13 @@ export async function checarTicketsNovos(ctx: Contexto): Promise<void> {
   await coletor.checar('T04', async () => {
     if (!api.temToken) return bloqueado('Sem sessão de atendente para consultar as filas.');
     const r = await api.queueCounts();
+    // Endpoint do incidente de 09/10 (travou com timeout de 45s e deixou o desk
+    // inteiro lento) — mede a latência de verdade, não só status 200.
+    coletor.metrica({
+      nome: 'Tempo de resposta do /api/boxes/queue-counts',
+      valor: r.ms,
+      situacao: situacaoPorLatencia(r.ms),
+    });
     if (r.status !== 200) return falha(`Contadores das filas não responderam (status ${r.status}).`);
     const texto = JSON.stringify(r.body ?? {});
     const novos = Number(r.body?.novos ?? r.body?.counts?.novos ?? NaN);

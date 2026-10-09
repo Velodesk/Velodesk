@@ -8,6 +8,7 @@
  * a planilha registra "Falha conhecida" em vez de "Nao", para o alarme sobrar
  * para regressão nova.
  */
+import type { ModoExecucao } from './config';
 
 export type Situacao =
   | 'Sim' // passou
@@ -41,6 +42,14 @@ export interface CasoCatalogo {
   escreve?: boolean;
   /** Precisa do navegador. */
   ui?: boolean;
+  /**
+   * Em quais modos de execução este caso roda. Omitido = só na rodada
+   * 'oficial' (comportamento padrão de todo o catálogo). A rodada 'oficial'
+   * sempre roda os 49 casos de qualquer forma — este campo só é consultado
+   * quando a rodada é 'vigilancia', pra filtrar o subconjunto leve e de
+   * leitura que ela cobre (ver Coletor.checar em resultado.ts).
+   */
+  modos?: ModoExecucao[];
 }
 
 export const CATALOGO: CasoCatalogo[] = [
@@ -51,6 +60,7 @@ export const CATALOGO: CasoCatalogo[] = [
     funcionalidade: 'API do Velodesk responde',
     objetivo: 'A API principal está no ar e respondendo',
     esperado: 'GET /api/health responde em poucos segundos com status "ok"',
+    modos: ['oficial', 'vigilancia'],
   },
   {
     id: 'S02',
@@ -58,6 +68,7 @@ export const CATALOGO: CasoCatalogo[] = [
     funcionalidade: 'Bancos de dados conectados',
     objetivo: 'Todos os bancos que o CRM usa estão conectados',
     esperado: 'Chamados, cadastros, configurações e preferências aparecem como conectados',
+    modos: ['oficial', 'vigilancia'],
   },
   {
     id: 'S03',
@@ -79,6 +90,7 @@ export const CATALOGO: CasoCatalogo[] = [
     funcionalidade: 'Login de atendente',
     objetivo: 'Um atendente consegue autenticar e receber sessão',
     esperado: 'POST /api/login devolve token válido e o cadastro do colaborador',
+    modos: ['oficial', 'vigilancia'],
   },
   {
     id: 'S06',
@@ -121,6 +133,7 @@ export const CATALOGO: CasoCatalogo[] = [
     objetivo: 'O ticket criado aparece na contagem da fila de novos',
     esperado: 'O ticket é listado na fila com status "novo" e contador maior que zero',
     escreve: true,
+    modos: ['oficial', 'vigilancia'],
   },
   {
     id: 'T05',
@@ -384,6 +397,7 @@ export const CATALOGO: CasoCatalogo[] = [
     funcionalidade: 'Erros de API durante a rodada',
     objetivo: 'Nenhuma chamada do agente falhou por erro de servidor ou falta de resposta',
     esperado: 'Nenhuma resposta de erro 500 e nenhuma chamada sem resposta nesta rodada',
+    modos: ['oficial', 'vigilancia'],
   },
   {
     id: 'X02',
@@ -406,6 +420,7 @@ export const CATALOGO: CasoCatalogo[] = [
     funcionalidade: 'Tickets parados como novos',
     objetivo: 'Tickets não estão travados em "novo" por tempo demais',
     esperado: 'Nenhum ticket com mais de 24h ainda em "novo"',
+    modos: ['oficial', 'vigilancia'],
   },
   {
     id: 'X05',
@@ -413,6 +428,22 @@ export const CATALOGO: CasoCatalogo[] = [
     funcionalidade: 'Módulos do console',
     objetivo: 'Nenhum módulo do CRM está desligado ou em revisão',
     esperado: 'Todos os módulos aparecem com status "on"',
+  },
+  {
+    id: 'X06',
+    area: 'Erros',
+    funcionalidade: 'Novos sem responsável',
+    objetivo: 'A fila de Novos não acumula ticket sem ninguém atribuído (roteamento/roleta parado)',
+    esperado: 'Poucos ou nenhum ticket em "novo" sem responsável atribuído neste instante',
+    modos: ['oficial', 'vigilancia'],
+  },
+  {
+    id: 'X07',
+    area: 'Erros',
+    funcionalidade: 'Tickets parados em "novo"',
+    objetivo: 'Nenhum ticket demora demais ainda em "novo", com ou sem responsável já atribuído',
+    esperado: 'Nenhum ticket em "novo" há mais de 3h (e nenhum há mais de 5h)',
+    modos: ['oficial', 'vigilancia'],
   },
 
   // ── Telas (navegador) ─────────────────────────────────────────────────────
@@ -439,6 +470,7 @@ export const CATALOGO: CasoCatalogo[] = [
     objetivo: 'A fila abre com as caixas e os contadores',
     esperado: 'Painel de filas lista Novos, Meus Tickets, Em andamento, Pendente e Resolvidos',
     ui: true,
+    modos: ['oficial', 'vigilancia'],
   },
   {
     id: 'U04',

@@ -48,6 +48,10 @@ export const colQaSentinelaEstado = async () =>
   (await dbConfig()).collection<Document & { _id: string }>('qa_sentinela_estado');
 export const colQaSentinelaRuns = async () =>
   (await dbConfig()).collection<Document & { _id: string }>('qa_sentinela_runs');
+/** Histórico das rodadas de vigilância (30 em 30 min) — coleção própria, separada de
+ * qa_sentinela_runs, para não esvaziar o histórico das rodadas oficiais (ver estadoSentinela.ts). */
+export const colQaSentinelaRunsVigilancia = async () =>
+  (await dbConfig()).collection<Document & { _id: string }>('qa_sentinela_runs_vigilancia');
 
 // ── filtros reaproveitados do backend ──────────────────────────────────────
 
@@ -71,6 +75,29 @@ export const filtroQa = (): Document => ({
  * tickets de Reclame Aqui importados do CRM antigo (Octadesk): chegaram com status "novo" e
  * nunca vão ser tratados como fila — contá-los em X04/E09 dá falso alarme de fila parada.
  */
+/**
+ * Ticket ainda sem ninguém atribuído — espelha findOrphanTickets do backend
+ * (assignmentRouter.service.ts): responsável = último item de tabulacao[] com
+ * `responsavel` vazio. Roteamento automático grava esse campo sem mudar o
+ * status, então "novo" + sem responsável é o sinal mais direto de fila/roleta
+ * parada (diferente de "novo" há muito tempo mas já atribuído — ver X07).
+ */
+export const filtroSemResponsavel = (): Document => ({
+  $expr: {
+    $eq: [
+      {
+        $toLower: {
+          $ifNull: [
+            { $let: { vars: { ultima: { $arrayElemAt: ['$tabulacao', -1] } }, in: '$$ultima.responsavel' } },
+            '',
+          ],
+        },
+      },
+      '',
+    ],
+  },
+});
+
 export const filtroExcluirEspeciais = (): Document => ({
   $nor: [
     { $or: [{ 'registro.metadados.source': 'procon' }, { 'registro.metadados.procon': { $exists: true, $ne: null } }] },

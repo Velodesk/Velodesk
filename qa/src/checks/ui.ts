@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { cfg } from '../config';
 import type { Contexto } from '../contexto';
-import { ok, falha, parcial, bloqueado, listarAchados } from '../resultado';
+import { ok, falha, parcial, bloqueado, listarAchados, situacaoPorLatencia } from '../resultado';
 
 const ESPERA = 25_000;
 
@@ -98,6 +98,7 @@ export async function checarTelas(ctx: Contexto): Promise<void> {
 
       // U03 — fila
       await coletor.checar('U03', async () => {
+        const t0 = Date.now();
         await pagina.goto(`${cfg.baseUrl}/tickets?desk=v2&queue=novos`, {
           waitUntil: 'domcontentloaded',
           timeout: ESPERA,
@@ -107,13 +108,24 @@ export async function checarTelas(ctx: Contexto): Promise<void> {
           .waitFor({ state: 'visible', timeout: ESPERA })
           .then(() => true)
           .catch(() => false);
+        // Tempo real até o painel aparecer (ou até os ESPERA ms de timeout, o que vier
+        // primeiro) — vira métrica de latência da tela de fila, além do pass/fail de sempre.
+        const duracaoMs = Date.now() - t0;
+        coletor.metrica({
+          nome: 'Tempo até o painel de filas aparecer (navegador)',
+          valor: duracaoMs,
+          situacao: situacaoPorLatencia(duracaoMs),
+        });
         const arquivo = await print(pagina, 'u03-fila');
-        if (!apareceu) return { ...falha('O painel de filas não abriu.'), print: arquivo };
+        if (!apareceu) return { ...falha(`O painel de filas não abriu em ${duracaoMs} ms.`), print: arquivo };
         const filas = await pagina.locator('#queueStatusList li[data-queue]').count();
         if (filas < 5) {
-          return { ...parcial(`Painel de filas abriu, mas com ${filas} fila(s) em vez das 5 esperadas.`), print: arquivo };
+          return {
+            ...parcial(`Painel de filas abriu em ${duracaoMs} ms, mas com ${filas} fila(s) em vez das 5 esperadas.`),
+            print: arquivo,
+          };
         }
-        return { ...ok(`Fila de atendimento abriu com as ${filas} caixas e seus contadores.`), print: arquivo };
+        return { ...ok(`Fila de atendimento abriu em ${duracaoMs} ms com as ${filas} caixas e seus contadores.`), print: arquivo };
       });
 
       // U04 — ticket aberto (só ticket de QA)

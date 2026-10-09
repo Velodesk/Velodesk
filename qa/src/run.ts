@@ -71,6 +71,7 @@ async function main() {
 
   console.log(`Ambiente: ${cfg.baseUrl}`);
   console.log(`E-mails seguros: ${cfg.emailsSeguros.join(', ')}`);
+  console.log(`Modo de execução: ${cfg.modoExecucao}`);
   console.log(`Modo: ${ctx.podeEscrever ? 'completo (cria tickets de teste)' : 'somente leitura'}\n`);
 
   // Banco (checagens por dados)
@@ -137,25 +138,33 @@ async function main() {
     if (!executados.has(c.id)) coletor.naoExecutado(c.id, 'Não chegou a ser executado nesta rodada.');
   }
 
-  // Devolutiva: sugestão curta de correção para cada caso que não passou.
-  const devolutivas = await gerarDevolutivas(coletor.resultados);
-  if (devolutivas.aviso) {
-    observacoes.push(devolutivas.aviso);
-    console.warn(`[qa] devolutiva: ${devolutivas.aviso}`);
-  } else {
-    console.log(
-      `[qa] devolutiva preenchida a partir ${devolutivas.fonte === 'ia' ? 'da sugestão da IA' : 'da orientação base do catálogo'}.`,
-    );
-  }
-
   const fim = new Date();
-  await alimentarPlanilha(PLANILHA, {
-    inicio,
-    fim,
-    coletor,
-    observacaoGeral: observacoes.join(' • '),
-    devolutivas: devolutivas.textos,
-  });
+
+  // Devolutiva (sugestão da IA) e planilha Excel são reservadas às rodadas oficiais — a
+  // vigilância roda a cada 30 min e não faz sentido gastar chamada de IA nem inflar o
+  // consolidado (que o próprio relatorio.ts documenta como "alimentado a cada rodada,
+  // 07h e 17h") com um subconjunto leve rodando dezenas de vezes ao dia.
+  if (cfg.modoExecucao === 'oficial') {
+    const devolutivas = await gerarDevolutivas(coletor.resultados);
+    if (devolutivas.aviso) {
+      observacoes.push(devolutivas.aviso);
+      console.warn(`[qa] devolutiva: ${devolutivas.aviso}`);
+    } else {
+      console.log(
+        `[qa] devolutiva preenchida a partir ${devolutivas.fonte === 'ia' ? 'da sugestão da IA' : 'da orientação base do catálogo'}.`,
+      );
+    }
+
+    await alimentarPlanilha(PLANILHA, {
+      inicio,
+      fim,
+      coletor,
+      observacaoGeral: observacoes.join(' • '),
+      devolutivas: devolutivas.textos,
+    });
+  } else {
+    console.log('[qa] rodada de vigilância — pulando devolutiva por IA e a planilha Excel (só nas rodadas oficiais).');
+  }
 
   // Uma mensagem por rodada, sempre — com falha ou não (enviarRelatorioTelegram já é
   // fail-soft: nunca derruba a rodada se o Telegram estiver fora ou mal configurado). Lê o
@@ -163,16 +172,27 @@ async function main() {
   // de um problema que já foi notificado e continua idêntico.
   const estadoAnterior = ctx.temBanco ? await lerEstadoAnteriorMongo() : null;
   const mensagemRodada = montarMensagemResumo(coletor.resultados, coletor.metricas, estadoAnterior);
-  await enviarRelatorioTelegram(mensagemRodada.texto, { comBotaoDetalhes: mensagemRodada.comBotaoDetalhes });
+  await enviarRelatorioTelegram(mensagemRodada.texto, {
+    comBotaoDetalhes: mensagemRodada.comBotaoDetalhes,
+    tipo: mensagemRodada.tipo,
+    modoExecucao: cfg.modoExecucao,
+  });
 
   console.log(`\n${resumoTexto(coletor)}`);
-  console.log(`\nPlanilha atualizada: ${PLANILHA}`);
+  if (cfg.modoExecucao === 'oficial') console.log(`\nPlanilha atualizada: ${PLANILHA}`);
   if (fs.existsSync(ctx.dirPrints)) console.log(`Prints da rodada: ${ctx.dirPrints}`);
 
   // Retrato da rodada pro dashboard Sentinela Velodesk — grava no Mongo
   // (fonte de verdade que a rotina agendada lê pra atualizar o site) e também
   // em qa/data/*.json local, só como registro/depuração de cada rodada.
-  const estado = montarEstadoAtual({ runId, inicio, fim, coletor, somenteLeitura: cfg.somenteLeitura });
+  const estado = montarEstadoAtual({
+    runId,
+    inicio,
+    fim,
+    coletor,
+    somenteLeitura: cfg.somenteLeitura,
+    modoExecucao: cfg.modoExecucao,
+  });
   try {
     gravarEstadoSentinela(estado);
     console.log('[qa] estado da rodada gravado em qa/data/ (local).');

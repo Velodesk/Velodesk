@@ -3,13 +3,18 @@
  */
 import { cfg } from '../config';
 import type { Contexto } from '../contexto';
-import { ok, falha, parcial, bloqueado } from '../resultado';
+import { ok, falha, parcial, bloqueado, situacaoPorLatencia } from '../resultado';
 
 export async function checarSaude(ctx: Contexto): Promise<void> {
   const { api, coletor } = ctx;
 
   await coletor.checar('S01', async () => {
     const r = await api.health();
+    coletor.metrica({
+      nome: 'Tempo de resposta do /api/health',
+      valor: r.ms,
+      situacao: situacaoPorLatencia(r.ms),
+    });
     if (r.status !== 200) return falha(`A API não respondeu como esperado (status ${r.status || 'sem resposta'}).`);
     const status = String(r.body?.status ?? '');
     if (status === 'ok') return ok(`API no ar, respondeu em ${r.ms} ms.`);

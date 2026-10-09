@@ -53,6 +53,26 @@ const baseUrl = opt('QA_BASE_URL').replace(/\/+$/, '');
 const emailsSeguros = lista('QA_EMAIL_ALLOWLIST');
 const cpfQa = opt('QA_CLIENT_CPF').replace(/\D/g, '');
 
+/**
+ * 'oficial' (padrão) = as rodadas de sempre, 07h/17h, catálogo completo.
+ * 'vigilancia' = rodada extra a cada 30 min em horário comercial, só leitura,
+ * rodando um subconjunto leve do catálogo (ver `modos` em catalogo.ts) — olho
+ * em lentidão/erro real, sem criar ticket, sem e-mail, sem CSAT, e sem repetir
+ * as mensagens de boas notícias do Telegram (ver telegram.ts).
+ */
+export type ModoExecucao = 'oficial' | 'vigilancia';
+
+function lerModoExecucao(): ModoExecucao {
+  const v = opt('QA_MODO_EXECUCAO', 'oficial').toLowerCase();
+  if (v === 'vigilancia') return 'vigilancia';
+  if (v !== 'oficial') {
+    console.warn(`[qa] QA_MODO_EXECUCAO="${v}" não reconhecido — usando "oficial".`);
+  }
+  return 'oficial';
+}
+
+const modoExecucao = lerModoExecucao();
+
 export const cfg = {
   /** Origem do Velodesk (frontend + /api no mesmo host). */
   baseUrl,
@@ -89,10 +109,17 @@ export const cfg = {
     dbConfig: opt('MONGODB_DESK_CONFIG_DB_NAME', 'desk_config'),
   },
 
-  /** Só leitura: nenhuma escrita, nenhum e-mail, nenhum ticket criado. */
-  somenteLeitura: bool('QA_SOMENTE_LEITURA', false) || process.argv.includes('--somente-leitura'),
+  /**
+   * Só leitura: nenhuma escrita, nenhum e-mail, nenhum ticket criado.
+   * Sempre true em modo vigilância, mesmo sem QA_SOMENTE_LEITURA=true — a
+   * rodada de vigilância nunca escreve, por definição.
+   */
+  somenteLeitura: bool('QA_SOMENTE_LEITURA', false) || process.argv.includes('--somente-leitura') || modoExecucao === 'vigilancia',
   /** Pula a camada de navegador (útil quando não há Playwright instalado). */
   pularUi: bool('QA_PULAR_UI', false) || process.argv.includes('--pular-ui'),
+
+  /** 'oficial' (padrão, 07h/17h, catálogo completo) ou 'vigilancia' (a cada 30min, subconjunto leve). */
+  modoExecucao,
 
   rodada: opt('QA_RODADA', ''),
   timezone: 'America/Sao_Paulo',

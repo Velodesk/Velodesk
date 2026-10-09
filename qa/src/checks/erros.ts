@@ -2,10 +2,12 @@
  * checks/erros v1.0.0 — sinais de problema que não aparecem nos fluxos felizes
  */
 import type { Contexto } from '../contexto';
-import { colChamados, filtroExcluirEspeciais, filtroStatusAtual } from '../db';
+import { colChamados, filtroExcluirEspeciais, filtroQa, filtroSemResponsavel, filtroStatusAtual } from '../db';
 import { ok, falha, parcial, bloqueado } from '../resultado';
 
 const VINTE_QUATRO_H = 24 * 60 * 60 * 1000;
+const TRES_H = 3 * 60 * 60 * 1000;
+const CINCO_H = 5 * 60 * 60 * 1000;
 
 export async function checarErros(ctx: Contexto): Promise<void> {
   const { api, coletor } = ctx;
@@ -82,5 +84,55 @@ export async function checarErros(ctx: Contexto): Promise<void> {
     return parcial(
       `Módulo(s) fora do ar ou em revisão: ${problemas.map((i) => `${i.label} (${i.status})`).join(', ')}.`,
     );
+  });
+
+  // X06 — tickets em "novo" sem responsável atribuído agora (fila/roleta não pegou ainda).
+  // Diferente de X07: aqui é só a contagem do instante, sem olhar há quanto tempo.
+  await coletor.checar('X06', async () => {
+    if (!ctx.temBanco) return bloqueado('Sem acesso ao banco.');
+    const col = await colChamados();
+    const semResponsavel = await col.countDocuments({
+      $and: [filtroStatusAtual('novo'), filtroExcluirEspeciais(), filtroSemResponsavel(), { $nor: [filtroQa()] }],
+    });
+    coletor.metrica({
+      nome: 'Tickets em "novo" sem responsável atribuído (agora)',
+      valor: semResponsavel,
+      situacao: semResponsavel > 10 ? 'Atenção' : 'Normal',
+    });
+    if (semResponsavel === 0) return ok('Nenhum ticket em "novo" sem responsável atribuído neste instante.');
+    if (semResponsavel <= 10) {
+      return ok(`${semResponsavel} ticket(s) em "novo" sem responsável no momento — dentro do esperado.`);
+    }
+    return parcial(
+      `${semResponsavel} tickets em "novo" sem responsável atribuído agora — acima do normal, vale checar o roteamento/roleta.`,
+    );
+  });
+
+  // X07 — tickets parados em "novo" por tempo, com ou sem responsável já atribuído (diferente
+  // de X06: aqui conta mesmo ticket já roteado, se o agente ainda não abriu/tratou).
+  await coletor.checar('X07', async () => {
+    if (!ctx.temBanco) return bloqueado('Sem acesso ao banco.');
+    const col = await colChamados();
+    const base = [filtroStatusAtual('novo'), filtroExcluirEspeciais(), { $nor: [filtroQa()] }];
+    const parados3h = await col.countDocuments({
+      $and: [...base, { createdAt: { $lt: new Date(Date.now() - TRES_H) } }],
+    });
+    const parados5h = await col.countDocuments({
+      $and: [...base, { createdAt: { $lt: new Date(Date.now() - CINCO_H) } }],
+    });
+    coletor.metrica({
+      nome: 'Tickets em "novo" parados (3h+ / 5h+)',
+      valor: `${parados3h} acima de 3h, ${parados5h} acima de 5h`,
+      situacao: parados5h > 0 ? 'Alerta' : parados3h > 0 ? 'Atenção' : 'Normal',
+    });
+    if (parados5h > 0) {
+      return falha(
+        `${parados5h} ticket(s) em "novo" há mais de 5h (${parados3h} já passam de 3h) — fila sem tratamento.`,
+      );
+    }
+    if (parados3h > 0) {
+      return parcial(`${parados3h} ticket(s) em "novo" há mais de 3h, ainda sem passar de 5h.`);
+    }
+    return ok('Nenhum ticket em "novo" há mais de 3h.');
   });
 }

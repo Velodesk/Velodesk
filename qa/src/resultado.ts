@@ -1,7 +1,24 @@
 /**
- * resultado v1.0.0 — coleta dos resultados da rodada
+ * resultado v1.1.0 — coleta dos resultados e métricas da rodada
  */
 import { caso, type CasoCatalogo, type Situacao } from './catalogo';
+import { cfg } from './config';
+
+/**
+ * Limites de latência compartilhados por toda métrica de tempo de resposta
+ * (API ou tela) — propositalmente bem abaixo dos 45s de timeout do cliente
+ * HTTP do agente (ver api.ts), pra pegar degradação antes de virar timeout
+ * completo (caso do incidente de 09/10 em /api/boxes/queue-counts).
+ */
+export const LATENCIA_LIMITE_ATENCAO_MS = 5_000;
+export const LATENCIA_LIMITE_ALERTA_MS = 15_000;
+
+/** Normal < 5s, Atenção 5-15s, Alerta > 15s. */
+export function situacaoPorLatencia(ms: number): 'Normal' | 'Atenção' | 'Alerta' {
+  if (ms > LATENCIA_LIMITE_ALERTA_MS) return 'Alerta';
+  if (ms >= LATENCIA_LIMITE_ATENCAO_MS) return 'Atenção';
+  return 'Normal';
+}
 
 /**
  * Lista numerada, uma linha por item — o dashboard (Sentinela) preserva quebra de linha na
@@ -81,7 +98,14 @@ export class Coletor {
     this.resultados.push({ caso: c, situacao: final, observacao: obs, duracaoMs, print, tickets, ocorrencias });
   }
 
-  /** Executa uma checagem, cronometra e registra o resultado. */
+  /**
+   * Executa uma checagem, cronometra e registra o resultado. Em modo
+   * 'vigilancia' (rodada leve de 30 em 30 min), casos fora do subconjunto
+   * marcado em `modos` no catálogo nem chegam a chamar `fn()` — ficam
+   * registrados como 'Nao testado' com o motivo, sem gastar a chamada de API/
+   * banco/navegador que a rodada oficial faria. Em modo 'oficial' o
+   * comportamento é sempre o de antes, para todos os 49 casos.
+   */
   async checar(
     id: string,
     fn: () => Promise<{
@@ -92,6 +116,16 @@ export class Coletor {
       ocorrencias?: Ocorrencia[];
     }>,
   ) {
+    const c = caso(id);
+    if (cfg.modoExecucao === 'vigilancia' && !c.modos?.includes('vigilancia')) {
+      this.registrar(
+        id,
+        'Nao testado',
+        'Fora do subconjunto da rodada de vigilância — este caso só roda na rodada oficial (07h/17h).',
+        0,
+      );
+      return 'Nao testado' as Situacao;
+    }
     const t0 = Date.now();
     try {
       const r = await fn();

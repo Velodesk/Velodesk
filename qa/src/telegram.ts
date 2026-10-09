@@ -1,12 +1,16 @@
 /**
- * telegram v2.0.0 — notificação curta da rodada de QA pro Telegram (gestão)
+ * telegram v2.1.0 — notificação curta da rodada de QA pro Telegram (gestão)
  *
  * Formato pensado para quem recebe a mensagem (gestão), não para quem vai investigar — o
  * detalhe técnico ("Esperado"/"Encontrado") continua só no Excel e no painel Sentinela
  * (QA_PAINEL_URL), atrás do botão "Ver detalhes". Ver mockup-notificacao-qa-velodesk_3.html.
+ *
+ * Em rodada de vigilância (QA_MODO_EXECUCAO=vigilancia, a cada 30 min em horário comercial),
+ * enviarRelatorioTelegram suprime o envio quando o tipo decidido é 'resolvido' ou 'tudo-certo'
+ * — só 🔴 Falha e 🟡 Atenção saem fora do horário das rodadas oficiais (ver EnvioTelegramOpts).
  */
 import 'dotenv/config';
-import { cfg } from './config';
+import { cfg, type ModoExecucao } from './config';
 import type { Resultado, Metrica } from './resultado';
 import type { Area } from './catalogo';
 import type { CasoAnterior } from './estadoSentinela';
@@ -42,12 +46,32 @@ function formatarDataHora(d: Date): string {
   return `${data} às ${hora}`;
 }
 
+/** Qual das 4 variantes a rodada decidiu mandar — ver montarMensagemResumo. */
+export type TipoMensagemRodada = 'falha' | 'resolvido' | 'atencao' | 'tudo-certo';
+
 export interface EnvioTelegramOpts {
   /** Mostra o botão inline "🔎 Ver detalhes" apontando para QA_PAINEL_URL. */
   comBotaoDetalhes?: boolean;
+  /** Tipo de mensagem decidido por montarMensagemResumo — junto com `modoExecucao`,
+   * decide se o envio é suprimido (ver comentário mais abaixo). */
+  tipo?: TipoMensagemRodada;
+  /**
+   * Modo da rodada atual. Em 'vigilancia' (rodada extra de 30 em 30 min, só
+   * leitura), o Telegram só é efetivamente enviado quando há achado real —
+   * 🔴 Falha ou 🟡 Atenção. 🟢 Resolvido e 🟢 Tudo certo ficam em silêncio
+   * total: essas boas notícias continuam só saindo nas rodadas oficiais
+   * (07h/17h), pra não virar ruído a cada 30 minutos. Em 'oficial' (padrão,
+   * quando omitido) o comportamento é sempre o de antes: as 4 variantes saem.
+   */
+  modoExecucao?: ModoExecucao;
 }
 
 export async function enviarRelatorioTelegram(mensagem: string, opts: EnvioTelegramOpts = {}): Promise<void> {
+  if (opts.modoExecucao === 'vigilancia' && opts.tipo && opts.tipo !== 'falha' && opts.tipo !== 'atencao') {
+    console.log(`[qa] rodada de vigilância sem achado (tipo "${opts.tipo}") — envio ao Telegram suprimido de propósito.`);
+    return;
+  }
+
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -247,6 +271,9 @@ function montarMensagemTudoCerto(agora: Date, resultados: Resultado[]): string {
 export interface MensagemRodada {
   texto: string;
   comBotaoDetalhes: boolean;
+  /** Qual das 4 variantes foi escolhida — usado por enviarRelatorioTelegram para decidir a
+   * supressão em modo vigilância (ver EnvioTelegramOpts.modoExecucao). */
+  tipo: TipoMensagemRodada;
 }
 
 /**
@@ -287,16 +314,17 @@ export function montarMensagemResumo(
   const parciais = resultados.filter((r) => r.situacao === 'Parcial');
 
   if (novas.length) {
-    return { texto: montarMensagemFalha(agora, novas), comBotaoDetalhes: true };
+    return { texto: montarMensagemFalha(agora, novas), comBotaoDetalhes: true, tipo: 'falha' };
   }
   if (resolvidas.length) {
-    return { texto: montarMensagemResolvido(agora, resolvidas), comBotaoDetalhes: false };
+    return { texto: montarMensagemResolvido(agora, resolvidas), comBotaoDetalhes: false, tipo: 'resolvido' };
   }
   if (jaConhecidas.length || metricasAtencao.length || parciais.length) {
     return {
       texto: montarMensagemAtencao(agora, [...jaConhecidas, ...parciais], metricasAtencao),
       comBotaoDetalhes: true,
+      tipo: 'atencao',
     };
   }
-  return { texto: montarMensagemTudoCerto(agora, resultados), comBotaoDetalhes: false };
+  return { texto: montarMensagemTudoCerto(agora, resultados), comBotaoDetalhes: false, tipo: 'tudo-certo' };
 }
