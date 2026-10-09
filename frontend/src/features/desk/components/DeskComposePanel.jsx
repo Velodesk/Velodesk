@@ -10,7 +10,7 @@ import { shouldViewAllDeskTickets } from '../../../services/desk/responsavelSegm
 import { useAuth } from '../../../context/AuthContext';
 import { useNotifications } from '../../../context/NotificationContext';
 import { getDeskDisplayName } from '../../../utils/userDisplayName';
-import { htmlToPlainText, htmlHasComposeContent, normalizePlainToHtml, COMPOSE_IMAGE_MAX_BYTES } from '../../../services/desk/composeRichEditor';
+import { htmlToPlainText, htmlHasComposeContent, normalizePlainToHtml } from '../../../services/desk/composeRichEditor';
 import ComposeRichEditor from './ComposeRichEditor';
 import ComposeFormatToolbar, { useComposeFormat } from './ComposeFormatToolbar';
 import ComposeRefinarModal from './ComposeRefinarModal';
@@ -25,35 +25,6 @@ import {
   shouldOpenPreviewModal,
 } from '../../../services/desk/attachmentPreview';
 import DeskAttachmentPreviewModal from './DeskAttachmentPreviewModal';
-
-function readImageFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function attachImageToEditor(editorRef, file, showNotification) {
-  if (!file?.type?.startsWith('image/')) {
-    showNotification('Selecione um arquivo de imagem (PNG, JPG, GIF ou WebP).', 'warning');
-    return;
-  }
-  if (file.size > COMPOSE_IMAGE_MAX_BYTES) {
-    showNotification('Imagem muito grande. Tamanho máximo: 4 MB.', 'warning');
-    return;
-  }
-  try {
-    const dataUrl = await readImageFileAsDataUrl(file);
-    const inserted = editorRef.current?.insertImage?.(dataUrl, file.name);
-    if (!inserted) {
-      showNotification('Não foi possível inserir a imagem no editor.', 'warning');
-    }
-  } catch {
-    showNotification('Não foi possível anexar a imagem.', 'error');
-  }
-}
 
 export function DeskStatusCommitButton({
   sendStatus,
@@ -509,10 +480,6 @@ function InternalNoteFields({
     notifyInternalFormat();
   }, [notifyInternalFormat]);
 
-  const handleInternalAttachImage = useCallback((file) => {
-    void attachImageToEditor(internalEditorRef, file, showNotification);
-  }, [showNotification]);
-
   const handleInternalChange = useCallback(({ html }) => {
     onInternalTextChange(html);
   }, [onInternalTextChange]);
@@ -562,7 +529,6 @@ function InternalNoteFields({
             activeFormats={internalFormat.activeFormats}
             variant="internal"
             embedded
-            onImageSelected={handleInternalAttachImage}
             attachDisabled={attachDisabled || readOnly}
             beginLink={internalFormat.beginLink}
             applyLink={internalFormat.applyLink}
@@ -710,14 +676,6 @@ export default function DeskComposePanel({
     showNotification('Macro aplicada à resposta.', 'success');
   }, [onComposeTextChange, onComposeReviewed, ticket, nomeOperador, showNotification]);
 
-  const handlePublicAttachImage = useCallback((file) => {
-    void attachImageToEditor(publicEditorRef, file, showNotification);
-  }, [showNotification]);
-
-  const handleInternalAttachImage = useCallback((file) => {
-    void attachImageToEditor(internalEditorRef, file, showNotification);
-  }, [showNotification]);
-
   const handleInternalFormatStateChange = useCallback((formatState) => {
     setInternalFormatState(formatState);
   }, []);
@@ -832,7 +790,6 @@ export default function DeskComposePanel({
           activeFormats={publicFormat.activeFormats}
           variant="public"
           embedded
-          onImageSelected={handlePublicAttachImage}
           attachDisabled={publicLocked || ticketReadOnly}
           beginLink={publicFormat.beginLink}
           applyLink={publicFormat.applyLink}
@@ -855,7 +812,6 @@ export default function DeskComposePanel({
           activeFormats={internalFormatState?.activeFormats}
           variant="internal"
           embedded
-          onImageSelected={handleInternalAttachImage}
           attachDisabled={internalLocked}
           beginLink={internalFormatState?.beginLink}
           applyLink={internalFormatState?.applyLink}
@@ -961,7 +917,6 @@ export default function DeskComposePanel({
                         activeFormats={publicFormat.activeFormats}
                         variant="public"
                         embedded
-                        onImageSelected={handlePublicAttachImage}
                         attachDisabled={publicLocked || ticketReadOnly}
                         beginLink={publicFormat.beginLink}
                         applyLink={publicFormat.applyLink}
