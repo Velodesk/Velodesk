@@ -88,6 +88,7 @@ export default function RaTicketSide({
           disabled={disabled}
           finalized={finalized}
           initialMessagePrompt={initialMessagePrompt}
+          showSave={false}
         />
       </div>
     </aside>
