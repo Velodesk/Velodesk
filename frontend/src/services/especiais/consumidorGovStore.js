@@ -167,7 +167,9 @@ export function loadDemandas({ search = '', activeChips = [], gestaoView = false
   return items.filter((item) => {
     if (!matchesSearch(item, search)) return false;
     if (gestaoView && !passesGestaoListFilter(item, activeChips)) return false;
-    if (activeChips.length && !activeChips.every((chip) => matchesChip(item, chip))) return false;
+    // "OU" entre chips: basta bater com um filtro ativo (chips costumam ser categorias
+    // mutuamente exclusivas, ex. Abertas x Finalizadas — "E" sempre dava zero resultado).
+    if (activeChips.length && !activeChips.some((chip) => matchesChip(item, chip))) return false;
     return true;
   });
 }
