@@ -2,7 +2,7 @@
 import { Types } from 'mongoose';
 import { ChamadoN1 } from '../../models/ChamadoN1';
 import type { IChamadoN1 } from '../../models/ChamadoN1';
-import { createChamadoFromBody } from '../chamado.mapper';
+import { createChamadoFromBody, currentStatus } from '../chamado.mapper';
 import { buildFastPathTriagem } from '../agents/casosEspeciaisAgent.service';
 import { routeCasoEspecialFormal } from '../agents/casosEspeciaisRouting.service';
 import {
@@ -358,6 +358,33 @@ export async function upsertRaTicketFromSource(
         ...(sourced.motivo ? { motivo: sourced.motivo } : {}),
       };
       chamado.markModified('tabulacao');
+    }
+
+    // Alinha o status do chamado ao Hugme: "Novo" fica `novo`; qualquer outro status (Respondido,
+    // Pendente, Fechado) = `resolvido`. A criação já fazia isso, mas o reenvio da planilha só
+    // atualizava a reclamação e deixava o chamado `novo` para sempre (fila/roleta/gestão o viam
+    // como backlog). Só mexe em chamado ainda `novo` — nunca sobrescreve um atendimento em curso
+    // nem um chamado já resolvido/fechado — e empurra o registro direto (fora de pushRegistroEntry)
+    // para não disparar webhook de saída: caso especial é vetado do outbound.
+    const hugmeLabel = String(sourced.statusHugme || '').trim();
+    if (
+      hugmeLabel
+      && mapTicketStatusFromHugme(hugmeLabel) === 'resolvido'
+      && currentStatus(chamado) === 'novo'
+    ) {
+      chamado.registro.push({
+        data: new Date(),
+        origin: 'sistema',
+        autor: 'Importação RA',
+        mensagemPublica: '',
+        anexosMensagemPublica: [],
+        anotacaoInterna: '',
+        anexosAnotacaoInterna: [],
+        alteracoes: [{ status: 'resolvido' }],
+        metadados: { source: 'reclame-aqui-status-sync', statusHugme: hugmeLabel },
+        status: 'resolvido',
+      });
+      chamado.markModified('registro');
     }
     await chamado.save();
 

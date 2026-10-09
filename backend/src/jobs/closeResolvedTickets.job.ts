@@ -5,6 +5,7 @@
 import { env } from '../config/env';
 import { isMongoConnected } from '../config/database';
 import { closeResolvedTicketsPastWindow } from '../services/closeResolvedTickets.service';
+import { acquireJobLock } from '../utils/jobLock';
 
 let closeTimer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -13,6 +14,10 @@ async function runCycleSafe(): Promise<void> {
   if (running || !isMongoConnected()) return;
   running = true;
   try {
+    // Timer por instância: sem trava, N instâncias carregam e tentam fechar os mesmos resolvidos
+    // (VersionError e leitura duplicada do histórico completo de cada ticket).
+    const intervalMs = Math.max(60_000, env.resolvedCloseIntervalMs);
+    if (!(await acquireJobLock('closeResolvedLock', Math.max(30_000, intervalMs - 60_000)))) return;
     const result = await closeResolvedTicketsPastWindow();
     if (result.closed > 0 || result.errors > 0) {
       console.info('[close-resolved-job]', result);

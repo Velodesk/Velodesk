@@ -13,6 +13,7 @@ import { env } from '../../config/env';
 import {
   activeTicketsStatusFilter,
   currentStatus,
+  excludeEspeciaisChannelsMongoFilter,
   isSlaBreached,
   MEUS_CHAMADOS_COLUMNS,
 } from '../chamado.mapper';
@@ -97,8 +98,26 @@ function buildTicketEntry(chamado: IChamadoN1): IGestaoTicketSnapshotEntry {
   };
 }
 
+/**
+ * Só o que o snapshot usa: status, SLA e última interação dependem apenas do ÚLTIMO registro;
+ * produto/motivo/responsável/atribuído, da última tabulação. Sem a projeção cada execução trazia
+ * o histórico completo (mensagens, anexos) de todos os tickets ativos.
+ * Casos especiais (Procon, Consumidor.gov, BACEN, Reclame Aqui) ficam fora do monitoramento.
+ */
+const GESTAO_SNAPSHOT_PROJECTION = {
+  chamadoProtocolo: 1,
+  chamadoTitulo: 1,
+  createdAt: 1,
+  updatedAt: 1,
+  registro: { $slice: -1 },
+  tabulacao: { $slice: -1 },
+} as const;
+
 export async function fetchActiveTicketsLean(): Promise<IChamadoN1[]> {
-  const rows = await ChamadoN1.find(activeTicketsStatusFilter())
+  const rows = await ChamadoN1.find(
+    { $and: [activeTicketsStatusFilter(), excludeEspeciaisChannelsMongoFilter()] },
+    GESTAO_SNAPSHOT_PROJECTION,
+  )
     .sort({ updatedAt: -1 })
     .lean();
   return rows as unknown as IChamadoN1[];
