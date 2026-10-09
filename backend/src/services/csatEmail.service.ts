@@ -6,7 +6,12 @@ import fs from 'fs';
 import path from 'path';
 import { ChamadoN1, type IChamadoN1 } from '../models/ChamadoN1';
 import { env } from '../config/env';
-import { isEspeciaisChamado, currentStatus, lastStatusInFilter } from './chamado.mapper';
+import {
+  excludeEspeciaisChannelsMongoFilter,
+  isEspeciaisChamado,
+  currentStatus,
+  lastStatusInFilter,
+} from './chamado.mapper';
 import { resolveClienteEmailFromChamado } from './emailNotification.service';
 import { applyTicketPlaceholders, resolveTicketSaudacao } from './placeholders.util';
 import { getEmailConteudoByNome } from './emailConteudo.service';
@@ -325,9 +330,14 @@ export async function runCsatInicialPastWindow(now = new Date()): Promise<CsatIn
     : 0;
   const prazoMs = prazoHoras * 60 * 60 * 1000;
 
+  // Casos especiais nunca recebem CSAT (guarda em composeAndSendCsatEmail); excluí-los aqui evita
+  // carregar o histórico completo de milhares de tickets resolvidos só para serem descartados.
   const candidates = await ChamadoN1.find({
-    ...lastStatusInFilter([status]),
-    $or: [{ 'csat.enviado': { $exists: false } }, { 'csat.enviado': false }],
+    $and: [
+      lastStatusInFilter([status]),
+      { $or: [{ 'csat.enviado': { $exists: false } }, { 'csat.enviado': false }] },
+      excludeEspeciaisChannelsMongoFilter(),
+    ],
   }).select('_id chamadoProtocolo cliente registro csat tabulacao');
 
   let sent = 0;

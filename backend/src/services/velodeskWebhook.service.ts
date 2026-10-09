@@ -5,7 +5,12 @@
  */
 import { env } from '../config/env';
 import type { IChamadoN1, IRegistro } from '../models/ChamadoN1';
-import { currentStatus, readChamadoOriginSource, resolveCanalLabelFromSource } from './chamado.mapper';
+import {
+  currentStatus,
+  isEspeciaisChamado,
+  readChamadoOriginSource,
+  resolveCanalLabelFromSource,
+} from './chamado.mapper';
 
 export type VelodeskWebhookEvent = 'message.created' | 'ticket.resolved' | 'ticket.updated';
 
@@ -114,6 +119,8 @@ async function postWebhook(payload: VelodeskWebhookPayload, attempt = 0): Promis
 /** Fire-and-forget — nunca lança erro pro chamador. */
 export function dispatchVelodeskWebhook(chamado: IChamadoN1, event: VelodeskWebhookEvent, entry: IRegistro): void {
   if (!isVelodeskWebhookConfigured()) return;
+  // Casos especiais (Procon, Consumidor.gov, BACEN, Reclame Aqui) são vetados do outbound.
+  if (isEspeciaisChamado(chamado)) return;
   const payload = buildPayload(chamado, event, entry);
   void postWebhook(payload).catch((err) => {
     console.warn('[velodesk-webhook] erro inesperado no dispatch:', err);

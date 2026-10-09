@@ -9,7 +9,8 @@ import { listAgentesDeskLive } from './agenteDesk.service';
 import { listColaboradoresDesk } from './colaboradoresCadastro.service';
 import { loadParticipanteOverrides } from './roletaParticipantes.service';
 import { extractFuncoes } from '../utils/normalizeFuncao';
-import { currentStatus, isConsumidorGovChamado, isEspeciaisChamado, isProconChamado } from './chamado.mapper';
+import { acquireJobLock } from '../utils/jobLock';
+import { currentStatus, excludeEspeciaisChannelsMongoFilter, isEspeciaisChamado } from './chamado.mapper';
 import {
   isRealResponsavel,
   looksLikeNonDisplayResponsavelToken,
@@ -153,7 +154,8 @@ export function isChamadoAtribuicaoRoleta(chamado: IChamadoN1): boolean {
 export function shouldAutoAssign(partial: Partial<IChamadoN1>): boolean {
   if (!env.assignmentRouterEnabled) return false;
   const chamado = partial as IChamadoN1;
-  if (isProconChamado(chamado) || isConsumidorGovChamado(chamado)) return false;
+  // Casos especiais (Procon, Consumidor.gov, BACEN, Reclame Aqui) nunca entram na roleta.
+  if (isEspeciaisChamado(chamado)) return false;
   // Tickets de canal telefone ou agente-ia chegam com o responsável já identificado no
   // próprio atendimento (ramal/operador humano por trás da IA) — não podem cair na roleta
   // genérica; se o responsável não veio preenchido, o chamado fica sem dono de propósito.
@@ -598,34 +600,41 @@ export async function applyAssignmentToChamado(
 
 async function findOrphanTickets(limit: number): Promise<IChamadoN1[]> {
   return ChamadoN1.find({
-    $expr: {
-      $and: [
-        {
-          $eq: [
-            { $toLower: { $ifNull: [{ $arrayElemAt: ['$registro.status', -1] }, 'novo'] } },
-            'novo',
-          ],
-        },
-        {
-          $eq: [
+    // Casos especiais ficam de fora na própria consulta: senão, por serem os mais antigos, ocupam
+    // todo o lote lido (e são relidos a cada varredura) sem nunca serem atribuídos.
+    $and: [
+      excludeEspeciaisChannelsMongoFilter(),
+      {
+        $expr: {
+          $and: [
             {
-              $toLower: {
-                $ifNull: [
-                  {
-                    $let: {
-                      vars: { lastTab: { $arrayElemAt: ['$tabulacao', -1] } },
-                      in: '$$lastTab.responsavel',
-                    },
-                  },
-                  '',
-                ],
-              },
+              $eq: [
+                { $toLower: { $ifNull: [{ $arrayElemAt: ['$registro.status', -1] }, 'novo'] } },
+                'novo',
+              ],
             },
-            '',
+            {
+              $eq: [
+                {
+                  $toLower: {
+                    $ifNull: [
+                      {
+                        $let: {
+                          vars: { lastTab: { $arrayElemAt: ['$tabulacao', -1] } },
+                          in: '$$lastTab.responsavel',
+                        },
+                      },
+                      '',
+                    ],
+                  },
+                },
+                '',
+              ],
+            },
           ],
         },
-      ],
-    },
+      },
+    ],
   })
     .sort({ createdAt: 1 })
     .limit(limit);
@@ -643,20 +652,8 @@ const ROLETA_SWEEP_BATCH = 300;
 const ROLETA_SWEEP_MAX_SCAN = 3000;
 
 /** Líder único entre instâncias do Cloud Run — a varredura não pode rodar em paralelo. */
-async function acquireRoletaSweepLock(): Promise<boolean> {
-  const now = new Date();
-  const collection = mongoose.connection.collection<{ _id: string; until: Date }>('sequence_counters');
-  try {
-    const res = await collection.findOneAndUpdate(
-      { _id: ROLETA_SWEEP_LOCK_ID, $or: [{ until: { $lt: now } }, { until: { $exists: false } }] },
-      { $set: { until: new Date(now.getTime() + ROLETA_SWEEP_LOCK_MS) } },
-      { upsert: true, returnDocument: 'after' },
-    );
-    return Boolean(res);
-  } catch {
-    // upsert colide com o documento já travado por outra instância (duplicate key) = não é líder
-    return false;
-  }
+function acquireRoletaSweepLock(): Promise<boolean> {
+  return acquireJobLock(ROLETA_SWEEP_LOCK_ID, ROLETA_SWEEP_LOCK_MS);
 }
 
 export async function distributeOrphansRoundRobin(): Promise<number> {
