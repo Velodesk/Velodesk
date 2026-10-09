@@ -83,6 +83,15 @@ export function getTicketProtocolLabel(ticket) {
   return String(ticket?.chamadoProtocolo || '').trim();
 }
 
+/**
+ * O id é um ObjectId real do Chamado (24 hex)? Rascunho local ("draft-...") e registro do
+ * Legado Octa ("legado-octa-ticket:...") não são — não existem como documento no backend, então
+ * PUT/commit neles sempre falha. Usado para tirar esses itens da seleção de ações em massa.
+ */
+export function isRealTicketId(id) {
+  return /^[0-9a-f]{24}$/i.test(String(id || ''));
+}
+
 /** Máscara CPF enquanto digita (máx. 11 dígitos): 000.000.000-00 */
 export function maskCpfInput(value) {
   const d = normalizeCpf(value).slice(0, 11);

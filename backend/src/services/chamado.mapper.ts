@@ -1563,10 +1563,16 @@ export async function prepareChamadoFromBody(
       lateralFormMerged.responsavel = incomingResponsavel;
     }
 
+    // `lateralForm` precisa vir DEPOIS do "...body" — senão o lateralForm cru do corpo da
+    // requisição (que não traz responsavel, ex.: ação em massa só mandando status/produto)
+    // sobrescreve o lateralFormMerged acima, que tinha acabado de preservar o responsável
+    // já atribuído. Resultado real desse bug: encerrar um ticket logo depois de atribuir
+    // responsável (duas chamadas separadas) apagava o responsável e barrava com "Atribua um
+    // responsável real", mesmo ele tendo sido atribuído com sucesso segundos antes.
     const merged = readTabulacaoSnapshot(tabulacaoFromBody(
       {
-        lateralForm: lateralFormMerged,
         ...body,
+        lateralForm: lateralFormMerged,
       },
       beforeTab.motivo ?? ''
     ));

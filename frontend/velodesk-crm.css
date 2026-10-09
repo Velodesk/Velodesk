@@ -793,6 +793,12 @@
     cursor: wait;
 }
 
+.bulk-action-popover__done--blocked,
+.bulk-action-popover__done--blocked:hover {
+    background: #9aa0ae;
+    cursor: not-allowed;
+}
+
 .bulk-action-popover__spin {
     animation: bulkActionSpin 0.7s linear infinite;
 }
