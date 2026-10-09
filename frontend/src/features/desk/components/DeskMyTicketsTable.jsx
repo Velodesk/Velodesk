@@ -11,6 +11,7 @@ import {
   getTicketProtocolLabel,
   getTicketTitle,
   groupMyTicketsByStatus,
+  isRealTicketId,
   normalizeTicketForDeskV2,
 } from '../../../services/desk/utils';
 import { getClient360WorkflowIconMeta } from '../../../services/workflow/workflowTeamQueues';
@@ -27,6 +28,7 @@ function renderTicketRows(sectionEntries, onSelectTicket, mergeSelectedIds, onTo
     const slaStatus = SLA_SHORT_LABELS[slaClass] || 'No prazo';
     const workflowIcon = getClient360WorkflowIconMeta(ticket);
     const ticketId = String(ticket.id);
+    const selecionavel = isRealTicketId(ticketId);
 
     return (
       <tr
@@ -41,9 +43,11 @@ function renderTicketRows(sectionEntries, onSelectTicket, mergeSelectedIds, onTo
           <input
             type="checkbox"
             className="client360-merge-check"
-            checked={mergeSelectedIds.has(ticketId)}
+            checked={selecionavel && mergeSelectedIds.has(ticketId)}
+            disabled={!selecionavel}
             onChange={() => onToggleMergeSelect(ticketId)}
             aria-label={`Selecionar #${protocol || ticketId} para atuação em massa`}
+            title={selecionavel ? undefined : 'Este item não pode ser incluído em ações em massa (rascunho ou registro do Legado Octa)'}
           />
         </td>
         <td className="desk-my-tickets-table__num">{protocol || '—'}</td>
@@ -79,7 +83,7 @@ function renderTicketRows(sectionEntries, onSelectTicket, mergeSelectedIds, onTo
 
 function TicketGrid({ id, sectionEntries, mergeSelectedIds, onToggleMergeSelect, onToggleSectionSelectAll, onSelectTicket }) {
   const sectionIds = useMemo(
-    () => sectionEntries.map(({ ticket }) => String(ticket.id)),
+    () => sectionEntries.map(({ ticket }) => String(ticket.id)).filter(isRealTicketId),
     [sectionEntries],
   );
   const allSelected = sectionIds.length > 0 && sectionIds.every((id) => mergeSelectedIds.has(id));
@@ -246,13 +250,13 @@ export default function DeskMyTicketsTable({
           </button>
           <BulkActionPopover
             open={bulkActionOpen}
-            onClose={() => setBulkActionOpen(false)}
+            onClose={() => {
+              setBulkActionOpen(false);
+              setMergeSelectedIds(new Set());
+            }}
             anchorRef={bulkActionBtnRef}
             selectedTicketIds={mergeSelectedIds}
-            onApplied={() => {
-              setMergeSelectedIds(new Set());
-              onReload?.();
-            }}
+            onApplied={() => onReload?.()}
           />
           <button
             type="button"

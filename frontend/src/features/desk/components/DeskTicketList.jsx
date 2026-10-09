@@ -14,6 +14,7 @@ import {
   getTicketTitle,
   isClienteRespondeuRead,
   isClienteRespondeuTicket,
+  isRealTicketId,
   isTicketInWorkflow,
   isTicketWorkflowFinished,
   normalizeTicketForDeskV2,
@@ -67,7 +68,7 @@ export default function DeskTicketList({
   };
 
   const boxTicketIds = useMemo(
-    () => entries.map(({ ticket: t }) => String(t.id)),
+    () => entries.map(({ ticket: t }) => String(t.id)).filter(isRealTicketId),
     [entries],
   );
   const allBoxSelected = boxTicketIds.length > 0 && boxTicketIds.every((id) => mergeSelectedIds.has(id));
@@ -191,13 +192,13 @@ export default function DeskTicketList({
               </button>
               <BulkActionPopover
                 open={bulkActionOpen}
-                onClose={() => setBulkActionOpen(false)}
+                onClose={() => {
+                  setBulkActionOpen(false);
+                  setMergeSelectedIds(new Set());
+                }}
                 anchorRef={bulkActionBtnRef}
                 selectedTicketIds={mergeSelectedIds}
-                onApplied={() => {
-                  setMergeSelectedIds(new Set());
-                  onReload?.();
-                }}
+                onApplied={() => onReload?.()}
               />
               <button
                 type="button"
@@ -253,6 +254,7 @@ export default function DeskTicketList({
             const agentActiveTitle = presentAgents.length
               ? `${presentAgents.map((agent) => agent.name).join(', ')} ${presentAgents.length > 1 ? 'estão atuando' : 'está atuando'} neste ticket`
               : '';
+            const selecionavel = isRealTicketId(t.id);
 
             return (
               <li
@@ -273,9 +275,11 @@ export default function DeskTicketList({
                   <input
                     type="checkbox"
                     className="client360-merge-check"
-                    checked={mergeSelectedIds.has(String(t.id))}
+                    checked={selecionavel && mergeSelectedIds.has(String(t.id))}
+                    disabled={!selecionavel}
                     onChange={() => handleToggleMergeSelect(String(t.id))}
                     aria-label={`Selecionar #${getTicketProtocolLabel(t) || t.id} para mesclagem`}
+                    title={selecionavel ? undefined : 'Este item não pode ser incluído em ações em massa (rascunho ou registro do Legado Octa)'}
                   />
                   {slaCritical ? (
                     <span
