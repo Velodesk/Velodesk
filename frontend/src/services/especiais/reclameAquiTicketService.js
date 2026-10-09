@@ -17,6 +17,7 @@ import {
   getReclamacaoByTicketId,
   updateReclamacaoGroupFromTicket,
   refreshReclamacoesFromApi,
+  fetchRaItemRemote,
 } from './reclameAquiStore';
 
 function normalizeCpf(value) {
@@ -192,7 +193,11 @@ export async function loadReclameAquiTicketsFromApi() {
 }
 
 export async function fetchRaTicketView(raId) {
-  const raItem = getReclamacaoById(raId) || getReclamacaoByTicketId(raId);
+  let raItem = getReclamacaoById(raId) || getReclamacaoByTicketId(raId);
+  if (!raItem) {
+    const remote = await fetchRaItemRemote(raId);
+    raItem = remote ? (getReclamacaoById(remote.id) || remote) : null;
+  }
   if (!raItem) return null;
 
   if (!raItem.ticketId) {

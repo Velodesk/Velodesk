@@ -61,9 +61,11 @@ export default function ReclameAquiPanel() {
     refreshFromApi();
     const bumpList = () => setListVersion((v) => v + 1);
     window.addEventListener('velodesk:ra-sync', bumpList);
+    window.addEventListener('velodesk:ra-counts', bumpList);
     window.addEventListener('velodesk:refresh-tickets', refreshFromApi);
     return () => {
       window.removeEventListener('velodesk:ra-sync', bumpList);
+      window.removeEventListener('velodesk:ra-counts', bumpList);
       window.removeEventListener('velodesk:refresh-tickets', refreshFromApi);
     };
   }, []);
