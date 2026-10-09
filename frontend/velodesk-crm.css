@@ -9356,7 +9356,7 @@ body.desk-v2-mode #cockpitFocusContext {
 }
 
 #velodeskDeskV2Root .desk-workflow-modal {
-    width: min(480px, 100%);
+    width: min(680px, 100%);
     max-height: min(85vh, 720px);
     display: flex;
     flex-direction: column;
@@ -9462,6 +9462,29 @@ body.desk-v2-mode #cockpitFocusContext {
     line-height: 1.35;
 }
 
+#velodeskDeskV2Root .desk-workflow-modal__badge {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.5;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+#velodeskDeskV2Root .desk-workflow-modal__badge--approved {
+    background: #E8F7ED;
+    color: #15A237;
+}
+
+#velodeskDeskV2Root .desk-workflow-modal__badge--denied {
+    background: #FEE4E2;
+    color: #D92D20;
+}
+
 #velodeskDeskV2Root .desk-workflow-modal__connector {
     display: block;
     width: 2px;
@@ -9479,10 +9502,27 @@ body.desk-v2-mode #cockpitFocusContext {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: nowrap;
     gap: 12px;
     padding: 14px 18px 16px;
     border-top: 0.5px solid rgba(0, 0, 88, 0.1);
     background: #f8fafc;
+}
+
+/* Todos os botões na mesma linha; nunca encolhem nem se sobrepõem (o modal é largo o bastante). */
+#velodeskDeskV2Root .desk-workflow-modal__footer .desk-workflow-modal__btn-cancel,
+#velodeskDeskV2Root .desk-workflow-modal__footer .desk-workflow-modal__btn-advance {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+#velodeskDeskV2Root .desk-workflow-modal__decision .wf-approval-footer__row {
+    flex-wrap: nowrap;
+    gap: 8px;
+}
+
+#velodeskDeskV2Root .desk-workflow-modal__decision .wf-approval-btn {
+    white-space: nowrap;
 }
 
 #velodeskDeskV2Root .desk-workflow-modal__finished {
@@ -9519,8 +9559,8 @@ body.desk-v2-mode #cockpitFocusContext {
 }
 
 #velodeskDeskV2Root .desk-workflow-modal__decision {
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: 0 0 auto;
+    min-width: max-content;
     margin-left: auto;
 }
 

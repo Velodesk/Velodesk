@@ -104,7 +104,15 @@ export default function WorkflowProgressModal({
                   <div className="desk-workflow-modal__text">
                     <span className="desk-workflow-modal__label">{step.label}</span>
                     {subtitle ? (
-                      <span className="desk-workflow-modal__subtitle">{subtitle}</span>
+                      step.state === 'denied' || step.state === 'completed' ? (
+                        <span
+                          className={'desk-workflow-modal__badge desk-workflow-modal__badge--' + (step.state === 'denied' ? 'denied' : 'approved')}
+                        >
+                          {step.state === 'completed' && step.decision?.kind === 'approval' ? 'aprovado' : subtitle}
+                        </span>
+                      ) : (
+                        <span className="desk-workflow-modal__subtitle">{subtitle}</span>
+                      )
                     ) : null}
                   </div>
                 </li>
