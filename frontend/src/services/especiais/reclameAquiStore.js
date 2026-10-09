@@ -99,19 +99,52 @@ export function getRaServerCounts() {
   return loaded < serverTotal ? serverCounts : null;
 }
 
-async function refreshServerCounts() {
+export async function refreshServerCounts() {
   try {
     const data = await reclamacoesApi.contagens('reclame-aqui');
     if (data?.grupos) {
       serverCounts = data;
       serverTotal = Number(data.total) || 0;
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('velodesk:ra-sync'));
+        window.dispatchEvent(new CustomEvent('velodesk:ra-counts'));
       }
     }
   } catch {
     // fail-soft: sem contagem do servidor os cards seguem pelo cache local
   }
+}
+
+function mergeIntoCache(items) {
+  const byId = new Map((memoryCache || readAll() || []).map((i) => [i.id, i]));
+  items.forEach((i) => byId.set(i.id, { ...(byId.get(i.id) || {}), ...i }));
+  memoryCache = [...byId.values()];
+}
+
+/** Uma página de UM grupo, ordenada e paginada no servidor — a lista não depende de baixar tudo. */
+export async function fetchRaPage({ grupo, sort = 'data', page = 1 }) {
+  const skip = (Math.max(page, 1) - 1) * RA_LIST_PAGE_SIZE;
+  const data = await reclamacoesApi.list('reclame-aqui', { grupo, sort, limit: RA_LIST_PAGE_SIZE, skip });
+  const items = (data?.items ?? []).map(normalizeApiItem);
+  mergeIntoCache(items);
+  return { items, total: Number(data?.total) || 0 };
+}
+
+/** Item que não está no cache local (ex.: link direto para um ticket) — busca individual. */
+export async function fetchRaItemRemote(idOrTicketId) {
+  let row = null;
+  try {
+    row = await reclamacoesApi.get('reclame-aqui', idOrTicketId);
+  } catch {
+    try {
+      row = await reclamacoesApi.byTicket('reclame-aqui', idOrTicketId);
+    } catch {
+      row = null;
+    }
+  }
+  if (!row) return null;
+  const item = normalizeApiItem(row);
+  mergeIntoCache([item]);
+  return item;
 }
 
 // Antes buscava TODAS as páginas em sequência (~136 requisições pra 6.800+ tickets importados)

@@ -13,6 +13,8 @@ import {
   listByOrgao,
   countByOrgao,
   countContagensByOrgao,
+  listByOrgaoGrupo,
+  RECLAMACAO_GRUPOS,
   countCasosEspeciaisByCpf,
   parseReclamacaoOrgaoRoute,
   patchReclamacao,
@@ -109,6 +111,25 @@ router.get('/:orgao', authMiddleware, async (req, res: Response) => {
         : undefined;
     const limit = parseInt(String(req.query.limit ?? '50'), 10) || 50;
     const skip = parseInt(String(req.query.skip ?? '0'), 10) || 0;
+
+    const grupoQuery = String(req.query.grupo ?? '').trim();
+    if (grupoQuery) {
+      if (!(RECLAMACAO_GRUPOS as string[]).includes(grupoQuery)) {
+        return res.status(400).json({ message: 'Grupo inválido' });
+      }
+      const sort = req.query.sort === 'sla' ? 'sla' : 'data';
+      const page = await listByOrgaoGrupo(orgao, grupoQuery as (typeof RECLAMACAO_GRUPOS)[number], {
+        sort,
+        limit,
+        skip,
+      });
+      return res.json({
+        items: page.items.map(reclamacaoToPortalDto),
+        total: page.total,
+        limit,
+        skip,
+      });
+    }
 
     const listFilters = {
       aberta,

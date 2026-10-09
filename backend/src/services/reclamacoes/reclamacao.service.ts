@@ -480,17 +480,10 @@ export interface ReclamacaoContagens {
 const CANAL_FECHADO_STATUSES = ['respondida', 'aguard-avaliacao', 'aguardando-audiencia'];
 const TICKET_TERMINAL_STATUSES = ['resolvido', 'resolvidos', 'cancelado', 'fechado'];
 
-/**
- * Contagens por fila/KPI calculadas no banco — espelha resolveEspeciaisGroupKey do front
- * (especiaisGroupKey.js) para os cards não dependerem de baixar todas as páginas da lista.
- */
-export async function countContagensByOrgao(orgao: CasoEspecialOrgao): Promise<ReclamacaoContagens | null> {
-  const Model = resolveReclamacaoModel(orgao);
-  if (!Model) return null;
+const RA_TZ = 'America/Sao_Paulo';
 
-  const tz = 'America/Sao_Paulo';
-  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
-
+function buildGrupoExpressions() {
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: RA_TZ }).format(new Date());
   const statusLower = { $toLower: { $ifNull: ['$statusCanal', ''] } };
   const canalFechado = {
     $or: [{ $eq: ['$aberta', false] }, { $in: [statusLower, CANAL_FECHADO_STATUSES] }],
@@ -504,26 +497,79 @@ export async function countContagensByOrgao(orgao: CasoEspecialOrgao): Promise<R
       { $eq: [{ $type: '$prazoLegal' }, 'date'] },
       {
         $eq: [
-          { $dateToString: { date: '$prazoLegal', format: '%Y-%m-%d', timezone: tz } },
+          { $dateToString: { date: '$prazoLegal', format: '%Y-%m-%d', timezone: RA_TZ } },
           todayStr,
         ],
       },
     ],
   };
+  const grupo = {
+    $switch: {
+      branches: [
+        { case: { $and: [canalFechado, deskTerminal] }, then: 'finalizadas' },
+        { case: vencendoHoje, then: 'vencendo-hoje' },
+        { case: canalFechado, then: 'respondidas' },
+      ],
+      default: 'nao-respondidas',
+    },
+  };
+  return { statusLower, grupo };
+}
+
+export type ReclamacaoGrupo = 'vencendo-hoje' | 'finalizadas' | 'nao-respondidas' | 'respondidas';
+export const RECLAMACAO_GRUPOS: ReclamacaoGrupo[] = ['vencendo-hoje', 'finalizadas', 'nao-respondidas', 'respondidas'];
+
+/** Página de reclamações de UM grupo (mesma regra dos cards), ordenada no banco — mais antigo primeiro, sem data no fim (igual ao front). */
+export async function listByOrgaoGrupo(
+  orgao: CasoEspecialOrgao,
+  grupoKey: ReclamacaoGrupo,
+  opts: { sort?: 'data' | 'sla'; limit?: number; skip?: number } = {},
+): Promise<{ items: IReclamacao[]; total: number }> {
+  const Model = resolveReclamacaoModel(orgao);
+  if (!Model) return { items: [], total: 0 };
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+  const skip = Math.max(opts.skip ?? 0, 0);
+  const { grupo } = buildGrupoExpressions();
+  const sort: Record<string, 1 | -1> = opts.sort === 'sla'
+    ? { prazoLegal: 1, _id: 1 }
+    : { _dataOrd: 1, _id: 1 };
+
+  const [page, totalRows] = await Promise.all([
+    Model.aggregate([
+      { $addFields: { _grupo: grupo, _dataOrd: { $ifNull: ['$dataReclamacao', new Date('9999-12-31')] } } },
+      { $match: { _grupo: grupoKey } },
+      { $sort: sort },
+      { $skip: skip },
+      { $limit: limit },
+      { $project: { _id: 1 } },
+    ]).exec(),
+    Model.aggregate([
+      { $addFields: { _grupo: grupo } },
+      { $match: { _grupo: grupoKey } },
+      { $count: 'n' },
+    ]).exec(),
+  ]);
+  const ids = (page as Array<{ _id: Types.ObjectId }>).map((r) => r._id);
+  const docs = await Model.find({ _id: { $in: ids } }).exec();
+  const byId = new Map(docs.map((d) => [String(d._id), d]));
+  const items = ids.map((id) => byId.get(String(id))).filter(Boolean) as IReclamacao[];
+  return { items, total: (totalRows as Array<{ n: number }>)[0]?.n ?? 0 };
+}
+
+/**
+ * Contagens por fila/KPI calculadas no banco — espelha resolveEspeciaisGroupKey do front
+ * (especiaisGroupKey.js) para os cards não dependerem de baixar todas as páginas da lista.
+ */
+export async function countContagensByOrgao(orgao: CasoEspecialOrgao): Promise<ReclamacaoContagens | null> {
+  const Model = resolveReclamacaoModel(orgao);
+  if (!Model) return null;
+
+  const { statusLower, grupo } = buildGrupoExpressions();
 
   const rows = await Model.aggregate([
     {
       $project: {
-        grupo: {
-          $switch: {
-            branches: [
-              { case: { $and: [canalFechado, deskTerminal] }, then: 'finalizadas' },
-              { case: vencendoHoje, then: 'vencendo-hoje' },
-              { case: canalFechado, then: 'respondidas' },
-            ],
-            default: 'nao-respondidas',
-          },
-        },
+        grupo,
         naoRespStatus: { $eq: [statusLower, 'nao-respondida'] },
         respStatus: { $in: [statusLower, ['respondida', 'aguard-avaliacao']] },
         passivel: { $eq: ['$meta.passivelNota', true] },
