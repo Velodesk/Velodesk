@@ -471,6 +471,34 @@ export async function countByOrgao(
   return Model.countDocuments(query).exec();
 }
 
+/**
+ * Ids (string) dos chamados que têm reclamação vinculada em QUALQUER órgão de casos especiais
+ * (RA/Procon/Bacen/Consumidor.gov). Esses tickets ficam fora dos jobs de fechamento/resolução
+ * automática por tempo: a devolutiva do órgão pode demorar bem mais que 48h. Banco de
+ * reclamações indisponível → lança, para o job NÃO agir às cegas.
+ */
+export async function findChamadoIdsComCasoEspecial(chamadoIds: Types.ObjectId[]): Promise<Set<string>> {
+  const found = new Set<string>();
+  if (!chamadoIds.length) return found;
+  if (!isReclamacoesConnected()) {
+    throw new Error('banco de reclamações indisponível — impossível excluir casos especiais do job');
+  }
+  const models = [
+    getReclamacaoReclameAquiModel() as unknown as Model<IReclamacao>,
+    getReclamacaoProconModel(),
+    getReclamacaoBacenModel(),
+    getReclamacaoConsumidorGovModel(),
+  ];
+  for (let i = 0; i < chamadoIds.length; i += 1000) {
+    const slice = chamadoIds.slice(i, i + 1000);
+    const results = await Promise.all(
+      models.map((M) => M.distinct('chamadoId', { chamadoId: { $in: slice } }).exec()),
+    );
+    results.flat().forEach((id) => found.add(String(id)));
+  }
+  return found;
+}
+
 export interface ReclamacaoContagens {
   total: number;
   grupos: Record<'vencendo-hoje' | 'finalizadas' | 'nao-respondidas' | 'respondidas', number>;
