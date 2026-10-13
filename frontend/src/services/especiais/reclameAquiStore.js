@@ -121,9 +121,15 @@ function mergeIntoCache(items) {
 }
 
 /** Uma página de UM grupo, ordenada e paginada no servidor — a lista não depende de baixar tudo. */
-export async function fetchRaPage({ grupo, sort = 'data', page = 1 }) {
+export async function fetchRaPage({ grupo, gestao = false, chips = [], sort = 'data', page = 1 }) {
   const skip = (Math.max(page, 1) - 1) * RA_LIST_PAGE_SIZE;
-  const data = await reclamacoesApi.list('reclame-aqui', { grupo, sort, limit: RA_LIST_PAGE_SIZE, skip });
+  const data = await reclamacoesApi.list('reclame-aqui', {
+    ...(grupo ? { grupo } : {}),
+    ...(gestao ? { gestao: 'true', chips: chips.join(',') } : {}),
+    sort,
+    limit: RA_LIST_PAGE_SIZE,
+    skip,
+  });
   const items = (data?.items ?? []).map(normalizeApiItem);
   mergeIntoCache(items);
   return { items, total: Number(data?.total) || 0 };
