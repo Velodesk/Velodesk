@@ -9,6 +9,7 @@ import TicketTabsBar from '../components/TicketTabsBar';
 import EspeciaisLayoutSync from '../components/EspeciaisLayoutSync';
 import AgentPresenceHeartbeat from '../components/AgentPresenceHeartbeat';
 import { VeloNewsProvider } from '../features/velonews/VeloNewsProvider';
+import VeloNewsTicker from '../features/velonews/VeloNewsTicker';
 import VeloNewsCriticalBubble from '../features/velonews/VeloNewsCriticalBubble';
 import VeloNewsCriticalModal from '../features/velonews/VeloNewsCriticalModal';
 import VeloNewsReadModal from '../features/velonews/VeloNewsReadModal';
@@ -17,6 +18,7 @@ import VeloNewsHistoryModal from '../features/velonews/VeloNewsHistoryModal';
 export default function AppShell() {
   return (
     <VeloNewsProvider>
+      <VeloNewsTicker />
       <AgentPresenceHeartbeat />
       <EspeciaisLayoutSync />
       <div id="mainApp" className="main-app sidebar-collapsed velo-chromeless" style={{ display: 'grid' }}>

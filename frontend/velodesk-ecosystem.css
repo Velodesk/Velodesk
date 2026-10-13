@@ -19,6 +19,26 @@
     --eco-ease: cubic-bezier(0.4, 0, 0.2, 1);
     --eco-font: 'Inter', system-ui, -apple-system, sans-serif;
     --eco-display: 'Sora', 'Inter', system-ui, sans-serif;
+    /* Altura do VeloNewsTicker quando visível — some/aparece animando essa variável
+       (ver VeloNewsTicker.jsx), sem precisar tocar no CSS de sidebar/barra de abas. */
+    --velonews-ticker-offset: 0px;
+    /* Onde a ticker começa (left) — depois da faixa de ícones sempre; no Desk V2 soma também
+       o painel de filas e a coluna branca da lista de tickets (--desk-queue-panel-w e
+       --desk-ticketlist-panel-w, setadas via JS em DeskV2Root conforme recolhidas/expandidas),
+       pra nunca passar por cima de nenhuma das duas. */
+    --velonews-ticker-left: var(--velo-sidebar-compact, 52px);
+}
+
+body.desk-v2-mode {
+    /* --desk-queue-panel-w/--desk-ticketlist-panel-w vêm medidas (offsetWidth) via JS em
+       DeskV2Root — não dá pra referenciar --desk-col-queue/--desk-col-list direto aqui porque
+       elas são declaradas dentro de #velodeskDeskV2Root, um descendente do <html>/<body> onde
+       essa variável é lida (custom property não cascateia de descendente pra ancestral). */
+    --velonews-ticker-left: calc(
+        var(--velo-sidebar-compact, 52px)
+        + var(--desk-queue-panel-w, 0px)
+        + var(--desk-ticketlist-panel-w, 0px)
+    );
 }
 
 .main-content:has(#workspace.active),
@@ -93,11 +113,114 @@ body:has(.eco-prototype-banner) {
 
 .main-app.velo-chromeless #mainSidebar.sidebar {
     top: 0;
-    height: 100vh;
+    bottom: 0;
+    height: auto;
 }
 
 .main-app.velo-chromeless .ticket-tabs-bar {
+    top: var(--velonews-ticker-offset, 0px);
+    transition: top 0.4s ease;
+}
+
+/*
+ * Empurra o CONTEÚDO pra baixo quando o VeloNewsTicker está visível — o menu lateral inteiro
+ * (faixa de ícones + as duas colunas "fila de atendimento" do Desk V2, azul e branca) fica
+ * sempre do topo à base da tela, nunca desce (pedido explícito: "menu fixo, altura total").
+ * Por isso #mainSidebar/.velo-nav-rail-wrap e #velodeskDeskV2Root continuam com top:0 fixo —
+ * quem lê --velonews-ticker-offset é só o conteúdo de fato: barra de abas acima, e dentro do
+ * Desk V2, só ".app-shell > .crm-main-content" (ver velodesk-crm.css) — nem .queue-panel nem
+ * .ticket-list-panel são tocados, sem precisar mexer na estrutura de nenhum dos dois.
+ * Não usamos transform no ancestral (#mainApp) pra isso: ele "carrega" visualmente os
+ * descendentes fixed/absolute (é containing block deles), então um transform no pai somado a um
+ * top direto no filho deslocava em dobro — e como transform não redimensiona a altura 100vh do
+ * #mainApp, sobrava um vão (fundo cortado). Offset direto em cada elemento evita os dois problemas.
+ */
+#mainApp {
+    margin-top: var(--velonews-ticker-offset, 0px);
+    height: calc(100vh - var(--velonews-ticker-offset, 0px));
+    max-height: calc(100vh - var(--velonews-ticker-offset, 0px));
+    transition: margin-top 0.4s ease, height 0.4s ease, max-height 0.4s ease;
+}
+
+.velonews-ticker {
+    position: fixed;
     top: 0;
+    /* Começa depois do menu lateral (faixa de ícones + painel de filas no Desk V2) — nunca por
+       cima dele. --velonews-ticker-left soma as duas larguras e acompanha ao vivo o recolher/
+       expandir do painel de filas (mesma duração de transição dele, 0.28s). */
+    left: var(--velonews-ticker-left, 52px);
+    right: 0;
+    z-index: 8800;
+    overflow: hidden;
+    background: var(--eco-navy);
+    display: flex;
+    align-items: center;
+    transition: transform 0.4s ease, opacity 0.4s ease, left 0.28s ease;
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.velonews-ticker--retracting {
+    transform: translateY(-100%);
+    opacity: 0;
+}
+
+.velonews-ticker__track {
+    display: inline-block;
+    white-space: nowrap;
+    border: none;
+    background: transparent;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0;
+    cursor: pointer;
+    animation-name: velonews-ticker-scroll;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-duration: 22s; /* fallback até o JS medir o texto e setar via style inline */
+    will-change: transform;
+}
+
+/* Pausa no hover — o contador de voltas só avança via evento `animationiteration`, que
+   simplesmente não dispara enquanto a animação está pausada, então o tempo parado no hover
+   não consome nem quebra a contagem das 2 voltas. */
+.velonews-ticker__track:hover,
+.velonews-ticker--retracting .velonews-ticker__track {
+    animation-play-state: paused;
+}
+
+.velonews-ticker__track:hover {
+    text-decoration: underline;
+}
+
+.velonews-ticker__badge {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: #38bdf8;
+    color: #00183a;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    vertical-align: 1px;
+    -webkit-font-smoothing: antialiased;
+}
+
+.velonews-ticker__sep {
+    display: inline-block;
+    margin: 0 18px;
+    color: var(--eco-accent, #FCC200);
+    font-weight: 700;
+}
+
+@keyframes velonews-ticker-scroll {
+    from { transform: translate3d(100vw, 0, 0); }
+    to { transform: translate3d(-100%, 0, 0); }
 }
 
 /* ?? Painel 360º ? ?rea cinza (dimens?es ref. viewport) ?? */

@@ -1,6 +1,10 @@
 ﻿/* Velodesk CRM v1.18.0 - workflow concluído com badge verde */
 
 #velodeskDeskV2Root {
+    /* Sempre do topo à base da viewport, igual o menu lateral — não desce com a ticker.
+       .queue-panel e .ticket-list-panel (as duas colunas "fila de atendimento", azul e branca)
+       ficam paradas junto, em altura total. Quem desce é só a área principal (.crm-main-content),
+       via padding-top logo abaixo — sem precisar mexer na estrutura de nenhuma das duas colunas. */
     position: fixed;
     top: 0;
     right: 0;
@@ -13,6 +17,12 @@
     font-family: 'Poppins', sans-serif;
     font-size: var(--desk-fs-base);
     background: #F3F4F8;
+}
+
+#velodeskDeskV2Root .app-shell > .crm-main-content {
+    padding-top: var(--velonews-ticker-offset, 0px);
+    transition: padding-top 0.4s ease;
+    box-sizing: border-box;
 }
 
 #velodeskDeskV2Root .page.active {
@@ -1306,6 +1316,7 @@
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .status-badge--resolvido { background: #F3F4F6; color: #6B7280; }
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .status-badge--fechado,
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .status-badge--cancelado { background: #ffebee; color: #dc3545; }
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .status-badge--arquivo { background: #ECEEF1; color: #5A6472; }
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .desk-workflow-compose-lock--ticket-closed {
     border-color: #dc3545;
