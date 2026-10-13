@@ -93,6 +93,10 @@ function resolveProtocol(chamado: IChamadoN1): string {
   return String(chamado.chamadoProtocolo ?? '').trim() || '—';
 }
 
+// 1600 é o limite de caracteres já alinhado pro WhatsApp nesse sistema (mesmo valor do
+// contador/bloqueio de envio da mensagem de sessão — ver DeskComposePanel).
+const SUMMARY_MAX_CHARS = 1600;
+
 export function buildDeskActiveTemplateVariables(
   chamado: IChamadoN1,
   dados: IClienteDados | null,
@@ -101,7 +105,7 @@ export function buildDeskActiveTemplateVariables(
   const summary = truncate(
     String(agentText ?? '').replace(/\s+/g, ' ').trim()
       || 'Estamos entrando em contato sobre sua solicitação.',
-    320,
+    SUMMARY_MAX_CHARS,
   );
   return {
     1: resolveTemplateClientName(chamado, dados),
