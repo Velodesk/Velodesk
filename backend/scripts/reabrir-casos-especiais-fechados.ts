@@ -5,6 +5,7 @@
  *   npx tsx scripts/reabrir-casos-especiais-fechados.ts            # dry-run (não grava nada)
  *   npx tsx scripts/reabrir-casos-especiais-fechados.ts --apply    # grava
  *   ... --incluir-manuais   # também reabre os fechados manualmente (por padrão só os do job)
+ *   ... --meses=N           # janela pela DATA DA RECLAMAÇÃO (não da criação do doc); padrão 6
  *
  * Opera no banco apontado pelo .env de quem executa.
  */
@@ -20,6 +21,7 @@ import { appendStatusTransition, lastStatusInFilter } from '../src/services/cham
 
 const APPLY = process.argv.includes('--apply');
 const INCLUIR_MANUAIS = process.argv.includes('--incluir-manuais');
+const MESES = Number((process.argv.find((a) => a.startsWith('--meses=')) ?? '--meses=6').split('=')[1]) || 6;
 
 async function main() {
   await connectDatabase();
@@ -28,12 +30,32 @@ async function main() {
     getReclamacaoProconModel(),
     getReclamacaoBacenModel(),
     getReclamacaoConsumidorGovModel(),
-  ] as unknown as Array<{ distinct: (f: string) => { exec: () => Promise<unknown[]> }; updateMany: (...a: unknown[]) => { exec: () => Promise<unknown> } }>;
+  ] as unknown as Array<{ distinct: (f: string, q?: unknown) => { exec: () => Promise<unknown[]> }; updateMany: (...a: unknown[]) => { exec: () => Promise<unknown> }; countDocuments: (q: unknown) => { exec: () => Promise<number> } }>;
 
+  // Janela pela data da reclamação: doc.dataReclamacao e, nos imports antigos (que só gravaram
+  // meta.dataReclamacao como ISO string), esse fallback. Sem nenhuma data → fora da janela.
+  const corte = new Date();
+  corte.setMonth(corte.getMonth() - MESES);
+  const noPeriodo = {
+    $or: [
+      { dataReclamacao: { $gte: corte } },
+      { dataReclamacao: { $in: [null] }, 'meta.dataReclamacao': { $gte: corte.toISOString() } },
+    ],
+  };
   const ids = new Set<string>();
-  for (const M of models) (await M.distinct('chamadoId').exec()).forEach((i) => i && ids.add(String(i)));
+  const todos = new Set<string>();
+  for (const M of models) {
+    (await M.distinct('chamadoId').exec()).forEach((i) => i && todos.add(String(i)));
+    (await M.distinct('chamadoId', noPeriodo).exec()).forEach((i) => i && ids.add(String(i)));
+  }
   const all = [...ids];
-  console.log(`[reabrir] chamados com reclamação vinculada: ${all.length}`);
+  let semData = 0;
+  for (const M of models) {
+    semData += await M.countDocuments({ dataReclamacao: { $in: [null] }, $or: [{ 'meta.dataReclamacao': { $in: [null, ''] } }] }).exec();
+  }
+  console.log(`[reabrir] reclamações sem nenhuma data (ficam de fora): ${semData}`);
+  console.log(`[reabrir] janela: reclamações de ${corte.toISOString().slice(0, 10)} até hoje (${MESES} meses, pela data da reclamação)`);
+  console.log(`[reabrir] chamados com reclamação vinculada: ${todos.size} | dentro da janela: ${all.length} | fora/sem data: ${todos.size - all.length}`);
 
   let fechadosTotal = 0;
   let doJob = 0;
