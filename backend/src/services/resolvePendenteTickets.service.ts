@@ -5,6 +5,7 @@
 import { ChamadoN1 } from '../models/ChamadoN1';
 import { env } from '../config/env';
 import { appendStatusTransition, lastStatusInFilter } from './chamado.mapper';
+import { findChamadoIdsComCasoEspecial } from './reclamacoes/reclamacao.service';
 
 export interface ResolvePendenteResult {
   scanned: number;
@@ -26,9 +27,13 @@ export async function resolvePendenteTicketsPastWindow(
   const windowMs = Math.max(60_000, env.pendenteResolveAfterMs);
   const cutoff = new Date(now.getTime() - windowMs);
 
-  const candidates = await ChamadoN1.find(lastStatusExactPendenteFilter()).select(
+  const allCandidates = await ChamadoN1.find(lastStatusExactPendenteFilter()).select(
     '_id chamadoProtocolo registro',
   );
+  // Casos especiais (RA/Procon/Bacen/Consumidor.gov) ficam de fora: devolutiva do órgão pode
+  // passar de 48h e fechar o ticket antes impede a agente de agir.
+  const casosEspeciais = await findChamadoIdsComCasoEspecial(allCandidates.map((c) => c._id));
+  const candidates = allCandidates.filter((c) => !casosEspeciais.has(String(c._id)));
 
   let resolved = 0;
   let errors = 0;
