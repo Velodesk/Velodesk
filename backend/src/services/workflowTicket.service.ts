@@ -45,7 +45,8 @@ import {
 } from './permission.service';
 import { executeSistemaStep, isDevolutivaPasso } from './workflowSistemaExecutor.service';
 import { notifyWorkflowRejectToResponsavel } from './workflowNotificacao.service';
-import { notifyWorkflowStepAssignmentAsync } from './workflowAssignmentNotification.service';
+import { notifyWorkflowStepAssignmentBounded } from './workflowAssignmentNotification.service';
+import { buildWorkflowStepSignature } from './workflowDecisionToken.util';
 import { buildLateralWorkflowDto } from './workflowDto.util';
 import {
   applyRequisicaoToChamado,
@@ -336,7 +337,8 @@ async function advanceToPath(
   setWorkflowPath(wf, newPath);
   wf.pendingDecision = null;
   applyAtribuidoForPasso(chamado, node);
-  void notifyWorkflowStepAssignmentAsync(chamado, definicao, node);
+  // Aguardado (com teto): no Cloud Run, trabalho solto após a resposta HTTP fica sem CPU.
+  await notifyWorkflowStepAssignmentBounded(chamado, definicao, node, newPath);
 
   appendWorkflowRegistro(chamado, {
     autor,
@@ -365,7 +367,7 @@ export async function activateWorkflowForChamado(
   chamado: IChamadoN1,
   definicao: IWorkflowDefinicao,
   autor = 'Sistema',
-  options: { requisicao?: IChamadoWorkflowRequisicao | null } = {},
+  options: { requisicao?: IChamadoWorkflowRequisicao | null; skipNotify?: boolean } = {},
 ): Promise<boolean> {
   const wf = ensureWorkflowState(chamado);
   if (wf.active && wf.workflowId) return false;
@@ -388,7 +390,9 @@ export async function activateWorkflowForChamado(
   }
 
   applyAtribuidoForPasso(chamado, resolved.node);
-  void notifyWorkflowStepAssignmentAsync(chamado, definicao, resolved.node);
+  if (!options.skipNotify) {
+    await notifyWorkflowStepAssignmentBounded(chamado, definicao, resolved.node, initialPath);
+  }
 
   appendWorkflowRegistro(chamado, {
     autor,
@@ -493,8 +497,17 @@ export async function startWorkflowForChamado(
     solicitacaoProdutos,
   );
   const autor = authUser?.name || authUser?.email || 'Agente';
+  // Se a 1ª etapa será encaminhada na hora (auto-forward), só a etapa seguinte é notificada.
+  const rootPath = buildRootPath(definicao);
+  const willAutoForward = Boolean(
+    rootPath
+    && ((requisicaoValores && Object.keys(requisicaoValores).length)
+      || (solicitacaoProdutos && Object.keys(solicitacaoProdutos).length))
+    && shouldAutoForwardAfterRequisicaoStart(definicao, rootPath),
+  );
   const activated = await activateWorkflowForChamado(chamado, definicao, autor, {
     requisicao: requisicaoSnapshot,
+    skipNotify: willAutoForward,
   });
   if (!activated) {
     throw new WorkflowAdvanceError('Não foi possível iniciar o workflow', 400);
@@ -652,6 +665,76 @@ export async function advanceWorkflowManual(
   });
   if (approveRota) {
     applyRotaStatusTicket(chamado, approveRota, autor, {});
+  }
+  return chamado;
+}
+
+export class WorkflowEmailDecisionError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** Resolve o ticket/etapa de um token de e-mail e valida que ainda está pendente. */
+export async function loadWorkflowEmailDecisionContext(
+  chamado: IChamadoN1,
+  stepSig: string,
+): Promise<{ definicao: IWorkflowDefinicao; node: IWorkflowPassoEnvelope }> {
+  const wf = chamado.workflow;
+  if (!wf?.active || !wf.workflowId) {
+    throw new WorkflowEmailDecisionError('Este workflow já foi concluído ou cancelado.', 409);
+  }
+  const definicao = await getWorkflowById(String(wf.workflowId));
+  if (!definicao) throw new WorkflowEmailDecisionError('Definição de workflow não encontrada.', 404);
+  const path = resolveCurrentPath(chamado, definicao);
+  if (buildWorkflowStepSignature(path) !== stepSig) {
+    throw new WorkflowEmailDecisionError('Esta etapa já foi decidida ou o workflow avançou.', 409);
+  }
+  const resolved = findNodeAndContainer(definicao, path);
+  if (!resolved || resolved.node.passo?.acao?.tipo !== 'aprovacao') {
+    throw new WorkflowEmailDecisionError('A etapa atual não é de aprovação.', 409);
+  }
+  return { definicao, node: resolved.node };
+}
+
+/**
+ * Aprovar/reprovar a partir do botão do e-mail. Mesma regra do painel: reusa
+ * advanceWorkflowWithDecision (permissão incluída). Reprovação exige motivo, gravado como nota interna.
+ */
+export async function decideWorkflowViaEmail(
+  chamado: IChamadoN1,
+  stepSig: string,
+  decision: 'approve' | 'reject',
+  authUser: AuthPayload,
+  motivo: string,
+): Promise<IChamadoN1> {
+  const { definicao } = await loadWorkflowEmailDecisionContext(chamado, stepSig);
+  const autor = authUser.name || authUser.email;
+  const nota = String(motivo || '').trim();
+  if (decision === 'reject' && !nota) {
+    throw new WorkflowEmailDecisionError('Informe o motivo da reprovação.', 400);
+  }
+  const allowed = await canUserActOnStep(chamado, definicao, authUser);
+  if (!allowed) {
+    throw new WorkflowEmailDecisionError('Você não tem permissão para decidir esta etapa.', 403);
+  }
+  if (nota) {
+    appendWorkflowRegistro(chamado, {
+      autor,
+      anotacaoInterna: nota,
+      metadados: { workflowDecisionNote: decision, via: 'email' },
+    });
+  }
+  try {
+    await advanceWorkflowWithDecision(chamado, decision, authUser);
+  } catch (err) {
+    if (err instanceof WorkflowAdvanceError) {
+      throw new WorkflowEmailDecisionError(err.message, err.status);
+    }
+    throw err;
   }
   return chamado;
 }

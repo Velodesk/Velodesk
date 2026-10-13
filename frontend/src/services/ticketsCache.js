@@ -1102,10 +1102,13 @@ function applyAddMessageResponseToTicket(ticket, response) {
 }
 
 /** Adiciona nota interna só no cache local (rascunho ou patch otimista) — sem GET /boxes. */
-export function appendInternalNoteToCachedTicket(ticketId, { text, author } = {}) {
+export function appendInternalNoteToCachedTicket(ticketId, { text, author, attachments } = {}) {
   const apiId = String(ticketId || '').trim();
   const noteText = String(text || '').trim();
-  if (!apiId || !noteText) return null;
+  const noteAttachments = Array.isArray(attachments)
+    ? attachments.map((item) => String(item ?? '').trim()).filter(Boolean)
+    : [];
+  if (!apiId || (!noteText && !noteAttachments.length)) return null;
 
   const entry = findInColumns(apiId);
   if (!entry?.ticket) return null;
@@ -1118,6 +1121,7 @@ export function appendInternalNoteToCachedTicket(ticketId, { text, author } = {}
     type: 'internal',
     origin: 'agente',
     text: noteText,
+    attachments: noteAttachments,
     timestamp: ts,
     time: ts,
     author: noteAuthor,
@@ -1236,13 +1240,17 @@ export async function addMessageViaApi(ticketId, payload) {
         author,
       });
     }
-    if (internalText) {
+    const internalAttachments = isInternalOnly
+      ? (Array.isArray(payload.attachments) ? payload.attachments.map((item) => String(item ?? '').trim()).filter(Boolean) : [])
+      : [];
+    if (internalText || internalAttachments.length) {
       if (!t.internalNotes) t.internalNotes = [];
       t.internalNotes.push({
         id: `${regKey}-int`,
         type: 'internal',
         origin: 'agente',
         text: internalText,
+        attachments: internalAttachments,
         timestamp: ts,
         author,
       });

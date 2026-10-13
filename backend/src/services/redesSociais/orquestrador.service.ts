@@ -1,5 +1,5 @@
 /** orquestrador.service v1.0.0 — ciclo completo de Redes Sociais: captação
- * (Facebook/Instagram/Google Play) → classificação por IA → armazenamento.
+ * (Facebook/Instagram; Google Play roda em job próprio) → classificação por IA → armazenamento.
  *
  * Chamado pelo job (jobs/redesSociaisCaptacao.job.ts) a cada
  * env.redesSociaisPollIntervalMs. Um canal falhando (ex.: token expirado) não impede
@@ -37,15 +37,12 @@ import {
   type EstadoDeCaptacaoInstagram,
 } from './captacao/instagramCaptacao.service';
 import {
-  buscarComentariosNovosGooglePlay,
-  type ContaDeServicoGoogle,
-} from './captacao/googlePlayCaptacao.service';
-import {
   carregarEstadoFacebook,
   salvarEstadoFacebook,
   carregarEstadoInstagram,
   salvarEstadoInstagram,
 } from './redesSociaisCaptacaoEstado.service';
+import { sincronizarReviewsPlay } from './playReviewsSync.service';
 import { classificarComentario } from './classificacaoComentario.service';
 import {
   idsJaExistentes,
@@ -163,25 +160,24 @@ async function rodarCicloInstagram(): Promise<void> {
   logarResultado('Instagram', resultado);
 }
 
-async function rodarCicloGooglePlay(): Promise<void> {
-  const { googleServiceAccountJson: json, googlePlayPackageName: packageName } = env;
-  if (!json || !packageName) {
-    console.info('[redes-sociais] [Google Play] GOOGLE_SERVICE_ACCOUNT_JSON/GOOGLE_PLAY_PACKAGE_NAME não configurados — pulando.');
-    return;
+/** Google Play NÃO roda no ciclo do monólito: a captação é um Cloud Run Job próprio
+ * (jobs/playReviewsSync.cli.ts), porque a API do parceiro exige IP de saída fixo e o
+ * scheduler dele é desacoplado da API (ver playReviewsApi.client.ts). */
+export async function rodarCicloGooglePlay(): Promise<void> {
+  const r = await sincronizarReviewsPlay();
+  console.info(
+    `[redes-sociais] [Google Play] recebidos=${r.recebidos} novos=${r.novos} editados=${r.editados} `
+    + `respostasImportadas=${r.respostasImportadas} semMudanca=${r.semMudanca} falhas=${r.falhas.length}`,
+  );
+  for (const falha of r.falhas) {
+    console.warn(`[redes-sociais] [Google Play] falha em ${falha.idOrigem}: ${falha.erro}`);
   }
-
-  const contaDeServico = JSON.parse(json) as ContaDeServicoGoogle;
-  const comentarios = await buscarComentariosNovosGooglePlay(contaDeServico, packageName);
-  if (!comentarios.length) return;
-
-  const resultado = await processarNovosComentarios(comentarios);
-  logarResultado('Google Play', resultado);
+  if (r.falhas.length) throw new Error(`${r.falhas.length} review(s) do Google Play falharam no ciclo`);
 }
 
-/** Roda um ciclo completo: Facebook, Instagram e Google Play em sequência — cada canal
- * com erro isolado (não impede os demais). Chamar a cada env.redesSociaisPollIntervalMs. */
+/** Roda um ciclo completo: Facebook e Instagram em sequência — cada canal com erro
+ * isolado (não impede o outro). Chamar a cada env.redesSociaisPollIntervalMs. */
 export async function rodarCicloRedesSociais(): Promise<void> {
   await rodarCicloFacebook().catch((err) => console.error('[redes-sociais] [Facebook] erro no ciclo:', (err as Error).message));
   await rodarCicloInstagram().catch((err) => console.error('[redes-sociais] [Instagram] erro no ciclo:', (err as Error).message));
-  await rodarCicloGooglePlay().catch((err) => console.error('[redes-sociais] [Google Play] erro no ciclo:', (err as Error).message));
 }

@@ -83,6 +83,15 @@ export function getTicketProtocolLabel(ticket) {
   return String(ticket?.chamadoProtocolo || '').trim();
 }
 
+/**
+ * O id é um ObjectId real do Chamado (24 hex)? Rascunho local ("draft-...") e registro do
+ * Legado Octa ("legado-octa-ticket:...") não são — não existem como documento no backend, então
+ * PUT/commit neles sempre falha. Usado para tirar esses itens da seleção de ações em massa.
+ */
+export function isRealTicketId(id) {
+  return /^[0-9a-f]{24}$/i.test(String(id || ''));
+}
+
 /** Máscara CPF enquanto digita (máx. 11 dígitos): 000.000.000-00 */
 export function maskCpfInput(value) {
   const d = normalizeCpf(value).slice(0, 11);
@@ -1197,13 +1206,14 @@ export function formatTicketSlaRemaining(ticket) {
   return `${minutes} min`;
 }
 
-export function groupMyTicketsByStatus(entries) {
+export function groupMyTicketsByStatus(entries, entrySortOldestFirst = false) {
   return MY_TICKETS_STATUS_SECTIONS.map((section) => ({
     ...section,
     entries: sortTicketEntries(
       (entries || []).filter((entry) => matchesMyTicketsStatusSection(entry, section.id)),
       'sla',
       'asc',
+      entrySortOldestFirst,
     ),
   })).filter((section) => section.entries.length > 0);
 }
@@ -1547,11 +1557,12 @@ export function shouldHideWorkflowSystemThreadMessage(text) {
 
 function mapAgentInternalNote(note, ticket) {
   const text = String(note.text || '').trim();
-  if (!text) return null;
+  const attachments = Array.isArray(note.attachments) ? note.attachments.filter(Boolean) : [];
+  if (!text && !attachments.length) return null;
   const plain = /<[a-z][\s\S]*>/i.test(text)
     ? text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
     : text;
-  if (!plain) return null;
+  if (!plain && !attachments.length) return null;
 
   const isWorkflowInfo = isWorkflowInfoNoteText(text);
   const author = note.author || 'Agente';
@@ -1564,6 +1575,7 @@ function mapAgentInternalNote(note, ticket) {
     badge: isWorkflowInfo ? 'Pedido de info' : 'Interna',
     timestamp: note.timestamp || ticket.updatedAt,
     body: isWorkflowInfo ? text.replace(/^\[Workflow\]\s*/i, '') : text,
+    attachments,
     tags: isWorkflowInfo ? ['Workflow'] : [],
     ticketId: String(ticket.id || ticket._id),
     ticketTitle: getTicketTitle(ticket),

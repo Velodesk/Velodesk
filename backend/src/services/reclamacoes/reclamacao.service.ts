@@ -282,6 +282,8 @@ function buildReclamacaoPayload(
     workflowAtivo: Boolean(chamado.workflow?.active),
     workflow: buildReclamacaoWorkflowSnapshot(chamado),
     aberta: !terminal,
+    // Denormalizado: a listagem/contagem desta coleção não faz join com chamados_n1.
+    ticketStatus: status,
     meta: buildMetaForOrgao(orgao, meta),
   };
 }
@@ -467,6 +469,137 @@ export async function countByOrgao(
   if (filters.aberta != null) query.aberta = filters.aberta;
   if (filters.statusCanal) query.statusCanal = filters.statusCanal;
   return Model.countDocuments(query).exec();
+}
+
+export interface ReclamacaoContagens {
+  total: number;
+  grupos: Record<'vencendo-hoje' | 'finalizadas' | 'nao-respondidas' | 'respondidas', number>;
+  kpis: { vencendoHoje: number; naoRespondidas: number; respondidas: number; passivelNota: number };
+}
+
+const CANAL_FECHADO_STATUSES = ['respondida', 'aguard-avaliacao', 'aguardando-audiencia'];
+const TICKET_TERMINAL_STATUSES = ['resolvido', 'resolvidos', 'cancelado', 'fechado'];
+
+const RA_TZ = 'America/Sao_Paulo';
+
+function buildGrupoExpressions() {
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: RA_TZ }).format(new Date());
+  const statusLower = { $toLower: { $ifNull: ['$statusCanal', ''] } };
+  const canalFechado = {
+    $or: [{ $eq: ['$aberta', false] }, { $in: [statusLower, CANAL_FECHADO_STATUSES] }],
+  };
+  const deskTerminal = {
+    $in: [{ $toLower: { $ifNull: ['$ticketStatus', ''] } }, TICKET_TERMINAL_STATUSES],
+  };
+  const vencendoHoje = {
+    $and: [
+      { $ne: ['$aberta', false] },
+      { $eq: [{ $type: '$prazoLegal' }, 'date'] },
+      {
+        $eq: [
+          { $dateToString: { date: '$prazoLegal', format: '%Y-%m-%d', timezone: RA_TZ } },
+          todayStr,
+        ],
+      },
+    ],
+  };
+  const grupo = {
+    $switch: {
+      branches: [
+        { case: { $and: [canalFechado, deskTerminal] }, then: 'finalizadas' },
+        { case: vencendoHoje, then: 'vencendo-hoje' },
+        { case: canalFechado, then: 'respondidas' },
+      ],
+      default: 'nao-respondidas',
+    },
+  };
+  return { statusLower, grupo };
+}
+
+export type ReclamacaoGrupo = 'vencendo-hoje' | 'finalizadas' | 'nao-respondidas' | 'respondidas';
+export const RECLAMACAO_GRUPOS: ReclamacaoGrupo[] = ['vencendo-hoje', 'finalizadas', 'nao-respondidas', 'respondidas'];
+
+/** Página de reclamações de UM grupo (mesma regra dos cards), ordenada no banco — mais antigo primeiro, sem data no fim (igual ao front). */
+export async function listByOrgaoGrupo(
+  orgao: CasoEspecialOrgao,
+  grupoKey: ReclamacaoGrupo,
+  opts: { sort?: 'data' | 'sla'; limit?: number; skip?: number } = {},
+): Promise<{ items: IReclamacao[]; total: number }> {
+  const Model = resolveReclamacaoModel(orgao);
+  if (!Model) return { items: [], total: 0 };
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+  const skip = Math.max(opts.skip ?? 0, 0);
+  const { grupo } = buildGrupoExpressions();
+  const sort: Record<string, 1 | -1> = opts.sort === 'sla'
+    ? { prazoLegal: 1, _id: 1 }
+    : { _dataOrd: 1, _id: 1 };
+
+  const [page, totalRows] = await Promise.all([
+    Model.aggregate([
+      { $addFields: { _grupo: grupo, _dataOrd: { $ifNull: ['$dataReclamacao', new Date('9999-12-31')] } } },
+      { $match: { _grupo: grupoKey } },
+      { $sort: sort },
+      { $skip: skip },
+      { $limit: limit },
+      { $project: { _id: 1 } },
+    ]).exec(),
+    Model.aggregate([
+      { $addFields: { _grupo: grupo } },
+      { $match: { _grupo: grupoKey } },
+      { $count: 'n' },
+    ]).exec(),
+  ]);
+  const ids = (page as Array<{ _id: Types.ObjectId }>).map((r) => r._id);
+  const docs = await Model.find({ _id: { $in: ids } }).exec();
+  const byId = new Map(docs.map((d) => [String(d._id), d]));
+  const items = ids.map((id) => byId.get(String(id))).filter(Boolean) as IReclamacao[];
+  return { items, total: (totalRows as Array<{ n: number }>)[0]?.n ?? 0 };
+}
+
+/**
+ * Contagens por fila/KPI calculadas no banco — espelha resolveEspeciaisGroupKey do front
+ * (especiaisGroupKey.js) para os cards não dependerem de baixar todas as páginas da lista.
+ */
+export async function countContagensByOrgao(orgao: CasoEspecialOrgao): Promise<ReclamacaoContagens | null> {
+  const Model = resolveReclamacaoModel(orgao);
+  if (!Model) return null;
+
+  const { statusLower, grupo } = buildGrupoExpressions();
+
+  const rows = await Model.aggregate([
+    {
+      $project: {
+        grupo,
+        naoRespStatus: { $eq: [statusLower, 'nao-respondida'] },
+        respStatus: { $in: [statusLower, ['respondida', 'aguard-avaliacao']] },
+        passivel: { $eq: ['$meta.passivelNota', true] },
+      },
+    },
+    {
+      $group: {
+        _id: '$grupo',
+        count: { $sum: 1 },
+        naoResp: { $sum: { $cond: ['$naoRespStatus', 1, 0] } },
+        resp: { $sum: { $cond: ['$respStatus', 1, 0] } },
+        passivel: { $sum: { $cond: ['$passivel', 1, 0] } },
+      },
+    },
+  ]).exec();
+
+  const grupos = { 'vencendo-hoje': 0, finalizadas: 0, 'nao-respondidas': 0, respondidas: 0 };
+  const kpis = { vencendoHoje: 0, naoRespondidas: 0, respondidas: 0, passivelNota: 0 };
+  let total = 0;
+  for (const row of rows as Array<{ _id: keyof typeof grupos; count: number; naoResp: number; resp: number; passivel: number }>) {
+    grupos[row._id] = row.count;
+    total += row.count;
+    if (row._id === 'finalizadas') continue;
+    if (row._id === 'vencendo-hoje') kpis.vencendoHoje = row.count;
+    if (row._id === 'nao-respondidas') kpis.naoRespondidas += row.count;
+    kpis.naoRespondidas += row._id === 'nao-respondidas' ? 0 : row.naoResp;
+    kpis.respondidas += row.resp;
+    kpis.passivelNota += row.passivel;
+  }
+  return { total, grupos, kpis };
 }
 
 export interface CasosEspeciaisPorCpfEntry {
@@ -765,6 +898,12 @@ export function readCanalProvavelHint(chamado: IChamadoN1): string | null {
   return hint || null;
 }
 
+function readMetaDate(value: unknown): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 export function reclamacaoToPortalDto(doc: IReclamacao): Record<string, unknown> {
   const meta = (doc.meta && typeof doc.meta === 'object' ? doc.meta : {}) as Record<string, unknown>;
   return {
@@ -786,11 +925,12 @@ export function reclamacaoToPortalDto(doc: IReclamacao): Record<string, unknown>
     motivo: doc.motivo,
     motivo2: doc.motivo2,
     motivo3: doc.motivo3,
-    dataReclamacao: doc.dataReclamacao,
+    // Imports Hugme anteriores a 22d7107 só gravaram a data da planilha em meta.dataReclamacao.
+    dataReclamacao: doc.dataReclamacao ?? readMetaDate(meta.dataReclamacao),
     // Alias pro campo genérico acima — Procon/Consumidor.gov/Bacen exibem e editam essa data
     // como "dataDemanda" no front (CgDadosFields/BcDadosFields); sem isto, o PATCH grava em
     // dataReclamacao mas a tela nunca lê de volta, dando a impressão de que não salvou.
-    dataDemanda: doc.orgao !== 'reclame_aqui' ? doc.dataReclamacao : undefined,
+    dataDemanda: doc.orgao !== 'reclame_aqui' ? (doc.dataReclamacao ?? readMetaDate(meta.dataReclamacao)) : undefined,
     statusCanal: doc.statusCanal,
     ticketStatus: doc.ticketStatus,
     statusPc: meta.statusPc ?? (doc.orgao === 'procon' ? doc.statusCanal : undefined),

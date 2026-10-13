@@ -51,6 +51,13 @@ ele. Campos vazios ficam para preenchimento manual de quem for responsável pela
   Vazio se não houver prazo explícito no texto.
 - dataAberturaData: data de abertura/registro da demanda, no formato AAAA-MM-DD, se mencionada.
   Vazio se não houver.
+- tabulacaoProduto: o produto da tabulação interna que melhor corresponde ao produto/serviço da
+  reclamação, escolhido EXATAMENTE como escrito no "Catálogo de tabulação (lista fechada)" enviado
+  junto com o ticket. Vazio se nenhum produto do catálogo corresponder com clareza.
+- tabulacaoMotivo: o motivo, dentro do produto escolhido em tabulacaoProduto, que melhor descreve
+  o tema específico da reclamação, também EXATAMENTE como escrito no catálogo. Vazio se
+  tabulacaoProduto estiver vazio ou nenhum motivo daquele produto corresponder com clareza.
+  Nunca invente nomes fora do catálogo.
 - confianca: "alta" se protocolo e consumidor estão claros e inequívocos no texto; "media" se
   extraiu a maior parte mas com alguma ambiguidade; "baixa" se o texto mal parece uma notificação
   formal do ${config.canalLabel} ou a maioria dos campos ficou vazia.

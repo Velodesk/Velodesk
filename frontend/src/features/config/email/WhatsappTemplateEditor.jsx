@@ -1,15 +1,52 @@
 /**
- * WhatsappTemplateEditor — formulário de criação de modelo de mensagem WhatsApp
- * (categoria, nome, disponibilidade e conteúdo). Ainda sem persistência real —
- * salvar só valida e volta pra lista.
+ * WhatsappTemplateEditor — formulário de criação/edição de modelo de mensagem WhatsApp
+ * (categoria, nome, disponibilidade e conteúdo). Salva só o rascunho no nosso banco —
+ * usar de verdade pra iniciar conversa fora da janela de 24h ainda depende do modelo ser
+ * aprovado pela Meta (contentSid preenchido depois, fora desta tela).
  */
 import React, { useRef, useState } from 'react';
 import { useDeskColaboradores } from '../../../hooks/useDeskColaboradores';
 import { useNotifications } from '../../../context/NotificationContext';
+import { whatsappTemplatesApi } from '../../../api/client';
+import WhatsappPreviewCard from './WhatsappPreviewCard';
+import { PLACEHOLDER_OPTIONS } from '../components/PlaceholderPicker';
+
+const VARIAVEL_INFO_TEXT = 'Esse é o texto especificado na API que será personalizado para o cliente, como o nome ou o número da fatura.';
+
+/** Mesma lista de variáveis do "Inserir placeholder" (e-mails de saída) — rótulo do botão
+ * aqui segue o termo que a Meta usa pra modelo de WhatsApp ("variável"), mesmos tokens. */
+function VariavelPicker({ targetRef, value, onChange }) {
+  return (
+    <div className="config-whatsapp-template-editor__variable-picker">
+      <select
+        className="config-whatsapp-template-editor__variable-btn"
+        value=""
+        onChange={(e) => {
+          const token = e.target.value;
+          if (token) insertAtCursor(targetRef, value, token, onChange);
+          e.target.value = '';
+        }}
+        aria-label="Adicionar variável"
+      >
+        <option value="">+ Adicionar variável</option>
+        {PLACEHOLDER_OPTIONS.map((opt) => (
+          <option key={opt.token} value={opt.token}>{opt.label} — {opt.token}</option>
+        ))}
+      </select>
+      <i className="ti ti-info-circle" title={VARIAVEL_INFO_TEXT} aria-hidden="true" />
+    </div>
+  );
+}
 
 const CATEGORIAS = [
   { id: 'marketing', label: 'Marketing', icon: 'ti-speakerphone' },
   { id: 'utilitario', label: 'Utilitário', icon: 'ti-bell' },
+  { id: 'autenticacao', label: 'Autenticação', icon: 'ti-shield-lock' },
+];
+
+const IDIOMAS = [
+  { id: 'pt_BR', label: 'Português (BR)' },
+  { id: 'en_US', label: 'Inglês (US)' },
 ];
 
 const NOME_MAX = 512;
@@ -17,6 +54,42 @@ const CORPO_MAX = 1024;
 const RODAPE_MAX = 60;
 const CABECALHO_MAX = 60;
 const MAX_BOTOES = 10;
+
+/** Mesmos tipos e limites do construtor de modelo da Meta: cada grupo é uma categoria de
+ * botão, e "max" (quando presente) é o limite de quantos desse tipo um modelo pode ter. */
+const BOTAO_GRUPOS = [
+  {
+    label: 'Resposta rápida',
+    opcoes: [
+      { tipo: 'personalizado', label: 'Personalizado' },
+      { tipo: 'cancelar_marketing', label: 'Cancelar marketing', max: 1 },
+    ],
+  },
+  {
+    label: 'Chamada para ação',
+    opcoes: [
+      { tipo: 'ligar', label: 'Ligar', max: 1 },
+      { tipo: 'acessar_site', label: 'Acessar o site', max: 2 },
+      { tipo: 'copiar_codigo', label: 'Copiar código da oferta', max: 1 },
+    ],
+  },
+];
+
+const BOTAO_TIPO_LABEL = BOTAO_GRUPOS.flatMap((grupo) => grupo.opcoes).reduce(
+  (acc, opcao) => ({ ...acc, [opcao.tipo]: opcao.label }),
+  {},
+);
+
+function criarBotao(tipo) {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  if (tipo === 'ligar') return { id, tipo, texto: '', telefone: '' };
+  if (tipo === 'acessar_site') return { id, tipo, texto: '', tipoUrl: 'estatico', url: '' };
+  if (tipo === 'copiar_codigo') return { id, tipo, texto: '', codigoOferta: '' };
+  if (tipo === 'cancelar_marketing') {
+    return { id, tipo, texto: '', textoRodape: '', confirmacaoResponsabilidade: false };
+  }
+  return { id, tipo, texto: '' };
+}
 
 function wrapSelection(textareaRef, value, marker, onChange) {
   const el = textareaRef?.current;
@@ -53,117 +126,48 @@ function insertAtCursor(textareaRef, value, token, onChange) {
   });
 }
 
-const PREVIEW_TOKEN_RE = /\*(.+?)\*|_(.+?)_|~(.+?)~|(\{\{\d+\}\})/g;
-
-/** Renderiza *negrito*, _itálico_, ~tachado~ e {{n}} do corpo como no app do WhatsApp. */
-function renderWhatsappPreviewBody(text) {
-  return text.split('\n').map((line, lineIndex) => {
-    const nodes = [];
-    let lastIndex = 0;
-    let match;
-    const re = new RegExp(PREVIEW_TOKEN_RE);
-    while ((match = re.exec(line))) {
-      if (match.index > lastIndex) nodes.push(line.slice(lastIndex, match.index));
-      if (match[1] !== undefined) {
-        nodes.push(<strong key={`${lineIndex}-${match.index}`}>{match[1]}</strong>);
-      } else if (match[2] !== undefined) {
-        nodes.push(<em key={`${lineIndex}-${match.index}`}>{match[2]}</em>);
-      } else if (match[3] !== undefined) {
-        nodes.push(<s key={`${lineIndex}-${match.index}`}>{match[3]}</s>);
-      } else if (match[4] !== undefined) {
-        nodes.push(
-          <span key={`${lineIndex}-${match.index}`} className="config-whatsapp-preview__variable">
-            {match[4]}
-          </span>,
-        );
-      }
-      lastIndex = re.lastIndex;
-    }
-    if (lastIndex < line.length) nodes.push(line.slice(lastIndex));
-    return (
-      <React.Fragment key={lineIndex}>
-        {lineIndex > 0 ? <br /> : null}
-        {nodes}
-      </React.Fragment>
-    );
-  });
-}
-
-/** Prévia ao vivo da mensagem — mesma estrutura que o cliente recebe no WhatsApp. */
-function WhatsappPreviewCard({ cabecalhoTipo, cabecalhoTexto, corpo, rodape, botoes }) {
-  const temCabecalho = cabecalhoTipo === 'texto' && cabecalhoTexto.trim().length > 0;
-  const corpoPreenchido = corpo.trim().length > 0;
-  const botoesPreenchidos = botoes.filter((item) => item.texto.trim().length > 0);
-  const mostrarComoLista = botoesPreenchidos.length > 3;
-
-  return (
-    <aside className="config-whatsapp-preview" aria-label="Prévia da mensagem no WhatsApp">
-      <h4>Como o cliente vê</h4>
-      <div className="config-whatsapp-preview__phone">
-        <div className="config-whatsapp-preview__bar">
-          <span className="config-whatsapp-preview__avatar">
-            <i className="ti ti-brand-whatsapp" aria-hidden="true" />
-          </span>
-          <div className="config-whatsapp-preview__bar-text">
-            <strong>Velotax</strong>
-            <span>via WhatsApp Business</span>
-          </div>
-        </div>
-
-        <div className="config-whatsapp-preview__chat">
-          <div className="config-whatsapp-preview__bubble">
-            {temCabecalho ? (
-              <p className="config-whatsapp-preview__header">{cabecalhoTexto}</p>
-            ) : null}
-
-            <p className={'config-whatsapp-preview__body' + (corpoPreenchido ? '' : ' is-placeholder')}>
-              {corpoPreenchido ? renderWhatsappPreviewBody(corpo) : 'Sua mensagem aparecerá aqui conforme você digita…'}
-            </p>
-
-            {rodape.trim() ? (
-              <p className="config-whatsapp-preview__footer-text">{rodape}</p>
-            ) : null}
-
-            <span className="config-whatsapp-preview__time">
-              12:00 <i className="ti ti-checks" aria-hidden="true" />
-            </span>
-          </div>
-
-          {botoesPreenchidos.length ? (
-            <div className="config-whatsapp-preview__botoes">
-              {mostrarComoLista ? (
-                <button type="button" tabIndex={-1}>
-                  <i className="ti ti-list" aria-hidden="true" />
-                  Ver todas as opções
-                </button>
-              ) : (
-                botoesPreenchidos.map((botao) => (
-                  <button type="button" tabIndex={-1} key={botao.id}>
-                    {botao.texto}
-                  </button>
-                ))
-              )}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-export default function WhatsappTemplateEditor({ onClose }) {
+export default function WhatsappTemplateEditor({ onClose, onSaved, initialTemplate = null }) {
   const { showNotification } = useNotifications();
   const { agentOptions } = useDeskColaboradores();
+  const isEditing = Boolean(initialTemplate?.id);
 
-  const [categoria, setCategoria] = useState('marketing');
-  const [nome, setNome] = useState('');
-  const [disponibilidade, setDisponibilidade] = useState(['Todos os usuários']);
-  const [cabecalhoTipo, setCabecalhoTipo] = useState('nenhum');
-  const [cabecalhoTexto, setCabecalhoTexto] = useState('');
-  const [corpo, setCorpo] = useState('');
-  const [rodape, setRodape] = useState('');
-  const [botoes, setBotoes] = useState([]);
+  const [categoria, setCategoria] = useState(initialTemplate?.categoria || 'marketing');
+  const [idioma, setIdioma] = useState(initialTemplate?.idioma || 'pt_BR');
+  const [nome, setNome] = useState(initialTemplate?.nome || '');
+  const [disponibilidade, setDisponibilidade] = useState(
+    initialTemplate?.disponibilidade?.length ? initialTemplate.disponibilidade : ['Todos os usuários'],
+  );
+  const [cabecalhoTipo, setCabecalhoTipo] = useState(initialTemplate?.cabecalhoTipo || 'nenhum');
+  const [cabecalhoTexto, setCabecalhoTexto] = useState(initialTemplate?.cabecalhoTexto || '');
+  const [corpo, setCorpo] = useState(initialTemplate?.corpo || '');
+  const [rodape, setRodape] = useState(initialTemplate?.rodape || '');
+  const [botoes, setBotoes] = useState(
+    (initialTemplate?.botoes || []).map((item, index) => ({
+      id: `${Date.now()}-${index}`,
+      tipo: item.tipo || 'personalizado',
+      texto: item.texto || '',
+      telefone: item.telefone || '',
+      tipoUrl: item.tipoUrl || 'estatico',
+      url: item.url || '',
+      codigoOferta: item.codigoOferta || '',
+      textoRodape: item.textoRodape || '',
+      confirmacaoResponsabilidade: Boolean(item.confirmacaoResponsabilidade),
+    })),
+  );
+  const [autenticacaoBotaoTexto, setAutenticacaoBotaoTexto] = useState(initialTemplate?.autenticacaoBotaoTexto || 'Copiar código');
+  const [autenticacaoRecomendacaoSeguranca, setAutenticacaoRecomendacaoSeguranca] = useState(
+    Boolean(initialTemplate?.autenticacaoRecomendacaoSeguranca),
+  );
+  const [autenticacaoExpiracaoAtiva, setAutenticacaoExpiracaoAtiva] = useState(
+    initialTemplate ? Boolean(initialTemplate?.autenticacaoExpiracaoAtiva) : true,
+  );
+  const [autenticacaoExpiracaoMinutos, setAutenticacaoExpiracaoMinutos] = useState(
+    initialTemplate?.autenticacaoExpiracaoMinutos || 10,
+  );
+  const [saving, setSaving] = useState(false);
   const corpoRef = useRef(null);
+  const cabecalhoRef = useRef(null);
+  const isAutenticacao = categoria === 'autenticacao';
 
   const disponibilidadeOptions = ['Todos os usuários', ...agentOptions]
     .filter((opt) => !disponibilidade.includes(opt));
@@ -177,42 +181,111 @@ export default function WhatsappTemplateEditor({ onClose }) {
     setDisponibilidade((prev) => prev.filter((item) => item !== value));
   };
 
-  const handleAddVariavel = () => {
-    const count = (corpo.match(/\{\{\d+\}\}/g) || []).length;
-    insertAtCursor(corpoRef, corpo, `{{${count + 1}}}`, setCorpo);
+  const contagemBotoesPorTipo = botoes.reduce((acc, item) => {
+    acc[item.tipo] = (acc[item.tipo] || 0) + 1;
+    return acc;
+  }, {});
+
+  const handleAddBotao = (tipo) => {
+    if (!tipo || botoes.length >= MAX_BOTOES) return;
+    setBotoes((prev) => [...prev, criarBotao(tipo)]);
   };
 
-  const handleAddBotao = () => {
-    if (botoes.length >= MAX_BOTOES) return;
-    setBotoes((prev) => [...prev, { id: Date.now(), texto: '' }]);
-  };
-
-  const handleUpdateBotao = (id, texto) => {
-    setBotoes((prev) => prev.map((item) => (item.id === id ? { ...item, texto } : item)));
+  const handleUpdateBotao = (id, patch) => {
+    setBotoes((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   };
 
   const handleRemoveBotao = (id) => {
     setBotoes((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const handleSave = () => {
+  // Modelo de autenticação tem corpo e rodapé fixos (não editáveis) — montados aqui só pra
+  // prévia, o texto final de verdade é gerado pelo backend a partir das mesmas opções.
+  // Recomendação de segurança e aviso de expiração entram como rodapé, não no corpo.
+  const autenticacaoCorpo = isAutenticacao ? 'Seu código de verificação é {{1}}.' : '';
+  const autenticacaoRodape = isAutenticacao
+    ? [
+        autenticacaoRecomendacaoSeguranca ? 'Não compartilhe este código com ninguém.' : null,
+        autenticacaoExpiracaoAtiva ? `Este código expira em ${autenticacaoExpiracaoMinutos} minutos.` : null,
+      ].filter(Boolean).join(' ')
+    : '';
+  const autenticacaoBotoesPreview = [{ id: 'autenticacao-copiar', tipo: 'copiar_codigo', texto: autenticacaoBotaoTexto }];
+
+  const handleSave = async () => {
     if (!nome.trim()) {
       showNotification('Informe o nome do modelo.', 'warning');
       return;
     }
-    if (!corpo.trim()) {
+    if (isAutenticacao) {
+      if (!autenticacaoBotaoTexto.trim()) {
+        showNotification('Informe o texto do botão.', 'warning');
+        return;
+      }
+    } else if (!corpo.trim()) {
       showNotification('Informe o corpo da mensagem.', 'warning');
       return;
     }
-    showNotification('Formulário validado — integração de salvamento ainda não implementada.', 'info');
-    onClose?.();
+    const cancelarMarketingSemConfirmacao = botoes.some(
+      (item) => item.tipo === 'cancelar_marketing' && item.texto.trim() && !item.confirmacaoResponsabilidade,
+    );
+    if (cancelarMarketingSemConfirmacao) {
+      showNotification('Confirme a ciência de responsabilidade no botão "Cancelar marketing".', 'warning');
+      return;
+    }
+    const payload = {
+      nome: nome.trim(),
+      categoria,
+      idioma,
+      disponibilidade,
+      cabecalhoTipo,
+      cabecalhoTexto,
+      corpo,
+      rodape,
+      botoes: botoes
+        .filter((item) => item.texto.trim())
+        .map((item) => {
+          const botao = { tipo: item.tipo, texto: item.texto.trim() };
+          if (item.tipo === 'ligar') botao.telefone = (item.telefone || '').trim();
+          if (item.tipo === 'acessar_site') {
+            botao.tipoUrl = item.tipoUrl || 'estatico';
+            botao.url = (item.url || '').trim();
+          }
+          if (item.tipo === 'copiar_codigo') botao.codigoOferta = (item.codigoOferta || '').trim();
+          if (item.tipo === 'cancelar_marketing') {
+            botao.textoRodape = (item.textoRodape || '').trim();
+            botao.confirmacaoResponsabilidade = Boolean(item.confirmacaoResponsabilidade);
+          }
+          return botao;
+        }),
+      autenticacaoBotaoTexto: autenticacaoBotaoTexto.trim(),
+      autenticacaoRecomendacaoSeguranca,
+      autenticacaoExpiracaoAtiva,
+      autenticacaoExpiracaoMinutos,
+    };
+    setSaving(true);
+    try {
+      if (isEditing) {
+        await whatsappTemplatesApi.update(initialTemplate.id, payload);
+        showNotification('Modelo atualizado.', 'success');
+      } else {
+        await whatsappTemplatesApi.create(payload);
+        showNotification('Modelo salvo.', 'success');
+      }
+      onSaved?.();
+      onClose?.();
+    } catch (err) {
+      const message = err?.response?.data?.message || 'Não foi possível salvar o modelo.';
+      showNotification(message, 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="config-whatsapp-template-editor">
       <div className="config-whatsapp-template-editor__head">
-        <h3>Novo modelo de mensagem</h3>
-        <p className="config-placeholder-msg">Configure e crie o seu modelo de mensagem.</p>
+        <h3>{isEditing ? 'Editar modelo de mensagem' : 'Novo modelo de mensagem'}</h3>
+        <p className="config-placeholder-msg">Configure e {isEditing ? 'atualize' : 'crie'} o seu modelo de mensagem.</p>
       </div>
 
       <div className="config-whatsapp-template-editor__body">
@@ -239,6 +312,20 @@ export default function WhatsappTemplateEditor({ onClose }) {
       </section>
 
       <section className="config-whatsapp-template-editor__section">
+        <h4>Idioma</h4>
+        <p className="config-placeholder-msg">Em qual idioma o modelo vai ser submetido pra aprovação.</p>
+
+        <label className="config-email-field">
+          <span>Idioma do modelo *</span>
+          <select value={idioma} onChange={(e) => setIdioma(e.target.value)}>
+            {IDIOMAS.map((item) => (
+              <option key={item.id} value={item.id}>{item.label}</option>
+            ))}
+          </select>
+        </label>
+      </section>
+
+      <section className="config-whatsapp-template-editor__section">
         <h4>Nome</h4>
         <p className="config-placeholder-msg">Dê um nome para o seu modelo de mensagem.</p>
 
@@ -261,35 +348,124 @@ export default function WhatsappTemplateEditor({ onClose }) {
         <h4>Disponibilidade</h4>
         <p className="config-placeholder-msg">Selecione os grupos e/ou usuários que terão disponibilidade a este modelo de mensagem.</p>
 
-        <div className="grupo-agentes-editor__chips">
-          {disponibilidade.map((item) => (
-            <span key={item} className="grupo-agentes-editor__chip">
-              {item}
-              <button
-                type="button"
-                className="grupo-agentes-editor__chip-remove"
-                onClick={() => handleRemoveDisponibilidade(item)}
-                aria-label={`Remover ${item}`}
-              >
-                <i className="ti ti-x" aria-hidden="true" />
-              </button>
-            </span>
-          ))}
+        <div className="config-whatsapp-picker">
+          <div className="config-whatsapp-chips">
+            {disponibilidade.map((item) => (
+              <span key={item} className="config-whatsapp-chip">
+                {item}
+                <button
+                  type="button"
+                  className="config-whatsapp-chip-remove"
+                  onClick={() => handleRemoveDisponibilidade(item)}
+                  aria-label={`Remover ${item}`}
+                >
+                  <i className="ti ti-x" aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="config-whatsapp-picker-clear"
+            onClick={() => setDisponibilidade([])}
+            aria-label="Limpar disponibilidade"
+            disabled={!disponibilidade.length}
+          >
+            <i className="ti ti-x" aria-hidden="true" />
+          </button>
+          <select
+            className="config-whatsapp-picker-select"
+            value=""
+            onChange={(e) => handleAddDisponibilidade(e.target.value)}
+            aria-label="Adicionar grupo ou usuário"
+          >
+            <option value="">+ Adicionar grupo ou usuário…</option>
+            {disponibilidadeOptions.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
         </div>
-
-        <select
-          className="config-whatsapp-template-editor__add-select"
-          value=""
-          onChange={(e) => handleAddDisponibilidade(e.target.value)}
-          aria-label="Adicionar grupo ou usuário"
-        >
-          <option value="">+ Adicionar grupo ou usuário…</option>
-          {disponibilidadeOptions.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
       </section>
 
+      {isAutenticacao ? (
+        <>
+          <section className="config-whatsapp-template-editor__section">
+            <h4>Entrega do código com opção de copiar código</h4>
+            <p className="config-placeholder-msg">
+              Autenticação básica com configuração rápida. Seus clientes copiam e colam o código no seu app.
+              Saiba como enviar{' '}
+              <a
+                className="config-whatsapp-template-editor__autenticacao-link"
+                href="https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/authentication-templates/authentication-templates"
+                target="_blank"
+                rel="noreferrer"
+              >
+                modelos de mensagem de autenticação.
+              </a>
+            </p>
+
+            <div className="config-whatsapp-template-editor__autenticacao-card">
+              <label className="config-email-field">
+                <div className="config-whatsapp-template-editor__field-head">
+                  <span>Texto do botão *</span>
+                  <span className="config-whatsapp-template-editor__counter">{autenticacaoBotaoTexto.length}/25</span>
+                </div>
+                <input
+                  type="text"
+                  value={autenticacaoBotaoTexto}
+                  maxLength={25}
+                  onChange={(e) => setAutenticacaoBotaoTexto(e.target.value)}
+                  placeholder="Copiar código"
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="config-whatsapp-template-editor__section">
+            <h4>Conteúdo da mensagem</h4>
+            <p className="config-placeholder-msg">
+              Não é possível editar o conteúdo dos modelos de mensagem de autenticação. Você pode adicionar mais
+              conteúdo das opções abaixo.
+            </p>
+
+            <label className="config-whatsapp-template-editor__autenticacao-toggle">
+              <input
+                type="checkbox"
+                checked={autenticacaoRecomendacaoSeguranca}
+                onChange={(e) => setAutenticacaoRecomendacaoSeguranca(e.target.checked)}
+              />
+              <span>Adicionar recomendação de segurança</span>
+            </label>
+
+            <label className="config-whatsapp-template-editor__autenticacao-toggle">
+              <input
+                type="checkbox"
+                checked={autenticacaoExpiracaoAtiva}
+                onChange={(e) => setAutenticacaoExpiracaoAtiva(e.target.checked)}
+              />
+              <span>Adicionar o tempo de expiração do código</span>
+            </label>
+
+            {autenticacaoExpiracaoAtiva ? (
+              <div className="config-whatsapp-template-editor__autenticacao-card config-whatsapp-template-editor__autenticacao-card--indent">
+                <label className="config-email-field">
+                  <span>Expira em *</span>
+                  <div className="config-whatsapp-template-editor__autenticacao-expira">
+                    <input
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={autenticacaoExpiracaoMinutos}
+                      onChange={(e) => setAutenticacaoExpiracaoMinutos(Math.max(1, Number(e.target.value) || 1))}
+                    />
+                    <span>minutos</span>
+                  </div>
+                </label>
+              </div>
+            ) : null}
+          </section>
+        </>
+      ) : (
       <section className="config-whatsapp-template-editor__section">
         <h4>Conteúdo</h4>
         <p className="config-placeholder-msg">Preencha as seções de cabeçalho, corpo e rodapé do seu modelo.</p>
@@ -309,12 +485,14 @@ export default function WhatsappTemplateEditor({ onClose }) {
               <span className="config-whatsapp-template-editor__counter">{cabecalhoTexto.length}/{CABECALHO_MAX}</span>
             </div>
             <input
+              ref={cabecalhoRef}
               type="text"
               value={cabecalhoTexto}
               maxLength={CABECALHO_MAX}
               onChange={(e) => setCabecalhoTexto(e.target.value)}
               placeholder="Insira o texto do cabeçalho…"
             />
+            <VariavelPicker targetRef={cabecalhoRef} value={cabecalhoTexto} onChange={setCabecalhoTexto} />
           </label>
         ) : null}
 
@@ -345,11 +523,7 @@ export default function WhatsappTemplateEditor({ onClose }) {
               <i className="ti ti-mood-smile" aria-hidden="true" />
             </button>
           </div>
-          <button type="button" className="config-whatsapp-template-editor__variable-btn" onClick={handleAddVariavel}>
-            <i className="ti ti-plus" aria-hidden="true" />
-            Adicionar variável
-            <i className="ti ti-info-circle" title="Insere {{1}}, {{2}}… — substituídos pelo conteúdo real no envio" aria-hidden="true" />
-          </button>
+          <VariavelPicker targetRef={corpoRef} value={corpo} onChange={setCorpo} />
         </label>
 
         <label className="config-email-field">
@@ -378,54 +552,143 @@ export default function WhatsappTemplateEditor({ onClose }) {
           {botoes.length ? (
             <ul className="config-whatsapp-template-editor__botoes-list">
               {botoes.map((botao) => (
-                <li key={botao.id}>
-                  <input
-                    type="text"
-                    value={botao.texto}
-                    maxLength={25}
-                    placeholder="Texto do botão…"
-                    onChange={(e) => handleUpdateBotao(botao.id, e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="config-action-btn config-action-btn--delete"
-                    onClick={() => handleRemoveBotao(botao.id)}
-                    aria-label="Remover botão"
-                  >
-                    <i className="ti ti-trash" aria-hidden="true" />
-                  </button>
+                <li key={botao.id} className="config-whatsapp-template-editor__botao-item">
+                  <div className="config-whatsapp-template-editor__botao-item-head">
+                    <span className="config-whatsapp-template-editor__botao-tipo">{BOTAO_TIPO_LABEL[botao.tipo]}</span>
+                    <button
+                      type="button"
+                      className="config-action-btn config-action-btn--delete"
+                      onClick={() => handleRemoveBotao(botao.id)}
+                      aria-label="Remover botão"
+                    >
+                      <i className="ti ti-trash" aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  <div className="config-whatsapp-template-editor__botao-item-fields">
+                    {botao.tipo === 'ligar' ? (
+                      <input
+                        type="tel"
+                        value={botao.telefone}
+                        maxLength={20}
+                        placeholder="Telefone (+55 11999999999)"
+                        onChange={(e) => handleUpdateBotao(botao.id, { telefone: e.target.value })}
+                      />
+                    ) : null}
+
+                    {botao.tipo === 'acessar_site' ? (
+                      <select
+                        value={botao.tipoUrl}
+                        onChange={(e) => handleUpdateBotao(botao.id, { tipoUrl: e.target.value })}
+                        aria-label="Tipo de URL"
+                      >
+                        <option value="estatico">Estático</option>
+                        <option value="dinamico">Dinâmico</option>
+                      </select>
+                    ) : null}
+
+                    <input
+                      type="text"
+                      value={botao.texto}
+                      maxLength={25}
+                      placeholder="Texto do botão…"
+                      onChange={(e) => handleUpdateBotao(botao.id, { texto: e.target.value })}
+                    />
+
+                    {botao.tipo === 'acessar_site' ? (
+                      <input
+                        type="url"
+                        value={botao.url}
+                        maxLength={2000}
+                        placeholder="URL do site (https://www.exemplo.com)"
+                        onChange={(e) => handleUpdateBotao(botao.id, { url: e.target.value })}
+                      />
+                    ) : null}
+
+                    {botao.tipo === 'copiar_codigo' ? (
+                      <input
+                        type="text"
+                        value={botao.codigoOferta}
+                        maxLength={15}
+                        placeholder="Código da oferta…"
+                        onChange={(e) => handleUpdateBotao(botao.id, { codigoOferta: e.target.value })}
+                      />
+                    ) : null}
+
+                    {botao.tipo === 'cancelar_marketing' ? (
+                      <input
+                        type="text"
+                        value={botao.textoRodape}
+                        maxLength={60}
+                        placeholder={`Não tem interesse? Toque em ${botao.texto.trim() || 'Parar promoções'}`}
+                        onChange={(e) => handleUpdateBotao(botao.id, { textoRodape: e.target.value })}
+                      />
+                    ) : null}
+                  </div>
+
+                  {botao.tipo === 'cancelar_marketing' ? (
+                    <label className="config-whatsapp-template-editor__botao-ciencia">
+                      <input
+                        type="checkbox"
+                        checked={botao.confirmacaoResponsabilidade}
+                        onChange={(e) => handleUpdateBotao(botao.id, { confirmacaoResponsabilidade: e.target.checked })}
+                      />
+                      <span>
+                        Estou ciente de que é responsabilidade de Velotax Serviços de Tecnologia da Informação Ltda
+                        parar de enviar mensagens de marketing para os clientes que recusaram. *
+                      </span>
+                    </label>
+                  ) : null}
                 </li>
               ))}
             </ul>
           ) : null}
 
-          <button
-            type="button"
-            className="config-action-btn config-action-btn--create"
-            onClick={handleAddBotao}
+          <select
+            className="config-whatsapp-template-editor__botao-add-select"
+            value=""
+            onChange={(e) => {
+              handleAddBotao(e.target.value);
+              e.target.value = '';
+            }}
             disabled={botoes.length >= MAX_BOTOES}
+            aria-label="Adicionar botão"
           >
-            <i className="ti ti-plus" aria-hidden="true" /> Adicionar botão
-          </button>
+            <option value="">+ Adicionar botão</option>
+            {BOTAO_GRUPOS.map((grupo) => (
+              <optgroup key={grupo.label} label={grupo.label}>
+                {grupo.opcoes.map((opcao) => {
+                  const esgotado = opcao.max !== undefined && (contagemBotoesPorTipo[opcao.tipo] || 0) >= opcao.max;
+                  return (
+                    <option key={opcao.tipo} value={opcao.tipo} disabled={esgotado}>
+                      {opcao.label}
+                      {opcao.max ? ` (${opcao.max} botão${opcao.max > 1 ? 'ões' : ''} no máximo)` : ''}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            ))}
+          </select>
         </div>
       </section>
+      )}
 
       <div className="config-whatsapp-template-editor__footer">
-        <button type="button" className="config-action-btn config-action-btn--edit" onClick={onClose}>
+        <button type="button" className="config-action-btn config-action-btn--edit" onClick={onClose} disabled={saving}>
           Cancelar
         </button>
-        <button type="button" className="config-action-btn config-action-btn--create" onClick={handleSave}>
-          Salvar
+        <button type="button" className="config-action-btn config-action-btn--create" onClick={handleSave} disabled={saving}>
+          {saving ? 'Salvando…' : 'Salvar'}
         </button>
       </div>
       </div>
 
       <WhatsappPreviewCard
-        cabecalhoTipo={cabecalhoTipo}
-        cabecalhoTexto={cabecalhoTexto}
-        corpo={corpo}
-        rodape={rodape}
-        botoes={botoes}
+        cabecalhoTipo={isAutenticacao ? 'nenhum' : cabecalhoTipo}
+        cabecalhoTexto={isAutenticacao ? '' : cabecalhoTexto}
+        corpo={isAutenticacao ? autenticacaoCorpo : corpo}
+        rodape={isAutenticacao ? autenticacaoRodape : rodape}
+        botoes={isAutenticacao ? autenticacaoBotoesPreview : botoes}
       />
       </div>
     </div>

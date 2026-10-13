@@ -1,6 +1,7 @@
 /**
  * Rotas de busca avançada de tickets
- * VERSION: v1.4.0 | DATE: 2026-10-02
+ * VERSION: v1.5.0 | DATE: 2026-10-06
+ * — incluirLegadoOcta liberado com acesso ao módulo Legado Octa OU à Busca de Tickets (agente)
  * — by-cpf / desk-bar incluem chamados_reclamacoes
  * — POST / aceita incluirLegadoOcta (switch da Busca de Tickets) e mescla o arquivo Legado Octa
  */
@@ -74,9 +75,11 @@ async function handleSearch(req: Request, res: Response) {
     let legadoTickets: Awaited<ReturnType<typeof searchLegadoOcta>>['tickets'] = [];
     let legadoAviso: string | undefined;
     if (incluirLegado) {
-      // Mesma permissão do módulo Legado Octa — o switch não pode abrir o arquivo a quem não tem acesso.
+      // Quem acessa o módulo Legado Octa ou a própria Busca de Tickets (agente) pode incluir o arquivo.
       const resolved = await resolveUserPermissions(req.user);
-      if (!hasPermission(resolved.permissoes, 'acesso', 'legado-octa')) {
+      const podeLegado = hasPermission(resolved.permissoes, 'acesso', 'legado-octa')
+        || hasPermission(resolved.permissoes, 'acesso', 'busca-tickets');
+      if (!podeLegado) {
         legadoAviso = 'Sem permissão para consultar o Legado Octa.';
       } else {
         try {

@@ -35,7 +35,7 @@ export default function CgTicketSide({
           <span className={`ra-badge ra-badge--${cgItem.statusGov}`}>
             {getStatusLabel(cgItem.statusGov)}
           </span>
-          <CgDadosFields cgItem={cgItem} onSaved={onCgItemUpdated} />
+          <CgDadosFields cgItem={cgItem} ticket={ticket} onSaved={onCgItemUpdated} />
         </section>
 
         <CgClassificacaoFields

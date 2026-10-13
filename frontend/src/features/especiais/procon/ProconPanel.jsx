@@ -23,8 +23,10 @@ import ProconToolbar from './ProconToolbar';
 import ProconKpiRow from './ProconKpiRow';
 import ProconTableView from './ProconTableView';
 import ProconReportsView from './ProconReportsView';
+import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
 
-function buildView(items) {
+function buildView(rawItems) {
+  const items = sortOldestFirst(rawItems, 'dataDemanda');
   return {
     items,
     kpis: getProconKpis(items),

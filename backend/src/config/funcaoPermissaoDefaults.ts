@@ -22,6 +22,7 @@ export interface FuncaoPermissaoSeed {
 export const ACESSO_MODULO_IDS: string[] = [
   'workspace',
   'tickets',
+  'ia',
   'busca-tickets',
   'atendimento-ia-telefonico',
   'realtime',

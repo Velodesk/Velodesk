@@ -285,6 +285,22 @@ export const env = {
   chamadoIaAnaliseEnabled: process.env.CHAMADO_IA_ANALISE_ENABLED !== 'false',
   /** Sync diário de custo Twilio WhatsApp → coleção `whatsapp_message_costs` (consumido pelo WFM). */
   whatsappCostSyncEnabled: process.env.WHATSAPP_COST_SYNC_ENABLED !== 'false',
+  /**
+   * Números do Desk cujas mensagens entram no custo de WhatsApp. A conta Twilio é
+   * compartilhada com a empresa inteira — sem esse filtro o sync traz mensagens de todos
+   * os produtos. Lista separada por vírgula, em E.164 (com ou sem prefixo `whatsapp:`).
+   */
+  whatsappCostSyncNumbers: (process.env.WHATSAPP_COST_SYNC_NUMBERS || '+12138453583')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean),
+  /**
+   * Segredo compartilhado pro endpoint `POST /api/whatsapp-cost/sync/scheduled`, chamado
+   * pelo Cloud Scheduler da GCP. Sem JWT/user — o Scheduler apresenta este Bearer no
+   * header `Authorization`. Vazio em prod = endpoint fica OFF (devolve 503), evitando
+   * que fique aberto sem autenticação por engano.
+   */
+  whatsappCostSyncSchedulerSecret: String(process.env.WHATSAPP_COST_SYNC_SCHEDULER_SECRET || '').trim(),
   /** Batch periódico de re-varredura da IA de telefonia (sort pesado em telephony_calls).
    * Desativado por padrão: cada ligação já é classificada na chegada (telephonyInbound). */
   telephonyIaBatchEnabled: process.env.TELEPHONY_IA_BATCH_ENABLED === 'true',

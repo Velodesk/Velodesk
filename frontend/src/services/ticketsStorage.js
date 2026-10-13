@@ -109,8 +109,8 @@ export async function sendTicketMessage(ticketId, text, author) {
   return addMessageViaApi(ticketId, { text, internal: false, author });
 }
 
-export async function sendInternalNote(ticketId, text, author) {
-  return addMessageViaApi(ticketId, { text, internal: true, author });
+export async function sendInternalNote(ticketId, text, author, attachments = []) {
+  return addMessageViaApi(ticketId, { text, internal: true, author, attachments });
 }
 
 export async function sendTicketRegistroEntry(ticketId, { text = '', internalText = '', author } = {}) {

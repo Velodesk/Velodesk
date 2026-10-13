@@ -2,7 +2,7 @@
  * BcResponsavelCard — responsável do ticket Bacen + assumir ticket
  */
 import React, { useState } from 'react';
-import { reclamacoesApi } from '../../../api/client';
+import { reclamacoesApi, ticketsApi } from '../../../api/client';
 import { useNotifications } from '../../../context/NotificationContext';
 import { getAgentName } from '../../../services/clientDb';
 import { sanitizeResponsavel } from '../../../services/tabulationConfig';
@@ -32,10 +32,16 @@ export default function BcResponsavelCard({ bcItem, onSaved }) {
     }
     setAssuming(true);
     try {
-      const updated = await reclamacoesApi.patch('bacen', bcItem.id, {
-        responsavel: loggedAgent,
-        updatedAt: bcItem.updatedAt,
-      });
+      // Commit/envio valida o responsável no CHAMADO — sem atribuí-lo, Salvar/Enviar seguem
+      // bloqueados e o nome antigo volta no próximo sync.
+      if (bcItem.ticketId) {
+        await ticketsApi.update(bcItem.ticketId, {
+          responsibleAgent: loggedAgent,
+          lateralForm: { responsavel: loggedAgent },
+          author: loggedAgent,
+        });
+      }
+      const updated = await reclamacoesApi.patch('bacen', bcItem.id, { responsavel: loggedAgent });
       const merged = { ...bcItem, ...updated };
       patchDemanda(merged);
       onSaved?.(merged);

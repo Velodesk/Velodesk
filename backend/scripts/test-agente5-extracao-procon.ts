@@ -18,8 +18,12 @@ const MARKER = `TESTE-AGENTE5-${Date.now()}`;
 // CPF de teste com dígito verificador matematicamente válido (amplamente usado em fixtures de
 // dev — não pertence a pessoa real). Um CPF com checksum inválido (ex.: "123.456.789-00") é
 // rejeitado de propósito pelo Agente 5 antes de associar qualquer cadastro de cliente.
-const FAKE_CPF_FORMATTED = '111.444.777-35';
-const FAKE_CPF_DIGITS = '11144477735';
+const FAKE_CPF_DIGITS = (process.argv[2] ?? '11144477735').replace(/\D/g, '');
+const FAKE_CPF_FORMATTED = FAKE_CPF_DIGITS.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+
+const FAKE_PRODUTO = process.argv[3] ?? 'Empréstimo consignado';
+const FAKE_RELATO = process.argv[4]
+  ?? 'Fiz um empréstimo consignado em fevereiro e até hoje não recebi o contrato assinado nem o comprovante de quitação da parcela de março, mesmo já tendo sido descontado do meu benefício.';
 
 const FAKE_PROCON_EMAIL_BODY = `
 Prezados,
@@ -34,11 +38,9 @@ Cidade/UF: São Paulo/SP
 
 Nº do processo: PC-${MARKER}-2026
 
-Produto/Serviço: Empréstimo consignado
+Produto/Serviço: ${FAKE_PRODUTO}
 
-Relato do consumidor: Fiz um empréstimo consignado em fevereiro e até hoje não recebi o contrato
-assinado nem o comprovante de quitação da parcela de março, mesmo já tendo sido descontado do
-meu benefício.
+Relato do consumidor: ${FAKE_RELATO}
 
 Prazo de resposta: 25/09/2026
 Data de abertura: 10/09/2026
@@ -62,6 +64,9 @@ async function main() {
       clienteNome: `Maria da Silva Teste ${MARKER}`,
     },
   };
+
+  // Só remove no final o cadastro que ESTE teste criou — nunca um cliente que já existia.
+  const clientePreExistente = Boolean(await findClienteByCpf(FAKE_CPF_DIGITS));
 
   const partial = await createChamadoFromBody(payload, 'novo');
   const chamado = await ChamadoN1.create(partial);
@@ -157,10 +162,14 @@ async function main() {
     if (reclamacaoId) {
       await resolveReclamacaoModel('procon')!.deleteOne({ _id: reclamacaoId });
     }
-    const testCliente = await findClienteByCpf(FAKE_CPF_DIGITS);
-    if (testCliente) {
-      await testCliente.deleteOne();
-      console.log('[test] cadastro de cliente de teste removido.');
+    if (!clientePreExistente) {
+      const testCliente = await findClienteByCpf(FAKE_CPF_DIGITS);
+      if (testCliente) {
+        await testCliente.deleteOne();
+        console.log('[test] cadastro de cliente de teste removido.');
+      }
+    } else {
+      console.log('[test] cliente já existia antes do teste — mantido.');
     }
     console.log('[test] limpeza concluída.');
     process.exit(process.exitCode ?? 0);

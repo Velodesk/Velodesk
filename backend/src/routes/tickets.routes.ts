@@ -4,6 +4,7 @@
  * VERSION: v1.27.0 | DATE: 2026-09-02
  */
 import { Router, Response } from 'express';
+import mongoose from 'mongoose';
 import { authMiddleware } from '../middleware/auth';
 import { ChamadoN1 } from '../models/ChamadoN1';
 import { ChamadoIaAnalise } from '../models/ChamadoIaAnalise';
@@ -63,6 +64,7 @@ import {
   assertCanWorkflowComunicacao,
   canApproveWorkflow,
   canAssignResponsavelToOthers,
+  hasPermission,
   canClaimTicketResponsavel,
   isResponsavelSelfClaimBody,
   PermissionDeniedError,
@@ -287,6 +289,11 @@ router.post('/', authMiddleware, async (req, res: Response) => {
 });
 
 router.put('/:id', authMiddleware, async (req, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    // Rascunho local (draft-...) ou registro do Legado Octa (legado-octa-ticket:...) — não é um
+    // ticket do Chamado, não existe no banco pra editar aqui.
+    return res.status(400).json({ message: 'Este item não pode ser editado por aqui (não é um ticket do Desk).' });
+  }
   const chamado = await ChamadoN1.findById(req.params.id);
   if (!chamado) return res.status(404).json({ message: 'Ticket não encontrado' });
   const titleBefore = chamado.chamadoTitulo;
@@ -381,12 +388,20 @@ router.delete('/:id', authMiddleware, async (req, res: Response) => {
 
 /** Commit atômico: mensagem + nota + tabulação + status + responsável em um save. */
 router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ message: 'Este item não pode ser editado por aqui (não é um ticket do Desk).' });
+  }
   const chamado = await ChamadoN1.findById(req.params.id);
   if (!chamado) return res.status(404).json({ message: 'Ticket não encontrado' });
 
+  // Aprovação na Área de IA (módulo de acesso 'ia'): quem aprova assume o ticket antes da
+  // checagem de responsável, então o operador não precisa clicar em "Assumir" antes de resolver.
+  let aprovacaoIa = false;
   try {
     assertChamadoModifiable(chamado);
     const resolvedForCommit = await assertCanCommitTicket(req.user!, chamado, req.body);
+    aprovacaoIa = req.body.aprovacaoIa === true
+      && hasPermission(resolvedForCommit.permissoes, 'acesso', 'ia');
     const reassignTarget = resolveExplicitReassignmentTarget(req.body, req.user!);
     if (reassignTarget && !canAssignResponsavelToOthers(resolvedForCommit)) {
       throw new PermissionDeniedError('Sem permissão para atribuir ticket a outro agente');
@@ -416,6 +431,7 @@ router.post('/:id/commit', authMiddleware, async (req, res: Response) => {
       ? normalizeStatusValue(req.body.status)
       : currentStatus(chamado);
     const statusChanged = targetStatus !== normalizeStatusValue(currentStatus(chamado));
+    if (aprovacaoIa) applyManualResponsavelClaim(chamado, req.user);
     if (statusChanged) {
       assertResponsavelForTerminalStatus(chamado, targetStatus);
       if (targetStatus === 'resolvido') {

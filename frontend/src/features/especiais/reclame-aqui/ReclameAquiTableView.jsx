@@ -1,5 +1,5 @@
 /**
- * ReclameAquiTableView v1.1.0 — sem coluna de workflow
+ * ReclameAquiTableView v1.2.0 — coluna Data (dataReclamacao) antes do Status RA
  */
 import React, { useRef, useState } from 'react';
 import { getStatusLabel } from '../../../services/especiais/reclameAquiData';
@@ -34,6 +34,17 @@ function RespostaButton({ action, item, onAction }) {
     );
   }
   return null;
+}
+
+function RaDataCell({ iso }) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return <td>—</td>;
+  return (
+    <td style={{ whiteSpace: 'nowrap' }}>
+      <span>{d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+      <span className="ra-table__assunto">{d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+    </td>
+  );
 }
 
 function RaRepeatIndicator({ item, clientRepeatCounts }) {
@@ -121,6 +132,7 @@ export default function ReclameAquiTableView({
               </span>
             </th>
             <th>Consumidor / Assunto</th>
+            <th>Data</th>
             <th>Status RA</th>
             <th>RA</th>
             <th>Casos Especiais</th>
@@ -134,7 +146,7 @@ export default function ReclameAquiTableView({
           {groups.map((group) => (
             <React.Fragment key={group.id}>
               <tr className={`ra-table__group ra-table__group--${group.tone}`}>
-                <td colSpan={9}>
+                <td colSpan={10}>
                   <strong>{group.label}</strong>
                   <span className="ra-table__group-count">
                     ({group.items.length} reclamaç{group.items.length === 1 ? 'ão' : 'ões'})
@@ -160,6 +172,7 @@ export default function ReclameAquiTableView({
                       </div>
                     </div>
                   </td>
+                  <RaDataCell iso={item.dataReclamacao} />
                   <td>
                     <span className={`ra-badge ra-badge--${item.statusRa}`}>
                       {getStatusLabel(item.statusRa)}

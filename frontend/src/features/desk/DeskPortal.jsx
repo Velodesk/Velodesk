@@ -1,12 +1,12 @@
 /**
  * Desk CRM — portal no body (desk-v2-mode esconde .main-content)
- * VERSION: v2.0.0 | DATE: 2026-06-18
+ * VERSION: v2.1.0 | DATE: 2026-10-02 — repassa hideComposer/queueIds ao DeskV2Root
  */
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import DeskV2Root from './DeskV2Root';
 
-export default function DeskPortal() {
+export default function DeskPortal({ hideComposer = false, queueIds = null } = {}) {
   const [mountEl, setMountEl] = useState(null);
 
   useEffect(() => {
@@ -27,7 +27,7 @@ export default function DeskPortal() {
 
   return createPortal(
     <div className="page active">
-      <DeskV2Root />
+      <DeskV2Root hideComposer={hideComposer} queueIds={queueIds} />
     </div>,
     mountEl
   );

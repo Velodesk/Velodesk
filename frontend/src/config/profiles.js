@@ -65,6 +65,7 @@ export const NAV_ITEMS = [
   { id: 'workspace', path: '/workspace', label: 'Painel 360°', icon: 'ti-layout-grid', tooltip: 'Painel 360°' },
   { id: 'reports', path: '/reports', label: 'Relatórios', icon: 'ti-chart-bar', tooltip: 'Relatórios' },
   { id: 'tickets', path: '/tickets', label: 'Tickets', icon: 'ti-ticket', tooltip: 'Tickets' },
+  { id: 'ia', path: '/ia', label: 'IA', icon: 'ti-sparkles', tooltip: 'Inteligência Artificial' },
   {
     id: 'busca-tickets',
     path: '/busca-tickets',

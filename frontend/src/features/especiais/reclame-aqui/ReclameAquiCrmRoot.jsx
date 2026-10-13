@@ -7,11 +7,17 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useNotifications } from '../../../context/NotificationContext';
 import { useRaNovaReclamacaoModals } from '../../../hooks/useRaNovaReclamacaoModals';
 import { RA_GROUPS } from '../../../services/especiais/reclameAquiData';
-import { loadReclamacoes, searchReclamacoesFromApi, RA_LIST_PAGE_SIZE } from '../../../services/especiais/reclameAquiStore';
+import {
+  fetchRaPage,
+  getRaServerCounts,
+  loadReclamacoes,
+  refreshServerCounts,
+  searchReclamacoesFromApi,
+  RA_LIST_PAGE_SIZE,
+} from '../../../services/especiais/reclameAquiStore';
 import {
   buildRaInitialGreetingMessage,
   fetchRaTicketView,
-  loadReclameAquiTicketsFromApi,
   raTicketHasAgentReply,
   sendRaWaMessage,
 } from '../../../services/especiais/reclameAquiTicketService';
@@ -23,6 +29,13 @@ import RaQueuePanel from './RaQueuePanel';
 import RaTicketList from './RaTicketList';
 import RaTicketMain from './RaTicketMain';
 import RaTicketSide from './RaTicketSide';
+import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
+import {
+  ESPECIAIS_LIST_NARROW_QUERY,
+  ESPECIAIS_QUEUE_NARROW_QUERY,
+  readCollapsedPreference,
+  useNarrowAutoCollapse,
+} from '../shared/useNarrowAutoCollapse';
 
 export default function ReclameAquiCrmRoot() {
   const { id } = useParams();
@@ -34,14 +47,18 @@ export default function ReclameAquiCrmRoot() {
   const [listSearchDraft, setListSearchDraft] = useState('');
   const [activeSort, setActiveSort] = useState('data');
   const [queueCollapsed, setQueueCollapsed] = useState(
-    () => localStorage.getItem('velodeskRaQueueCollapsed') === '1',
+    () => readCollapsedPreference('velodeskRaQueueCollapsed', ESPECIAIS_QUEUE_NARROW_QUERY),
   );
   const [listCollapsed, setListCollapsed] = useState(
-    () => localStorage.getItem('velodeskRaListCollapsed') === '1',
+    () => readCollapsedPreference('velodeskRaListCollapsed', ESPECIAIS_LIST_NARROW_QUERY),
   );
+  useNarrowAutoCollapse(ESPECIAIS_QUEUE_NARROW_QUERY, 'velodeskRaQueueCollapsed', setQueueCollapsed);
+  useNarrowAutoCollapse(ESPECIAIS_LIST_NARROW_QUERY, 'velodeskRaListCollapsed', setListCollapsed);
   const [listVersion, setListVersion] = useState(0);
   const [listPage, setListPage] = useState(1);
-  const syncedOnceRef = useRef(false);
+  const [countsVersion, setCountsVersion] = useState(0);
+  const [pageState, setPageState] = useState({ items: [], total: 0, loading: true });
+  const syncedOnceRef = useRef(true);
 
   const searchFn = useCallback((q) => searchReclamacoesFromApi(q), []);
   const { remoteItems, isRemoteSearch } = useEspeciaisDualSearch({
@@ -51,18 +68,22 @@ export default function ReclameAquiCrmRoot() {
   });
 
   useEffect(() => {
-    const refreshFromApi = () => {
-      loadReclameAquiTicketsFromApi().catch(() => {}).finally(() => {
-        syncedOnceRef.current = true;
-      });
-    };
-    refreshFromApi();
+    // Cards vêm do servidor (contagens) e a lista busca só a página do grupo ativo — nada de
+    // baixar a base inteira. ra-counts só atualiza os cards, sem refazer a lista.
+    void refreshServerCounts();
     const bumpList = () => setListVersion((v) => v + 1);
+    const bumpCounts = () => setCountsVersion((v) => v + 1);
+    const refreshAll = () => {
+      void refreshServerCounts();
+      bumpList();
+    };
     window.addEventListener('velodesk:ra-sync', bumpList);
-    window.addEventListener('velodesk:refresh-tickets', refreshFromApi);
+    window.addEventListener('velodesk:ra-counts', bumpCounts);
+    window.addEventListener('velodesk:refresh-tickets', refreshAll);
     return () => {
       window.removeEventListener('velodesk:ra-sync', bumpList);
-      window.removeEventListener('velodesk:refresh-tickets', refreshFromApi);
+      window.removeEventListener('velodesk:ra-counts', bumpCounts);
+      window.removeEventListener('velodesk:refresh-tickets', refreshAll);
     };
   }, []);
 
@@ -92,13 +113,15 @@ export default function ReclameAquiCrmRoot() {
   }, [isRemoteSearch, remoteItems, listVersion]);
 
   const groupCounts = useMemo(() => {
+    const serverCounts = !isRemoteSearch ? getRaServerCounts() : null;
+    if (serverCounts?.grupos) return { ...serverCounts.grupos };
     const counts = {};
     const base = isRemoteSearch && remoteItems ? remoteItems : loadReclamacoes({});
     RA_GROUPS.forEach((g) => {
       counts[g.id] = base.filter((i) => i.groupKey === g.id).length;
     });
     return counts;
-  }, [isRemoteSearch, remoteItems, listVersion]);
+  }, [isRemoteSearch, remoteItems, listVersion, countsVersion]);
 
   const listItems = useMemo(() => {
     const listQuery = listSearchDraft.trim();
@@ -110,16 +133,38 @@ export default function ReclameAquiCrmRoot() {
         (a, b) => new Date(a.prazoRa || 0).getTime() - new Date(b.prazoRa || 0).getTime(),
       );
     } else {
-      items = [...items].sort(
-        (a, b) => new Date(b.dataReclamacao || 0).getTime() - new Date(a.dataReclamacao || 0).getTime(),
-      );
+      items = sortOldestFirst(items, 'dataReclamacao');
     }
     return items;
   }, [allItems, activeGroup, activeSort, listSearchDraft, isRemoteSearch]);
 
-  const listTotalPages = Math.max(1, Math.ceil(listItems.length / RA_LIST_PAGE_SIZE));
+  useEffect(() => {
+    if (listVersion > 0) void refreshServerCounts();
+  }, [listVersion]);
+
+  const usingServerPage = !listSearchDraft.trim() && !isRemoteSearch;
+  const listTotalCount = usingServerPage ? pageState.total : listItems.length;
+  const listTotalPages = Math.max(1, Math.ceil(listTotalCount / RA_LIST_PAGE_SIZE));
   const safeListPage = Math.min(listPage, listTotalPages);
-  const pagedListItems = listItems.slice((safeListPage - 1) * RA_LIST_PAGE_SIZE, safeListPage * RA_LIST_PAGE_SIZE);
+  const pagedListItems = usingServerPage
+    ? pageState.items
+    : listItems.slice((safeListPage - 1) * RA_LIST_PAGE_SIZE, safeListPage * RA_LIST_PAGE_SIZE);
+
+  useEffect(() => {
+    if (!usingServerPage) return undefined;
+    let cancelled = false;
+    setPageState((prev) => ({ ...prev, loading: true }));
+    fetchRaPage({ grupo: activeGroup, sort: activeSort, page: listPage })
+      .then((res) => {
+        if (!cancelled) setPageState({ items: res.items, total: res.total, loading: false });
+      })
+      .catch(() => {
+        if (!cancelled) setPageState((prev) => ({ ...prev, loading: false }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [usingServerPage, activeGroup, activeSort, listPage, listVersion]);
 
   useEffect(() => {
     setListPage(1);
@@ -328,7 +373,7 @@ export default function ReclameAquiCrmRoot() {
         collapsed={listCollapsed}
         page={safeListPage}
         totalPages={listTotalPages}
-        totalCount={listItems.length}
+        totalCount={listTotalCount}
         onPageChange={setListPage}
         onSelectItem={handleSelectItem}
         onSortChange={setActiveSort}

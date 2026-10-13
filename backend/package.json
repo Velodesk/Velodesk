@@ -42,6 +42,8 @@
     "test:parse-bacen-rdr-email": "tsx scripts/test-parse-bacen-rdr-email.ts",
     "test:reclamacoes-smoke": "tsx scripts/test-reclamacoes-smoke.ts",
     "test:hugme-import-db": "tsx scripts/test-hugme-import-db.ts",
+    "test:play-reviews": "tsx scripts/test-play-reviews.ts",
+    "play:sync": "tsx src/jobs/playReviewsSync.cli.ts",
     "import:reclame-aqui-base": "tsx scripts/import-reclame-aqui-base.ts",
     "backfill:ticket-ia": "tsx scripts/backfill-ticket-ia.ts",
     "octadesk:dump-tickets": "tsx scripts/octadesk-dump-tickets.ts",

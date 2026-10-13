@@ -7,7 +7,6 @@ import React, { useEffect, useState } from 'react';
 import { reclamacoesApi } from '../../../api/client';
 import { useNotifications } from '../../../context/NotificationContext';
 import { patchDemanda } from '../../../services/especiais/consumidorGovStore';
-import { formatCgDeadlineLabel } from '../../../services/especiais/consumidorGovTicketService';
 import { formatComplaintDate } from './cgTicketFormatters';
 
 function formatLocal(value, uf) {
@@ -26,7 +25,7 @@ function toDatetimeLocalInput(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function CgDadosFields({ cgItem, onSaved }) {
+export default function CgDadosFields({ cgItem, ticket, onSaved }) {
   const { showNotification } = useNotifications();
   const [editingField, setEditingField] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -46,7 +45,8 @@ export default function CgDadosFields({ cgItem, onSaved }) {
   if (!cgItem) return null;
 
   const protocoloDisplay = cgItem.protocoloGov ? `#${cgItem.protocoloGov}` : '—';
-  const deadlineLabel = formatCgDeadlineLabel(cgItem.prazoLegal);
+  // Data em que o ticket entrou na caixa de atendimento (criação do ticket).
+  const dataTicket = ticket?.createdAt || cgItem.createdAt;
   const localDisplay = formatLocal(cgItem.cidade, cgItem.uf);
 
   const patchField = async (patch, localOverlay = {}) => {
@@ -219,8 +219,8 @@ export default function CgDadosFields({ cgItem, onSaved }) {
       ) : null}
 
       <div>
-        <dt>Prazo de resposta</dt>
-        <dd className="ra-ticket__deadline-value">{deadlineLabel}</dd>
+        <dt>Data do Ticket</dt>
+        <dd>{dataTicket ? formatComplaintDate(dataTicket) : '—'}</dd>
       </div>
 
       <div>

@@ -388,6 +388,7 @@ export const agentsApi = {
   status: () => api.get('/agents/status').then((r) => r.data),
   pipeline: (payload) => api.post('/agents/pipeline', payload).then((r) => r.data),
   revisarSugestao: (payload) => api.post('/agents/revisar-sugestao', payload).then((r) => r.data),
+  enviarFeedback: (payload) => api.post('/agents/feedback', payload).then((r) => r.data),
   gestaoAlerts: (params) => api.get('/agents/gestao/alerts', { params }).then((r) => r.data),
 };
 
@@ -442,6 +443,14 @@ export const emailOutboundApi = {
   ),
 };
 
+export const whatsappTemplatesApi = {
+  list: () => api.get('/whatsapp-templates').then((r) => r.data),
+  get: (id) => api.get(`/whatsapp-templates/${encodeURIComponent(id)}`).then((r) => r.data),
+  create: (data) => api.post('/whatsapp-templates', data).then((r) => r.data),
+  update: (id, data) => api.put(`/whatsapp-templates/${encodeURIComponent(id)}`, data).then((r) => r.data),
+  remove: (id) => api.delete(`/whatsapp-templates/${encodeURIComponent(id)}`).then((r) => r.data),
+};
+
 export const redesSociaisApi = {
   listComentarios: (params = {}) => api.get('/redes-sociais/comentarios', { params }).then((r) => r.data),
   relatorio: (params = {}) => api.get('/redes-sociais/relatorio', { params }).then((r) => r.data),
@@ -477,6 +486,8 @@ export const ticketFusaoApi = {
 export const reclamacoesApi = {
   list: (orgao, params = {}) =>
     api.get(`/reclamacoes/${encodeURIComponent(orgao)}`, { params }).then((r) => r.data),
+  contagens: (orgao) =>
+    api.get(`/reclamacoes/${encodeURIComponent(orgao)}/contagens`).then((r) => r.data),
   search: (orgao, q, params = {}) =>
     api.get(`/reclamacoes/${encodeURIComponent(orgao)}/search`, {
       params: { q, ...params },

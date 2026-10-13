@@ -1,6 +1,7 @@
 /**
  * Página Busca de Tickets — filtros dinâmicos + resultados
- * VERSION: v1.1.0 | DATE: 2026-10-02
+ * VERSION: v1.2.0 | DATE: 2026-10-06
+ * — switch "Incluir Legado Octa" liberado também para quem tem acesso à Busca de Tickets (agente)
  */
 import React, { useCallback, useState } from 'react';
 import * as XLSX from 'xlsx';
@@ -42,7 +43,7 @@ export default function TicketSearchView() {
   const [incluirLegadoOcta, setIncluirLegadoOcta] = useState(false);
 
   const navAllowed = isNavAllowed('busca-tickets');
-  const legadoAllowed = isNavAllowed('legado-octa');
+  const legadoAllowed = isNavAllowed('legado-octa') || navAllowed;
 
   const handleSearch = useCallback(async (event) => {
     event?.preventDefault?.();

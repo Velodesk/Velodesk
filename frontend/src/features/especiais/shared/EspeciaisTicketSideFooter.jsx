@@ -14,6 +14,7 @@ export default function EspeciaisTicketSideFooter({
   saving = false,
   disabled = false,
   initialMessagePrompt = null,
+  showSave = true,
 }) {
   const actionsDisabled = disabled || saving;
 
@@ -39,15 +40,17 @@ export default function EspeciaisTicketSideFooter({
         <i className="ti ti-message-circle" aria-hidden="true" />
         {waChatOpen ? 'Fechar conversa' : 'Abrir conversa'}
       </button>
-      <button
-        type="button"
-        className="ra-ticket__save-btn"
-        onClick={onSave}
-        disabled={actionsDisabled}
-      >
-        <i className="ti ti-device-floppy" aria-hidden="true" />
-        {saving ? 'Salvando…' : 'Salvar ticket'}
-      </button>
+      {showSave ? (
+        <button
+          type="button"
+          className="ra-ticket__save-btn"
+          onClick={onSave}
+          disabled={actionsDisabled}
+        >
+          <i className="ti ti-device-floppy" aria-hidden="true" />
+          {saving ? 'Salvando…' : 'Salvar ticket'}
+        </button>
+      ) : null}
       <DeskStatusCommitButton
         sendStatus={sendStatus}
         onCommitStatus={onCommitStatus}
