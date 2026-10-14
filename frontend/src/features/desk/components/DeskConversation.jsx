@@ -23,6 +23,7 @@ import {
   shouldOpenPreviewModal,
 } from '../../../services/desk/attachmentPreview';
 import DeskAttachmentPreviewModal from './DeskAttachmentPreviewModal';
+import EmailReplyPreviewModal from './EmailReplyPreviewModal';
 import { formatDateTimeBr } from '../../../utils/dateTimeBr';
 
 const AUDIT_MIN_DISPLAY = 70;
@@ -277,6 +278,7 @@ export default function DeskConversation({
   onReject,
 }) {
   const [iaVisible, setIaVisible] = useState(true);
+  const [emailPreviewMsg, setEmailPreviewMsg] = useState(null);
   const lastIaReplyRef = useRef('');
   const thread = messages || [];
   let lastRealMessageIndex = -1;
@@ -350,8 +352,21 @@ export default function DeskConversation({
           <div key={i} className={'msg-row' + (isRight ? ' msg-row--agent' : '')}>
             <div className={'msg-avatar msg-avatar--' + (msg.type === 'internal' ? 'agent' : msg.type)}>{msg.initials || '?'}</div>
             <div className="msg-body">
-              <div className={'msg-bubble msg-bubble--' + msg.type}>
-                <MessageBubbleText text={msg.text} attachments={msg.attachments} scanStatuses={msg.attachmentScanStatuses} messageOrigin={msg.origin} messageType={msg.type} />
+              <div className="msg-bubble-line">
+                {msg.type === 'agent' ? (
+                  <button
+                    type="button"
+                    className="msg-bubble__email-preview-btn"
+                    title="Ver o e-mail como o cliente recebe"
+                    aria-label="Ver o e-mail como o cliente recebe"
+                    onClick={() => setEmailPreviewMsg(msg)}
+                  >
+                    <i className="ti ti-mail" aria-hidden="true" />
+                  </button>
+                ) : null}
+                <div className={'msg-bubble msg-bubble--' + msg.type}>
+                  <MessageBubbleText text={msg.text} attachments={msg.attachments} scanStatuses={msg.attachmentScanStatuses} messageOrigin={msg.origin} messageType={msg.type} />
+                </div>
               </div>
               <div className="msg-meta">{msg.meta}</div>
             </div>
@@ -411,6 +426,12 @@ export default function DeskConversation({
           )}
         </div>
       )}
+      <EmailReplyPreviewModal
+        open={Boolean(emailPreviewMsg)}
+        onClose={() => setEmailPreviewMsg(null)}
+        ticketId={ticket?.id || ticket?._id}
+        message={emailPreviewMsg}
+      />
     </div>
   );
 }

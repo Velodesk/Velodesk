@@ -432,6 +432,8 @@ export const mailPrioritySubjectsApi = {
 export const emailOutboundApi = {
   opcoes: () => api.get('/email-outbound/opcoes').then((r) => r.data),
   layout: () => api.get('/email-outbound/layout').then((r) => r.data),
+  /** Prévia do e-mail de resposta do agente, no template real enviado ao cliente. */
+  previewReply: (payload) => api.post('/email-outbound/preview-reply', payload).then((r) => r.data),
   listConteudos: () => api.get('/email-outbound/conteudos').then((r) => r.data),
   getConteudo: (id) => api.get(`/email-outbound/conteudos/${encodeURIComponent(id)}`).then((r) => r.data),
   createConteudo: (data) => api.post('/email-outbound/conteudos', data).then((r) => r.data),

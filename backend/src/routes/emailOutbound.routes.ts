@@ -1,9 +1,13 @@
-/** emailOutbound.routes v1.2.0 — farewellHtml no layout de preview */
+/** emailOutbound.routes v1.3.0 — POST /preview-reply: prévia do e-mail de resposta do agente */
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { authMiddleware } from '../middleware/auth';
 import { supervisorMiddleware } from '../middleware/supervisor';
-import { isDeskConfigConnected } from '../config/database';
+import { isDeskConfigConnected, isMongoConnected } from '../config/database';
+import mongoose from 'mongoose';
+import { ChamadoN1 } from '../models/ChamadoN1';
+import { canViewTicket, resolveUserPermissions } from '../services/permission.service';
+import { buildAgentReplyEmailPreview } from '../services/emailReplyPreview.service';
 import {
   createEmailConteudo,
   deleteEmailConteudo,
@@ -55,6 +59,35 @@ router.get('/opcoes', authMiddleware, async (_req, res: Response) => {
     sla: EMAIL_SLA_OPCOES,
     farewell: EMAIL_FAREWELL_TEXT,
   });
+});
+
+/**
+ * Prévia do e-mail que o cliente recebe para uma resposta do agente (mesmo template do envio real).
+ * Body: { ticketId, text, hasAttachments }. Não envia nada.
+ */
+router.post('/preview-reply', authMiddleware, async (req: Request, res: Response) => {
+  if (!isMongoConnected()) return res.status(503).json({ message: 'Banco indisponível' });
+  const ticketId = String(req.body?.ticketId ?? '').trim();
+  if (!mongoose.Types.ObjectId.isValid(ticketId)) {
+    return res.status(400).json({ message: 'Ticket inválido para prévia.' });
+  }
+  try {
+    const chamado = await ChamadoN1.findById(ticketId);
+    if (!chamado) return res.status(404).json({ message: 'Ticket não encontrado' });
+    const resolved = await resolveUserPermissions(req.user!);
+    if (!canViewTicket(resolved, chamado)) {
+      return res.status(403).json({ message: 'Sem permissão para ver este ticket.' });
+    }
+    const preview = await buildAgentReplyEmailPreview(
+      chamado,
+      String(req.body?.text ?? ''),
+      Boolean(req.body?.hasAttachments),
+    );
+    return res.json(preview);
+  } catch (err) {
+    console.error('[emailOutbound] POST /preview-reply', err);
+    return res.status(500).json({ message: 'Não foi possível montar a prévia do e-mail.' });
+  }
 });
 
 router.get('/layout', authMiddleware, async (_req, res: Response) => {
