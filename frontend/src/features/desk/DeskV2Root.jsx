@@ -2732,6 +2732,17 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     setRightFields((prev) => applyTabulationSuggestion(prev, iaPending.tabulacao, config));
   }, [iaPending, iaPendingKey, rightFields?.produto, config]);
 
+  // Área de IA: só existe ticket aberto aqui se estiver aguardando aprovação. Aba/URL restaurada de um ticket que não é
+  // (ou deixou de ser) pendente — resolvido, nunca enfileirado, já aprovado — é fechada, sem reter pergunta antiga na tela.
+  const iaTicketId = String(ticket?.id || ticket?._id || '');
+  const iaTicketStale = hideComposer && Boolean(iaTicketId) && !isPendingAiApproval(ticket);
+  useEffect(() => {
+    if (!iaTicketStale) return;
+    delete tabSessionsRef.current[iaTicketId];
+    closeTicketTab(iaTicketId);
+    syncUrlTicketParam('');
+  }, [iaTicketStale, iaTicketId, closeTicketTab, syncUrlTicketParam]);
+
   const handleOpenAiFeedback = useCallback(() => {
     setAiFeedbackOpen(true);
   }, []);
