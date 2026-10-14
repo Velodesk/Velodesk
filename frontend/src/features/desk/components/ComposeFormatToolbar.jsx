@@ -1,6 +1,6 @@
 /**
- * ComposeFormatToolbar v1.2.0 — botão de inserir/editar link clicável
- * VERSION: v1.2.0 | DATE: 2026-09-03
+ * ComposeFormatToolbar v1.3.0 — remove o botão "Anexar imagem" (imagem inline no editor)
+ * VERSION: v1.3.0 | DATE: 2026-10-09
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -284,25 +284,11 @@ export default function ComposeFormatToolbar({
   activeFormats = EMPTY_FORMAT_STATE,
   variant = 'public',
   embedded = false,
-  onImageSelected,
   attachDisabled = false,
   beginLink,
   applyLink,
   removeLink,
 }) {
-  const fileInputRef = useRef(null);
-
-  const handleAttachClick = useCallback(() => {
-    if (attachDisabled) return;
-    fileInputRef.current?.click();
-  }, [attachDisabled]);
-
-  const handleFileChange = useCallback((event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file || !onImageSelected) return;
-    onImageSelected(file);
-  }, [onImageSelected]);
 
   return (
     <div
@@ -339,30 +325,6 @@ export default function ComposeFormatToolbar({
         removeLink={removeLink}
         disabled={attachDisabled}
       />
-      {onImageSelected ? (
-        <>
-          <button
-            type="button"
-            className="toolbar-btn crm-compose-toolbar__btn crm-compose-toolbar__attach"
-            title="Anexar imagem"
-            aria-label="Anexar imagem"
-            disabled={attachDisabled}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleAttachClick}
-          >
-            <i className="ti ti-photo" aria-hidden="true" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
-            className="crm-compose-toolbar__file-input"
-            tabIndex={-1}
-            aria-hidden="true"
-            onChange={handleFileChange}
-          />
-        </>
-      ) : null}
     </div>
   );
 }

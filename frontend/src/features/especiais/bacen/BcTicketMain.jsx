@@ -3,11 +3,9 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import EspeciaisDeskTicketView from '../shared/EspeciaisDeskTicketView';
-import { mapChannelStatusToBadgeClass } from '../shared/especiaisStatusBadge';
 import { useNotifications } from '../../../context/NotificationContext';
 import { lookupClient } from '../../../services/clientDb';
 import { fundirTickets } from '../../../services/desk/ticketFusaoService';
-import { getStatusLabel } from '../../../services/especiais/bacenData';
 import {
   formatBcDeadlineLabel,
   publishBcPublicResponse,
@@ -42,8 +40,6 @@ export default function BcTicketMain({
   }, [ticket]);
 
   const channelConfig = useMemo(() => ({
-    statusLabel: bcItem ? getStatusLabel(bcItem.statusBc) : '—',
-    statusClass: mapChannelStatusToBadgeClass(bcItem?.statusBc),
     deadlineLabel: bcItem ? formatBcDeadlineLabel(bcItem.prazoLegal) : '',
     deadlinePrefix: 'Prazo de resposta no Bacen',
     onPublishPublic: publishBcPublicResponse,

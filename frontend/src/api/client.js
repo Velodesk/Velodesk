@@ -475,6 +475,16 @@ export const consultasApi = {
     api.post(`/consultas/product/${encodeURIComponent(slug)}`, payload).then((r) => r.data),
 };
 
+/** Extrato do ticket (HTML renderizado no servidor, pronto para Ctrl+P → Salvar como PDF). */
+export const chamadoExtratoApi = {
+  getHtml: (protocolo, params = {}) =>
+    api.get(`/chamados/${encodeURIComponent(String(protocolo || ''))}/extrato.html`, {
+      params,
+      responseType: 'text',
+      transformResponse: [(data) => data],
+    }).then((r) => r.data),
+};
+
 export const ticketSearchApi = {
   search: (payload = {}) =>
     api.post('/ticket-search', payload).then((r) => r.data),

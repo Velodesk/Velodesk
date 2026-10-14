@@ -3,11 +3,9 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import EspeciaisDeskTicketView from '../shared/EspeciaisDeskTicketView';
-import { mapChannelStatusToBadgeClass } from '../shared/especiaisStatusBadge';
 import { useNotifications } from '../../../context/NotificationContext';
 import { lookupClient } from '../../../services/clientDb';
 import { fundirTickets } from '../../../services/desk/ticketFusaoService';
-import { getStatusLabel } from '../../../services/especiais/proconData';
 import {
   formatPcDeadlineLabel,
   publishPcPublicResponse,
@@ -42,8 +40,6 @@ export default function PcTicketMain({
   }, [ticket]);
 
   const channelConfig = useMemo(() => ({
-    statusLabel: pcItem ? getStatusLabel(pcItem.statusPc) : '—',
-    statusClass: mapChannelStatusToBadgeClass(pcItem?.statusPc),
     deadlineLabel: pcItem ? formatPcDeadlineLabel(pcItem.prazoLegal) : '',
     deadlinePrefix: 'Prazo de resposta no Procon',
     onPublishPublic: publishPcPublicResponse,

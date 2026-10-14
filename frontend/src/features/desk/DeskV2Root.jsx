@@ -301,7 +301,6 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   activeQueueRef.current = activeQueue;
   const lastUrlQueueRef = useRef(String(searchParams.get('queue') || '').trim());
   const [activeSort, setActiveSort] = useState('data');
-  const [entrySortOldestFirst, setEntrySortOldestFirst] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [queueCollapsed, setQueueCollapsed] = useState(() => (
@@ -464,7 +463,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     }
   }, [syncTicketViews, showNotification]);
 
-  const entries = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort, entrySortOldestFirst);
+  const entries = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort);
   const isTableQueueView = isDeskTableQueue(activeQueue);
   const isResolvedQueue = activeQueue === 'resolvidos';
   const isMyTicketsQueue = isMeusTicketsQueue(activeQueue);
@@ -1090,7 +1089,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
 
     let nextId = plannedNextId;
     if (!nextId) {
-      const freshList = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort, entrySortOldestFirst);
+      const freshList = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort);
       nextId = pickNextTicketFromEntries(listAnchorId, freshList);
     }
 
@@ -1113,7 +1112,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       openTicket(nextId);
       pendingAdvanceTicketIdRef.current = null;
     });
-  }, [activeQueue, appliedSearch, activeSort, entrySortOldestFirst, openTicket, closeTicketTab, activeTabId, persistTabSession, syncUrlTicketParam]);
+  }, [activeQueue, appliedSearch, activeSort, openTicket, closeTicketTab, activeTabId, persistTabSession, syncUrlTicketParam]);
 
   const selectMainTab = (tab) => {
     persistTabSession(activeTabId);
@@ -1160,10 +1159,10 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       return;
     }
 
-    let results = resolveDeskSearchEntries(q, activeSort, entrySortOldestFirst);
+    let results = resolveDeskSearchEntries(q, activeSort);
     if (!results.length) {
       try {
-        results = await resolveDeskSearchEntriesAsync(q, activeSort, entrySortOldestFirst);
+        results = await resolveDeskSearchEntriesAsync(q, activeSort);
       } catch {
         results = [];
       }
@@ -1191,13 +1190,13 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   useEffect(() => {
     const q = appliedSearch.trim();
     if (!q) return undefined;
-    const localResults = resolveDeskSearchEntries(q, activeSort, entrySortOldestFirst);
+    const localResults = resolveDeskSearchEntries(q, activeSort);
     if (localResults.length) return undefined;
 
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const apiResults = await resolveDeskSearchEntriesAsync(q, activeSort, entrySortOldestFirst);
+        const apiResults = await resolveDeskSearchEntriesAsync(q, activeSort);
         if (!cancelled && apiResults.length) {
           bumpTicketCacheView();
         }
@@ -1210,7 +1209,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [appliedSearch, activeSort, entrySortOldestFirst, bumpTicketCacheView]);
+  }, [appliedSearch, activeSort, bumpTicketCacheView]);
 
   // Notebook / janela estreita: recolhe a coluna de caixas sozinho (sem gravar a preferência);
   // ao voltar para tela larga, restaura o que o agente tinha escolhido.
@@ -1261,7 +1260,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     try {
     status = statusId || sendStatus;
     const savedListTicketId = getEntryTicketId(entry);
-    const workingListBeforeSave = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort, entrySortOldestFirst);
+    const workingListBeforeSave = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort);
     const plannedNextId = getAutoCloseOnSave()
       ? pickNextTicketFromEntries(savedListTicketId, workingListBeforeSave)
       : null;
@@ -2748,8 +2747,6 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
           onSearchSubmit={handleSearchSubmit}
         onSelectTicket={selectTicket}
         onSortChange={setActiveSort}
-          entrySortOldestFirst={entrySortOldestFirst}
-          onToggleEntrySort={() => setEntrySortOldestFirst((v) => !v)}
         onCollapse={() => handleListCollapse(true)}
         onExpand={() => handleListCollapse(false)}
         onReload={reload}
@@ -2780,8 +2777,6 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
                 onSelectTicket={selectTicket}
                 onReload={reload}
                 refreshing={ticketsLoading}
-                entrySortOldestFirst={entrySortOldestFirst}
-                onToggleEntrySort={() => setEntrySortOldestFirst((v) => !v)}
               />
             ) : showTableQueueMain && isResolvedQueue ? (
               <DeskResolvedTicketTable
