@@ -12,7 +12,7 @@ import {
   parseApiInstant,
 } from '../../utils/dateTimeBr';
 import { getTicketColumns, saveTicketColumns, getAllCockpitTickets, mapTicketQueueId } from '../ticketsStorage';
-import { getDeskQueueDisplayCount, getDeskQueueOptimisticDelta, markTicketResolvedOptimistic } from './queueCounts';
+import { bumpDeskQueueCountOptimistic, getDeskQueueDisplayCount, getDeskQueueOptimisticDelta, markTicketResolvedOptimistic } from './queueCounts';
 import { getWorkflowInfoRequestsForTicket } from '../workflow/workflowInfoNotifications';
 import { ticketBelongsInMeusTicketsList, ticketBelongsInAgentNovosQueue, ticketMatchesAgentResponsavel, shouldUseMeusChamadosFila, shouldViewAllDeskTickets, readDeskProfileId } from './responsavelSegmentation';
 import { isEspeciaisDeskExcludedTicket } from '../especiais/especiaisChannelDetection';
@@ -2442,6 +2442,10 @@ export function moveTicketToBox(entry, targetBoxId) {
   target.tickets.push(ticket);
   if (target.id === 'resolvidos' && sourceQueueId !== 'resolvidos') {
     markTicketResolvedOptimistic(sourceQueueId);
+    // Meus Tickets só conta ticket ativo: resolver um ticket meu tira 1 do badge na hora.
+    if (MEUS_TICKETS_ACTIVE_QUEUE_IDS.has(sourceQueueId) && ticketBelongsInMeusTicketsList(ticket)) {
+      bumpDeskQueueCountOptimistic(MEUS_TICKETS_QUEUE_ID, -1);
+    }
   }
   saveTicketColumns(columns);
   entry.boxId = target.id;

@@ -2863,6 +2863,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     <div className={'app-shell' + (isTableQueueView ? ' app-shell--table-queue' : '')} id="deskAppShell">
       <DeskQueuePanel
         queueStatuses={queueIds ? queueStatuses.filter((s) => queueIds.includes(s.id)) : queueStatuses}
+        countOverrides={hideComposer ? { novos: entries.length } : null}
         activeQueue={activeQueue}
         collapsed={queueCollapsed}
         onSelectQueue={selectQueue}

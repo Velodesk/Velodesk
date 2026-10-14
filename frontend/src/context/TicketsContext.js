@@ -172,6 +172,9 @@ export function TicketsProvider({ children }) {
         await refreshQueueCountsFromApi(user?.email);
         const after = fingerprintQueueCounts();
         if (before !== after) {
+          // Contagem mudou → o badge lê o cache de contadores (fora do React): sem este bump a tela só
+          // redesenhava se a LISTA mudasse, e o número ficava velho até o F5.
+          setRefreshKey((k) => k + 1);
           // Contagem mudou → algum ticket entrou/saiu de uma fila. setRefreshKey sozinho só
           // forçava um re-render do `columns` em memória, que continuava vindo do fetch antigo
           // (a lista visível ficava presa até um refresh não-silencioso, ex.: trocar de tela e
@@ -186,6 +189,7 @@ export function TicketsProvider({ children }) {
     };
 
     const onCountsChanged = () => {
+      setRefreshKey((k) => k + 1);
       void refreshTicketsSilent();
     };
 

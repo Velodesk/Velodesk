@@ -258,6 +258,8 @@ async function computeQueueCounts(
       status: 200,
       body: {
         counts,
+        // Mesmos candidatos de "sou eu" usados na contagem — o frontend monta a lista de Meus Tickets com eles.
+        responsavelCandidates,
         // Critérios sem tradução exata pro servidor (hoje: 'sla') — contagem daquela caixa
         // pode não bater 100% até isso ser implementado; frontend deve avisar, nunca fingir certeza.
         unsupportedCriteria: customBoxUnsupported,

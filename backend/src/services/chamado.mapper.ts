@@ -2368,18 +2368,23 @@ function emailLocalPart(email?: string): string {
   return normalized.split('@')[0] ?? '';
 }
 
+/** Mesma normalização do frontend (trim + minúsculas) — contagem e lista precisam concordar. */
 function lastTabulacaoResponsavelExpr() {
   return {
     $toLower: {
-      $ifNull: [
-        {
-          $let: {
-            vars: { lastTab: { $arrayElemAt: ['$tabulacao', -1] } },
-            in: '$$lastTab.responsavel',
-          },
+      $trim: {
+        input: {
+          $ifNull: [
+            {
+              $let: {
+                vars: { lastTab: { $arrayElemAt: ['$tabulacao', -1] } },
+                in: '$$lastTab.responsavel',
+              },
+            },
+            '',
+          ],
         },
-        '',
-      ],
+      },
     },
   };
 }
@@ -2455,18 +2460,29 @@ export function meusChamadosNovosResponsavelFilter(candidates: string[]) {
   };
 }
 
+/** Igual ao frontend: trim, minúsculas e sem o sufixo "(eu)" que a UI acrescenta ao próprio usuário. */
 function lastTabulacaoAtribuidoExpr() {
   return {
-    $toLower: {
-      $ifNull: [
-        {
-          $let: {
-            vars: { lastTab: { $arrayElemAt: ['$tabulacao', -1] } },
-            in: '$$lastTab.atribuido',
+    $trim: {
+      input: {
+        $replaceAll: {
+          input: {
+            $toLower: {
+              $ifNull: [
+                {
+                  $let: {
+                    vars: { lastTab: { $arrayElemAt: ['$tabulacao', -1] } },
+                    in: '$$lastTab.atribuido',
+                  },
+                },
+                '',
+              ],
+            },
           },
+          find: '(eu)',
+          replacement: '',
         },
-        '',
-      ],
+      },
     },
   };
 }

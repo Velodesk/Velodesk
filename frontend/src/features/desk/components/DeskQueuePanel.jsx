@@ -14,6 +14,7 @@ export default function DeskQueuePanel({
   onExpand,
   onCreateTicket,
   refreshKey = 0,
+  countOverrides = null,
 }) {
   void refreshKey;
   return (
@@ -50,7 +51,7 @@ export default function DeskQueuePanel({
             >
               <span className="queue-status-item__dot" style={{ background: s.dot }} />
               <span className="queue-status-item__name">{s.name}</span>
-              <span className="queue-status-item__count">{countByQueue(s.id)}</span>
+              <span className="queue-status-item__count">{countOverrides && countOverrides[s.id] != null ? countOverrides[s.id] : countByQueue(s.id)}</span>
             </li>
           ))}
         </ul>
