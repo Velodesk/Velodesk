@@ -151,10 +151,11 @@ function buildTicketBody(
     clienteNome: payload.clientName,
     classificacaoTipo: payload.classificacaoTipo || payload.tipoChamado || 'Solicitação',
     tipoChamado: payload.tipoChamado || payload.classificacaoTipo || 'Solicitação',
+    // Tabulação é o que a origem enviou — campo não informado fica em branco (nunca derivar
+    // motivo do título nem detalhe do texto).
     produto: payload.produto || '',
-    // App só envia o assunto (que já vira produto): usar o título como motivo duplicaria o produto.
-    motivo: payload.motivo || (origin === 'app' ? '' : payload.title),
-    detalhe: payload.detalhe || payload.text.slice(0, 500),
+    motivo: payload.motivo || '',
+    detalhe: payload.detalhe || '',
   };
 
   // origens com config.canal vazio (ex.: qa-teste) não devem popular o campo canal da tabulação.
