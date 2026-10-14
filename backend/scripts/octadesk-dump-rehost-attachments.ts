@@ -81,6 +81,7 @@ async function main(): Promise<void> {
             filename: att.name || 'anexo.pdf',
             contentType: guessContentType(att.name || ''),
             buffer,
+            requireGcs: true,
           });
           return { att, url: saved.url, ok: true as const };
         } catch (err) {

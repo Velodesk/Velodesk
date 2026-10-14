@@ -36,6 +36,8 @@ export interface PersistOctadeskLegacyAttachmentInput {
   filename: string;
   contentType: string;
   buffer: Buffer;
+  /** Falha se o upload ao GCS não ocorrer, mesmo com o transporte "não pronto" (evita URL só-disco). */
+  requireGcs?: boolean;
 }
 
 export interface StoredOctadeskLegacyAttachment {
@@ -63,7 +65,7 @@ export async function persistOctadeskLegacyAttachment(
     input.buffer,
     input.contentType,
   );
-  if (isGcsAttachmentStorageConfigured() && !gcsUploaded) {
+  if ((input.requireGcs || isGcsAttachmentStorageConfigured()) && !gcsUploaded) {
     throw new Error(`Falha ao enviar anexo "${safeName}" para o bucket ${env.gcpStorageBucket}`);
   }
 
