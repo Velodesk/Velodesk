@@ -2,7 +2,7 @@
  * aiApprovals.routes v1.0.0 — fila de aprovação humana das respostas do agente autônomo
  * VERSION: v1.0.0 | DATE: 2026-10-07
  *
- * Contrato documentado em docs/AI-APPROVALS-API.md. Acesso: módulo `permissoes.acesso.aprovacao-ia`.
+ * Contrato documentado em docs/AI-APPROVALS-API.md. Acesso: módulo `permissoes.acesso.ia`.
  */
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
@@ -18,7 +18,7 @@ import { TabulacaoValidationError } from '../services/tabulation.service';
 import type { AiAutomationStatus } from '../models/ChamadoN1';
 
 const router = Router();
-router.use(authMiddleware, permissionMiddleware('acesso', 'aprovacao-ia'));
+router.use(authMiddleware, permissionMiddleware('acesso', 'ia'));
 
 const STATUSES: AiAutomationStatus[] = [
   'aguardando_aprovacao',

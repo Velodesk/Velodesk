@@ -1,7 +1,6 @@
 # API da fila de aprovação humana (agente autônomo)
 
-Base: `/api/ai-approvals` · Auth: Bearer · Acesso: módulo `permissoes.acesso.aprovacao-ia`
-(o id `aprovacao-ia` precisa ser registrado em `NAV_ITEMS` do front para aparecer em Módulos de Acesso).
+Base: `/api/ai-approvals` · Auth: Bearer · Acesso: módulo `permissoes.acesso.ia` (menu "IA" — Inteligência Artificial)
 
 Fluxo: o agente de resposta gera → o auditor aprova com a régua estrita → a resposta fica
 `aguardando_aprovacao` (nada é enviado ao cliente) → o humano aprova ou reprova.

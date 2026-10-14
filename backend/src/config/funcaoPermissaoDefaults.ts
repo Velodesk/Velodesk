@@ -37,7 +37,6 @@ export const ACESSO_MODULO_IDS: string[] = [
   'reports',
   'tickets-resolvidos',
   'legado-octa',
-  'aprovacao-ia',
 ];
 
 export const PERMISSION_CATALOG: Record<string, string[]> = {

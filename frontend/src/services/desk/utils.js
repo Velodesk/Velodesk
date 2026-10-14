@@ -2454,3 +2454,8 @@ export function moveTicketToBox(entry, targetBoxId) {
 }
 
 export { getAgentName };
+
+/** Ticket com resposta do agente autônomo pronta, aguardando a aprovação do auditor humano (Área de IA). */
+export function isPendingAiApproval(ticket) {
+  return ticket?.aiAutomation?.status === 'aguardando_aprovacao';
+}

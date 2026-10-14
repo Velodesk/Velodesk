@@ -7,7 +7,6 @@ const PAGE_ROUTES = {
   tickets: '/tickets?desk=v2',
   'tickets-resolvidos': '/tickets?desk=v2&queue=resolvidos',
   ia: '/ia',
-  'aprovacao-ia': '/aprovacao-ia',
   'busca-tickets': '/busca-tickets',
   preferencias: '/preferencias',
   'atendimento-ia-telefonico': '/atendimento-ia-telefonico',
