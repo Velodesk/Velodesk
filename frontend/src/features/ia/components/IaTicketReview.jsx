@@ -6,12 +6,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { MessageBubbleText } from '../../desk/components/DeskConversation';
 import {
-  getAgentName,
   getClientContactFields,
   getTicketProtocolLabel,
   isClientIdentifiedForHistory,
 } from '../../../services/desk/utils';
-import { wrapComposerOpeningForTicket } from '../../../services/desk/clientMessageEnvelope';
+import { AGENTE_AUTONOMO_ENVELOPE_NOME, wrapComposerOpeningForTicket } from '../../../services/desk/clientMessageEnvelope';
 
 const CHANNEL_ICONS = {
   'e-mail': 'ti-mail',
@@ -86,7 +85,8 @@ export default function IaTicketReview({
   const suggestedText = useMemo(() => {
     const nucleo = String(ai?.respostaSugerida || '').trim();
     if (!nucleo) return '';
-    return wrapComposerOpeningForTicket({ nucleo, ticket, agentName: getAgentName() });
+    // Tudo que chega aqui é resposta do agente autônomo: o envelope é sempre da CláudIA, nunca de quem está logado.
+    return wrapComposerOpeningForTicket({ nucleo, ticket, agentName: AGENTE_AUTONOMO_ENVELOPE_NOME });
   }, [ai?.respostaSugerida, ticket]);
 
   const [draft, setDraft] = useState(null);
