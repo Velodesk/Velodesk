@@ -311,6 +311,14 @@ export const env = {
   assignmentRouterEnabled: process.env.ASSIGNMENT_ROUTER_ENABLED !== 'false',
   assignmentRouterStrategy: (process.env.ASSIGNMENT_ROUTER_STRATEGY || 'cap_online').trim(),
   assignmentRouterMaxOpen: parseInt(process.env.ASSIGNMENT_ROUTER_MAX_OPEN || '10', 10),
+  /** Teto de chamados abertos por agente SÓ na estratégia round_robin (ver distributeOrphansRoundRobin
+   *  e pickRoundRobinAgent) — evita que 1 agente online sozinho receba todo o acúmulo de órfãos.
+   *  Vale só na janela [CAP_START_HOUR, CAP_END_HOUR) em horário de Brasília — fora dela, volta a
+   *  distribuir sem teto. Pensado pro pico de abertura (8h, 1ª pessoa logando sozinha herdar o
+   *  final de semana inteiro); no resto do dia, com mais gente online, o rodízio já reparte bem. */
+  assignmentRouterRoundRobinMaxOpen: parseInt(process.env.ASSIGNMENT_ROUTER_ROUND_ROBIN_MAX_OPEN || '30', 10),
+  assignmentRouterRoundRobinCapStartHour: parseInt(process.env.ASSIGNMENT_ROUTER_ROUND_ROBIN_CAP_START_HOUR || '8', 10),
+  assignmentRouterRoundRobinCapEndHour: parseInt(process.env.ASSIGNMENT_ROUTER_ROUND_ROBIN_CAP_END_HOUR || '9', 10),
   assignmentRouterPresenceTtlMs: parseInt(process.env.ASSIGNMENT_ROUTER_PRESENCE_TTL_MS || '300000', 10),
   assignmentRouterTerminalStatuses: (process.env.ASSIGNMENT_ROUTER_TERMINAL_STATUSES || 'resolvido,cancelado,fechado')
     .split(',')

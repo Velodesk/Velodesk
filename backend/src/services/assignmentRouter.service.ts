@@ -418,35 +418,78 @@ async function nextRoletaRodizioContador(): Promise<number> {
 }
 
 /**
+ * Janela de teto do rodízio em horário de Brasília — ver assignmentRouterRoundRobinCapStartHour/
+ * CapEndHour (env.ts). Não mexe em sessão/heartbeat/logout forçado: só decide se o teto por
+ * agente entra ou não na escolha de pickRoundRobinAgent, depois que a lista de quem está online
+ * (loadOnlineEligibleAgents/listOnlineEligibleEmails) já foi calculada do jeito de sempre.
+ */
+function isWithinRoletaCapWindow(date: Date = new Date()): boolean {
+  const hour = Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).format(date),
+  );
+  const start = env.assignmentRouterRoundRobinCapStartHour;
+  const end = env.assignmentRouterRoundRobinCapEndHour;
+  return hour >= start && hour < end;
+}
+
+/**
  * Estratégia round_robin (ASSIGNMENT_ROUTER_STRATEGY=round_robin) — só do pool genérico, nunca
  * usada por função especial (essa continua só em pickLeastLoadedAgent/resolveFuncaoEspecialAgent).
- * Sem teto/carga: a vez de cada um é decidida só pela posição na fila naquele instante, ordenada
- * de forma estável (alfabética) pra o índice fazer sentido. A lista de quem está online é
- * recalculada do zero a cada chamada (mesma loadOnlineEligibleAgents de sempre) — agente que sai
- * simplesmente não entra na conta da próxima vez, agente que entra passa a contar a partir da
- * próxima decisão, sem nenhuma reconciliação especial.
+ * A vez de cada um é decidida pela posição na fila naquele instante, ordenada de forma estável
+ * (alfabética) pra o índice fazer sentido. A lista de quem está online é recalculada do zero a
+ * cada chamada (mesma loadOnlineEligibleAgents de sempre) — agente que sai simplesmente não entra
+ * na conta da próxima vez, agente que entra passa a contar a partir da próxima decisão, sem
+ * nenhuma reconciliação especial.
+ * Teto por agente (ASSIGNMENT_ROUTER_ROUND_ROBIN_MAX_OPEN, padrão 30) — só dentro da janela
+ * isWithinRoletaCapWindow (padrão 8h–9h de Brasília): quem já está no teto é pulado, o contador
+ * avança mesmo assim, então a vez cai no próximo da fila, preservando o rodízio justo entre quem
+ * ainda tem espaço — isso cobre tanto "só 1 online" quanto "vários online" nesse horário. Fora da
+ * janela, maxOpen vira 0 e a checagem nunca dispara: volta a ser rodízio puro, sem teto. Se todo
+ * mundo online já bateu no teto (dentro da janela), retorna null (chamado fica órfão até alguém
+ * resolver ticket ou outro agente logar) — ver distributeOrphansRoundRobin.
  */
 async function pickRoundRobinAgent(
   agents: Array<{ responsavel: string; candidates: string[] }>,
-): Promise<AssignmentResult> {
+  openCounts: Map<string, number>,
+): Promise<AssignmentResult | null> {
   const ordenados = [...agents].sort((a, b) => a.responsavel.localeCompare(b.responsavel, 'pt-BR'));
-  const contador = await nextRoletaRodizioContador();
-  const posicao = contador % ordenados.length;
-  const escolhido = ordenados[posicao];
+  const maxOpen = isWithinRoletaCapWindow() ? env.assignmentRouterRoundRobinMaxOpen : 0;
 
-  console.info(
-    `[assignmentRouter] rodízio responsavel=${escolhido.responsavel} posicao=${posicao}/${ordenados.length} contador=${contador}`
-  );
+  for (let tentativa = 0; tentativa < ordenados.length; tentativa += 1) {
+    const contador = await nextRoletaRodizioContador();
+    const posicao = contador % ordenados.length;
+    const escolhido = ordenados[posicao];
+    const carga = openCounts.get(escolhido.responsavel.toLowerCase()) ?? 0;
 
-  // carga não é rastreada nessa estratégia — 0 é só o valor de log em applyRoletaAssignment.
-  return { responsavel: escolhido.responsavel, carga: 0 };
+    if (maxOpen > 0 && carga >= maxOpen) {
+      console.info(
+        `[assignmentRouter] rodízio pulou responsavel=${escolhido.responsavel} posicao=${posicao}/${ordenados.length} carga=${carga}/${maxOpen} (teto atingido)`
+      );
+      continue;
+    }
+
+    console.info(
+      `[assignmentRouter] rodízio responsavel=${escolhido.responsavel} posicao=${posicao}/${ordenados.length} contador=${contador} carga=${carga}/${maxOpen}`
+    );
+    return { responsavel: escolhido.responsavel, carga };
+  }
+
+  console.warn(`[assignmentRouter] rodízio: todos os ${ordenados.length} online no teto (${maxOpen}) — sem atribuição`);
+  return null;
 }
 
 export async function resolveLeastLoadedAgent(): Promise<AssignmentResult | null> {
   if (env.assignmentRouterStrategy === 'round_robin') {
-    const agents = await loadOnlineEligibleAgents();
+    const [agents, openCounts] = await Promise.all([
+      loadOnlineEligibleAgents(),
+      aggregateRoletaOpenCounts(),
+    ]);
     if (agents.length === 0) return null;
-    return pickRoundRobinAgent(agents);
+    return pickRoundRobinAgent(agents, openCounts);
   }
 
   const [agents, countByResponsavel] = await Promise.all([
@@ -663,6 +706,10 @@ export async function distributeOrphansRoundRobin(): Promise<number> {
   const agents = await loadOnlineEligibleAgents();
   if (agents.length === 0) return 0;
 
+  // Contagem viva — atualizada em memória a cada atribuição desta mesma varredura (ver teto em
+  // pickRoundRobinAgent), senão o teto só seria respeitado entre varreduras, não dentro de uma.
+  const openCounts = await aggregateRoletaOpenCounts();
+
   // Lê além do 1º lote: órfãos intencionalmente sem dono (telefone, agente-ia, canais especiais)
   // ficam sempre no começo da fila por serem os mais antigos e não podem esgotar a varredura.
   const orphans = await findOrphanTickets(ROLETA_SWEEP_MAX_SCAN);
@@ -671,12 +718,17 @@ export async function distributeOrphansRoundRobin(): Promise<number> {
   for (const chamado of orphans) {
     if (assigned >= ROLETA_SWEEP_BATCH) break;
     if (!shouldAutoAssign(chamado) || isEspeciaisChamado(chamado)) continue;
-    const assignment = await pickRoundRobinAgent(agents);
+    const assignment = await pickRoundRobinAgent(agents, openCounts);
+    // Todo mundo online já está no teto — resto da fila fica órfão até liberar espaço ou mais
+    // gente logar (próxima varredura em 30s resolve sozinha, sem reprocessar do zero).
+    if (!assignment) break;
     applyRoletaAssignment(chamado, assignment, { source: 'backfill' });
     chamado.markModified('tabulacao');
     chamado.markModified('registro');
     await chamado.save();
     assigned += 1;
+    const key = assignment.responsavel.toLowerCase();
+    openCounts.set(key, (openCounts.get(key) ?? 0) + 1);
   }
 
   if (assigned > 0) {
@@ -687,7 +739,9 @@ export async function distributeOrphansRoundRobin(): Promise<number> {
 
 export async function rebalanceAgentToCap(responsavelKey: string): Promise<number> {
   if (!env.assignmentRouterEnabled) return 0;
-  // No rodízio não há teto nem backfill por gatilho — quem cuida do acúmulo é distributeOrphansRoundRobin.
+  // No rodízio o teto é por agente (ASSIGNMENT_ROUTER_ROUND_ROBIN_MAX_OPEN, ver pickRoundRobinAgent)
+  // e quem cuida do acúmulo de órfãos é distributeOrphansRoundRobin — esse backfill por gatilho de
+  // heartbeat não se aplica a essa estratégia.
   if (env.assignmentRouterStrategy === 'round_robin') return 0;
 
   const key = String(responsavelKey ?? '').trim().toLowerCase();
