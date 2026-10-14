@@ -121,9 +121,15 @@ function mergeIntoCache(items) {
 }
 
 /** Uma página de UM grupo, ordenada e paginada no servidor — a lista não depende de baixar tudo. */
-export async function fetchRaPage({ grupo, sort = 'data', page = 1 }) {
+export async function fetchRaPage({ grupo, gestao = false, chips = [], sort = 'data', page = 1 }) {
   const skip = (Math.max(page, 1) - 1) * RA_LIST_PAGE_SIZE;
-  const data = await reclamacoesApi.list('reclame-aqui', { grupo, sort, limit: RA_LIST_PAGE_SIZE, skip });
+  const data = await reclamacoesApi.list('reclame-aqui', {
+    ...(grupo ? { grupo } : {}),
+    ...(gestao ? { gestao: 'true', chips: chips.join(',') } : {}),
+    sort,
+    limit: RA_LIST_PAGE_SIZE,
+    skip,
+  });
   const items = (data?.items ?? []).map(normalizeApiItem);
   mergeIntoCache(items);
   return { items, total: Number(data?.total) || 0 };
@@ -263,7 +269,9 @@ export function loadReclamacoes({ search = '', activeChips = [], gestaoView = fa
   return items.filter((item) => {
     if (!matchesSearch(item, search)) return false;
     if (gestaoView && !passesGestaoListFilter(item, activeChips)) return false;
-    if (activeChips.length && !activeChips.every((chip) => matchesChip(item, chip))) return false;
+    // "OU" entre chips: basta bater com um filtro ativo (chips costumam ser categorias
+    // mutuamente exclusivas, ex. Abertas x Finalizadas — "E" sempre dava zero resultado).
+    if (activeChips.length && !activeChips.some((chip) => matchesChip(item, chip))) return false;
     return true;
   });
 }

@@ -392,6 +392,15 @@ export const agentsApi = {
   gestaoAlerts: (params) => api.get('/agents/gestao/alerts', { params }).then((r) => r.data),
 };
 
+export const autonomyApi = {
+  getConfig: () => api.get('/agents/autonomy-config').then((r) => r.data.config),
+  updateConfig: (data) => api.put('/agents/autonomy-config', data).then((r) => r.data.config),
+  listRules: () => api.get('/agents/autonomy-rules').then((r) => r.data.rules || []),
+  createRule: (data) => api.post('/agents/autonomy-rules', data).then((r) => r.data.rule),
+  updateRule: (id, data) => api.put(`/agents/autonomy-rules/${encodeURIComponent(id)}`, data).then((r) => r.data.rule),
+  deleteRule: (id) => api.delete(`/agents/autonomy-rules/${encodeURIComponent(id)}`).then((r) => r.data),
+};
+
 export const telephonyApi = {
   integrationInfo: () => api.get('/telephony/integration-info').then((r) => r.data),
   listCalls: (params) => api.get('/telephony/calls', { params }).then((r) => r.data),
@@ -466,6 +475,16 @@ export const consultasApi = {
     api.post(`/consultas/product/${encodeURIComponent(slug)}`, payload).then((r) => r.data),
 };
 
+/** Extrato do ticket (HTML renderizado no servidor, pronto para Ctrl+P → Salvar como PDF). */
+export const chamadoExtratoApi = {
+  getHtml: (protocolo, params = {}) =>
+    api.get(`/chamados/${encodeURIComponent(String(protocolo || ''))}/extrato.html`, {
+      params,
+      responseType: 'text',
+      transformResponse: [(data) => data],
+    }).then((r) => r.data),
+};
+
 export const ticketSearchApi = {
   search: (payload = {}) =>
     api.post('/ticket-search', payload).then((r) => r.data),
@@ -534,4 +553,14 @@ export const reclameAquiHugmeApi = {
   getBatch: (batchId) =>
     api.get(`/reclame-aqui/hugme/import-batches/${encodeURIComponent(batchId)}`).then((r) => r.data),
   stats: () => api.get('/reclame-aqui/hugme/stats').then((r) => r.data),
+};
+
+/** Fila de aprovação humana das respostas do agente autônomo (/api/ai-approvals) */
+export const aiApprovalsApi = {
+  list: (params = {}) => api.get('/ai-approvals', { params }).then((r) => r.data),
+  get: (id) => api.get(`/ai-approvals/${encodeURIComponent(id)}`).then((r) => r.data.item),
+  approve: (id, textoFinal, tabulacao) =>
+    api.post(`/ai-approvals/${encodeURIComponent(id)}/aprovar`, { textoFinal, tabulacao }, { timeout: 60000 }).then((r) => r.data),
+  reject: (id, feedback) =>
+    api.post(`/ai-approvals/${encodeURIComponent(id)}/reprovar`, { feedback }, { timeout: 120000 }).then((r) => r.data),
 };

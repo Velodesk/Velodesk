@@ -262,7 +262,6 @@ export const env = {
   openaiAuditVectorStoreId: (process.env.OPENAI_AUDIT_VECTOR_STORE_ID || '').trim(),
   openaiModel: (process.env.OPENAI_MODEL || 'gpt-4.1-mini').trim(),
   agentsEnabled: process.env.AGENTS_ENABLED === 'true',
-  agentsAutonomyEnabled: process.env.AGENTS_AUTONOMY_ENABLED === 'true',
   /** Agente 4 — triagem silenciosa de casos especiais na entrada do ticket (classificação só) */
   agentCasosEspeciaisEnabled: process.env.AGENT_CASOS_ESPECIAIS_ENABLED === 'true',
   /** Agente 5 — extração de campos (Procon/Bacen/Consumidor.gov) após a classificação do Agente 4 */
@@ -282,7 +281,7 @@ export const env = {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean),
-  chamadoIaAnaliseEnabled: process.env.CHAMADO_IA_ANALISE_ENABLED !== 'false',
+  chamadoIaAnaliseEnabled: process.env.CHAMADO_IA_ANALISE_ENABLED === 'true',
   /** Sync diário de custo Twilio WhatsApp → coleção `whatsapp_message_costs` (consumido pelo WFM). */
   whatsappCostSyncEnabled: process.env.WHATSAPP_COST_SYNC_ENABLED !== 'false',
   /**

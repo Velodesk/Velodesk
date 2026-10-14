@@ -1,7 +1,7 @@
 /** boxes.routes v1.9.0 — lista de boxes via cache TTL curto (getCachedBoxes) */
 import { Router, Response } from 'express';
 import mongoose from 'mongoose';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, type AuthPayload } from '../middleware/auth';
 import { isMongoConnected } from '../config/database';
 import { getCachedBoxes } from '../services/boxesCache.service';
 import { ChamadoN1 } from '../models/ChamadoN1';
@@ -172,17 +172,45 @@ async function countMeusTicketsReal(responsavelCandidates: string[]): Promise<nu
   return perStatus.reduce((sum, n) => sum + n, 0);
 }
 
+/**
+ * Junta chamadas idênticas (mesmo usuário + rota + fila) que chegam enquanto uma ainda está em
+ * execução. Sem isso, o cliente que estoura timeout (45s) reenvia a requisição enquanto o servidor
+ * ainda processa a anterior — cada tentativa dispara os mesmos find/count sem índice (`$expr`) e
+ * a fila de requisições só cresce. Não guarda resultado depois de terminar (sem dado velho).
+ */
+const inFlightByKey = new Map<string, Promise<{ status: number; body: unknown }>>();
+
+async function dedupeInFlight(
+  key: string,
+  run: () => Promise<{ status: number; body: unknown }>,
+): Promise<{ status: number; body: unknown }> {
+  const existing = inFlightByKey.get(key);
+  if (existing) return existing;
+  const promise = run().finally(() => inFlightByKey.delete(key));
+  inFlightByKey.set(key, promise);
+  return promise;
+}
+
 router.get('/queue-counts', authMiddleware, async (req, res: Response) => {
   const queueParam = typeof req.query.fila === 'string' ? req.query.fila : undefined;
   const userId = req.user?.userId;
+  const key = `counts|${userId || ''}|${req.user?.email || ''}|${queueParam || ''}`;
+  const out = await dedupeInFlight(key, () => computeQueueCounts(req.user!, queueParam, userId));
+  return res.status(out.status).json(out.body);
+});
 
+async function computeQueueCounts(
+  user: AuthPayload,
+  queueParam: string | undefined,
+  userId: string | undefined,
+): Promise<{ status: number; body: unknown }> {
   try {
     if (!isMongoConnected()) {
-      return res.status(503).json({ message: 'Banco de chamados indisponível' });
+      return { status: 503, body: { message: 'Banco de chamados indisponível' } };
     }
     const dbUser = await resolveDbUser(userId);
-    const resolved = await resolveUserPermissions(req.user!);
-    const responsavelCandidates = buildResponsavelCandidates(req.user!, dbUser);
+    const resolved = await resolveUserPermissions(user);
+    const responsavelCandidates = buildResponsavelCandidates(user, dbUser);
     const { queue, extraFilter } = await resolveQueueMode(resolved, queueParam);
 
     let counts: Record<string, number>;
@@ -211,7 +239,7 @@ router.get('/queue-counts', authMiddleware, async (req, res: Response) => {
     counts['meus-tickets'] = await countMeusTicketsReal(responsavelCandidates);
 
     const customBoxUnsupported: Record<string, string[]> = {};
-    const email = req.user?.email || '';
+    const email = user.email || '';
     if (email) {
       const customBoxes = await listAgentQueueBoxes(email);
       await Promise.all(
@@ -226,31 +254,42 @@ router.get('/queue-counts', authMiddleware, async (req, res: Response) => {
       );
     }
 
-    return res.json({
-      counts,
-      // Critérios sem tradução exata pro servidor (hoje: 'sla') — contagem daquela caixa
-      // pode não bater 100% até isso ser implementado; frontend deve avisar, nunca fingir certeza.
-      unsupportedCriteria: customBoxUnsupported,
-      fetchedAt: new Date().toISOString(),
-    });
+    return {
+      status: 200,
+      body: {
+        counts,
+        // Critérios sem tradução exata pro servidor (hoje: 'sla') — contagem daquela caixa
+        // pode não bater 100% até isso ser implementado; frontend deve avisar, nunca fingir certeza.
+        unsupportedCriteria: customBoxUnsupported,
+        fetchedAt: new Date().toISOString(),
+      },
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[boxes] GET /queue-counts falhou:', message);
-    return res.status(500).json({ message: 'Erro ao carregar contadores das filas' });
+    return { status: 500, body: { message: 'Erro ao carregar contadores das filas' } };
   }
-});
+}
 
 router.get('/', authMiddleware, async (req, res: Response) => {
   const queueParam = typeof req.query.fila === 'string' ? req.query.fila : undefined;
-  const userId = req.user?.userId;
+  const key = `list|${req.user?.userId || ''}|${req.user?.email || ''}|${queueParam || ''}`;
+  const out = await dedupeInFlight(key, () => computeBoxesList(req.user!, queueParam, req.user?.userId));
+  return res.status(out.status).json(out.body);
+});
 
+async function computeBoxesList(
+  user: AuthPayload,
+  queueParam: string | undefined,
+  userId: string | undefined,
+): Promise<{ status: number; body: unknown }> {
   try {
     if (!isMongoConnected()) {
-      return res.status(503).json({ message: 'Banco de chamados indisponível' });
+      return { status: 503, body: { message: 'Banco de chamados indisponível' } };
     }
     const dbUser = await resolveDbUser(userId);
-    const resolved = await resolveUserPermissions(req.user!);
-    const responsavelCandidates = buildResponsavelCandidates(req.user!, dbUser);
+    const resolved = await resolveUserPermissions(user);
+    const responsavelCandidates = buildResponsavelCandidates(user, dbUser);
     const { queue, extraFilter } = await resolveQueueMode(resolved, queueParam);
 
     if (queue === 'meus-chamados' || queue === 'procon' || queue === 'consumidor-gov') {
@@ -264,7 +303,7 @@ router.get('/', authMiddleware, async (req, res: Response) => {
         queue,
         responsavelCandidates,
       );
-      return res.json(result);
+      return { status: 200, body: result };
     }
 
     const boxes = await getCachedBoxes();
@@ -280,12 +319,12 @@ router.get('/', authMiddleware, async (req, res: Response) => {
       responsavelCandidates,
       extraFilter,
     );
-    res.json(result);
+    return { status: 200, body: result };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[boxes] GET falhou:', message);
-    res.status(500).json({ message: 'Erro ao carregar boxes' });
+    return { status: 500, body: { message: 'Erro ao carregar boxes' } };
   }
-});
+}
 
 export default router;

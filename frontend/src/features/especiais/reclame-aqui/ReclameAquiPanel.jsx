@@ -8,11 +8,14 @@ import { useNotifications } from '../../../context/NotificationContext';
 import { reclamacoesApi } from '../../../api/client';
 import { useRaNovaReclamacaoModals } from '../../../hooks/useRaNovaReclamacaoModals';
 import {
+  fetchRaPage,
   getFooterSummary,
+  getRaServerCounts,
   getReclameAquiKpis,
   getReportSeries,
   groupReclamacoesByStatus,
   loadReclamacoes,
+  refreshServerCounts,
   searchReclamacoesFromApi,
   RA_LIST_PAGE_SIZE,
 } from '../../../services/especiais/reclameAquiStore';
@@ -46,6 +49,8 @@ export default function ReclameAquiPanel() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [page, setPage] = useState(1);
   const [listVersion, setListVersion] = useState(0);
+  const [countsVersion, setCountsVersion] = useState(0);
+  const [pageState, setPageState] = useState({ items: [], total: 0, loading: true });
 
   const searchFn = useCallback((q) => searchReclamacoesFromApi(q), []);
   const { remoteItems, isRemoteSearch } = useEspeciaisDualSearch({
@@ -54,28 +59,64 @@ export default function ReclameAquiPanel() {
     searchFn,
   });
 
+  // Tabela: uma página por vez, paginada e filtrada no servidor. Os cards vêm da contagem do
+  // servidor. A base inteira só é baixada se a aba Relatórios for aberta (calcula no front).
   useEffect(() => {
-    const refreshFromApi = () => {
-      loadReclameAquiTicketsFromApi().catch(() => {});
-    };
-    refreshFromApi();
+    void refreshServerCounts();
     const bumpList = () => setListVersion((v) => v + 1);
+    const bumpCounts = () => setCountsVersion((v) => v + 1);
+    const refreshAll = () => {
+      void refreshServerCounts();
+      bumpList();
+    };
     window.addEventListener('velodesk:ra-sync', bumpList);
-    window.addEventListener('velodesk:ra-counts', bumpList);
-    window.addEventListener('velodesk:refresh-tickets', refreshFromApi);
+    window.addEventListener('velodesk:ra-counts', bumpCounts);
+    window.addEventListener('velodesk:refresh-tickets', refreshAll);
     return () => {
       window.removeEventListener('velodesk:ra-sync', bumpList);
-      window.removeEventListener('velodesk:ra-counts', bumpList);
-      window.removeEventListener('velodesk:refresh-tickets', refreshFromApi);
+      window.removeEventListener('velodesk:ra-counts', bumpCounts);
+      window.removeEventListener('velodesk:refresh-tickets', refreshAll);
     };
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'relatorios') loadReclameAquiTicketsFromApi().catch(() => {});
+  }, [activeTab]);
 
   const { openNovaFlow, modals: novaModals } = useRaNovaReclamacaoModals({
     navigate,
     onImported: () => setListVersion((v) => v + 1),
   });
 
+  const usingServerPage = !(isRemoteSearch && remoteItems);
+
+  useEffect(() => {
+    if (!usingServerPage || activeTab === 'relatorios') return undefined;
+    let cancelled = false;
+    setPageState((prev) => ({ ...prev, loading: true }));
+    fetchRaPage({ gestao: true, chips: activeChips, page })
+      .then((res) => {
+        if (!cancelled) setPageState({ items: res.items, total: res.total, loading: false });
+      })
+      .catch(() => {
+        if (!cancelled) setPageState((prev) => ({ ...prev, loading: false }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [usingServerPage, activeTab, activeChips, page, listVersion]);
+
   const view = useMemo(() => {
+    if (usingServerPage) {
+      const items = pageState.items;
+      const reportItems = activeTab === 'relatorios' ? loadReclamacoes({ search: '', activeChips, gestaoView: true }) : items;
+      return {
+        items,
+        kpis: getReclameAquiKpis(reportItems),
+        groups: groupReclamacoesByStatus(items),
+        series: getReportSeries(reportItems),
+      };
+    }
     if (isRemoteSearch && remoteItems) {
       if (!activeChips.length) return buildView(remoteItems);
       const chipIds = new Set(
@@ -85,11 +126,17 @@ export default function ReclameAquiPanel() {
       return buildView(remoteItems.filter((i) => chipIds.has(String(i.id))));
     }
     return buildView(loadReclamacoes({ search: '', activeChips, gestaoView: true }));
-  }, [activeChips, listVersion, isRemoteSearch, remoteItems]);
+  }, [activeChips, listVersion, countsVersion, isRemoteSearch, remoteItems, usingServerPage, pageState, activeTab]);
 
-  const footerText = getFooterSummary(view.items, selectedIds.length);
-  const totalPages = Math.max(1, Math.ceil(view.items.length / RA_LIST_PAGE_SIZE));
-  const pagedItems = view.items.slice((page - 1) * RA_LIST_PAGE_SIZE, page * RA_LIST_PAGE_SIZE);
+  const totalCount = usingServerPage ? pageState.total : view.items.length;
+  const naoRespCount = getRaServerCounts()?.kpis?.naoRespondidas;
+  const footerText = usingServerPage
+    ? `${totalCount} reclamações${naoRespCount != null && !activeChips.length ? ` · ${naoRespCount} não respondidas` : ''}${selectedIds.length ? ` · ${selectedIds.length} selecionada${selectedIds.length > 1 ? 's' : ''}` : ''}`
+    : getFooterSummary(view.items, selectedIds.length);
+  const totalPages = Math.max(1, Math.ceil(totalCount / RA_LIST_PAGE_SIZE));
+  const pagedItems = usingServerPage
+    ? view.items
+    : view.items.slice((page - 1) * RA_LIST_PAGE_SIZE, page * RA_LIST_PAGE_SIZE);
   const pagedGroups = groupReclamacoesByStatus(pagedItems);
 
   // Contagem por CPF em toda a lista filtrada (não só a página atual), pra sinalizar cliente
@@ -165,6 +212,7 @@ export default function ReclameAquiPanel() {
 
   const handleBulkApplied = useCallback(() => {
     setSelectedIds([]);
+    void refreshServerCounts();
     setListVersion((v) => v + 1);
   }, []);
 

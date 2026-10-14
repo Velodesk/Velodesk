@@ -16,6 +16,7 @@ import {
   buildRegistroThread,
   buildWhatsAppConvMsgs,
   collapseWhatsAppThreadToBalloon,
+  getTicketStatusBadgeMeta,
   isTicketReadOnly,
 } from '../../../services/desk/utils';
 import { saveEspeciaisTicketContact } from './especiaisSaveContact';
@@ -73,8 +74,9 @@ export default function EspeciaisDeskTicketView({
   );
 
   const ticketReadOnly = isTicketReadOnly(ticket);
-  const statusClass = channelConfig?.statusClass || 'novo';
-  const statusLabel = channelConfig?.statusLabel || '—';
+  // Selo = status do ticket (o mesmo do "Enviar como": Em andamento, Pendente, Resolvido,
+  // Cancelado...), não o status do canal (ex.: "Aguard. avaliação" do Reclame Aqui).
+  const { cls: statusClass, label: statusLabel } = getTicketStatusBadgeMeta(ticket);
 
   useEffect(() => {
     setMainTab('conversa');

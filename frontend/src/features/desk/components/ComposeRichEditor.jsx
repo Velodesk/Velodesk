@@ -1,6 +1,6 @@
 /**
- * ComposeRichEditor v1.3.0 — remove estado de erros ortográficos legado
- * VERSION: v1.3.0 | DATE: 2026-08-21
+ * ComposeRichEditor v1.4.0 — editor expansível abre no tamanho grande; o botão diminui
+ * VERSION: v1.4.0 | DATE: 2026-10-09
  */
 import React, {
   forwardRef,
@@ -38,7 +38,8 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
 }, ref) {
   const editorRef = useRef(null);
   const lastHtmlRef = useRef('');
-  const [expanded, setExpanded] = useState(false);
+  // Editor expansível abre grande (220px); o botão diminui para o tamanho compacto.
+  const [expanded, setExpanded] = useState(expandable);
 
   const notifyFormatState = useCallback(() => {
     onFormatStateChange?.(readComposeFormatState(editorRef.current));
@@ -122,8 +123,8 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
   }, [value]);
 
   useEffect(() => {
-    setExpanded(false);
-  }, [id]);
+    setExpanded(expandable);
+  }, [id, expandable]);
 
   const wrapClass = 'compose-rich-editor-wrap'
     + (expandable ? ' compose-rich-editor-wrap--expandable' : '')
@@ -182,7 +183,8 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
           <button
             type="button"
             className="compose-rich-editor__expand-btn"
-            aria-label={expanded ? 'Recolher editor' : 'Expandir editor'}
+            aria-label={expanded ? 'Diminuir editor' : 'Expandir editor'}
+            title={expanded ? 'Diminuir editor' : 'Expandir editor'}
             aria-pressed={expanded}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => setExpanded((value) => !value)}

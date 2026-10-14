@@ -11,9 +11,13 @@ import { getAgentsStatus, isAgentsConfigured } from '../services/agents/openaiAg
 import { runAgentPipeline, runRevisarSugestao } from '../services/agents/agentOrchestrator.service';
 import { validateAuditoria } from '../services/agents/auditoriaAgent.service';
 import {
+  AutonomyRuleValidationError,
   createAutonomyRule,
   deleteAutonomyRule,
+  getAgentesConfig,
+  isAutonomyEnabled,
   listAutonomyRules,
+  updateAgentesConfig,
   updateAutonomyRule,
 } from '../services/agents/autonomyRules.service';
 import {
@@ -174,11 +178,12 @@ router.get('/presence/realtime-token', authMiddleware, (req: Request, res: Respo
   }
 });
 
-router.get('/status', authMiddleware, (_req: Request, res: Response) => {
+router.get('/status', authMiddleware, async (_req: Request, res: Response) => {
   const status = getAgentsStatus();
   return res.json({
     success: true,
     ...status,
+    autonomyEnabled: await isAutonomyEnabled(),
     model: env.openaiModel,
     thresholds: {
       auto: env.agentAuditThresholdAuto,
@@ -304,26 +309,74 @@ router.post('/auditoria', authMiddleware, supervisorMiddleware, async (req: Requ
   return res.json({ ...result, success: true, source: 'agents_auditoria' });
 });
 
-router.get('/autonomy-rules', authMiddleware, supervisorMiddleware, async (_req, res) => {
-  const rules = await listAutonomyRules();
-  return res.json({ success: true, rules, source: 'agents_autonomy_rules' });
+const autonomyRead = [authMiddleware, requireGestaoOrPermission('config', 'visualizar')];
+const autonomyWrite = [authMiddleware, requireGestaoOrPermission('config', 'agentes_ia_editar')];
+
+function autonomyError(res: Response, err: unknown) {
+  if (err instanceof AutonomyRuleValidationError) {
+    return res.status(400).json({ success: false, error: err.message });
+  }
+  console.error('[agents] autonomy-rules:', (err as Error)?.message);
+  return res.status(500).json({ success: false, error: 'Erro interno' });
+}
+
+function actorOf(req: Request): string {
+  return req.user?.email || req.user?.userId || 'desconhecido';
+}
+
+router.get('/autonomy-config', ...autonomyRead, async (_req, res) => {
+  try {
+    return res.json({ success: true, config: await getAgentesConfig() });
+  } catch (err) {
+    return autonomyError(res, err);
+  }
 });
 
-router.post('/autonomy-rules', authMiddleware, supervisorMiddleware, async (req, res) => {
-  const rule = await createAutonomyRule(req.body);
-  return res.status(201).json({ success: true, rule, source: 'agents_autonomy_rules' });
+router.put('/autonomy-config', ...autonomyWrite, async (req, res) => {
+  try {
+    const config = await updateAgentesConfig(req.body || {}, actorOf(req));
+    return res.json({ success: true, config });
+  } catch (err) {
+    return autonomyError(res, err);
+  }
 });
 
-router.put('/autonomy-rules/:id', authMiddleware, supervisorMiddleware, async (req, res) => {
-  const rule = await updateAutonomyRule(req.params.id, req.body);
-  if (!rule) return res.status(404).json({ success: false, error: 'Regra não encontrada' });
-  return res.json({ success: true, rule });
+router.get('/autonomy-rules', ...autonomyRead, async (_req, res) => {
+  try {
+    const rules = await listAutonomyRules();
+    return res.json({ success: true, rules, source: 'agents_autonomy_rules' });
+  } catch (err) {
+    return autonomyError(res, err);
+  }
 });
 
-router.delete('/autonomy-rules/:id', authMiddleware, supervisorMiddleware, async (req, res) => {
-  const rule = await deleteAutonomyRule(req.params.id);
-  if (!rule) return res.status(404).json({ success: false, error: 'Regra não encontrada' });
-  return res.json({ success: true, deleted: true });
+router.post('/autonomy-rules', ...autonomyWrite, async (req, res) => {
+  try {
+    const rule = await createAutonomyRule(req.body || {}, actorOf(req));
+    return res.status(201).json({ success: true, rule, source: 'agents_autonomy_rules' });
+  } catch (err) {
+    return autonomyError(res, err);
+  }
+});
+
+router.put('/autonomy-rules/:id', ...autonomyWrite, async (req, res) => {
+  try {
+    const rule = await updateAutonomyRule(req.params.id, req.body || {}, actorOf(req));
+    if (!rule) return res.status(404).json({ success: false, error: 'Regra não encontrada' });
+    return res.json({ success: true, rule });
+  } catch (err) {
+    return autonomyError(res, err);
+  }
+});
+
+router.delete('/autonomy-rules/:id', ...autonomyWrite, async (req, res) => {
+  try {
+    const rule = await deleteAutonomyRule(req.params.id);
+    if (!rule) return res.status(404).json({ success: false, error: 'Regra não encontrada' });
+    return res.json({ success: true, deleted: true });
+  } catch (err) {
+    return autonomyError(res, err);
+  }
 });
 
 router.post('/feedback', authMiddleware, async (req: Request, res: Response) => {

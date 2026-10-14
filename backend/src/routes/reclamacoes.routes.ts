@@ -13,7 +13,7 @@ import {
   listByOrgao,
   countByOrgao,
   countContagensByOrgao,
-  listByOrgaoGrupo,
+  listByOrgaoFiltro,
   RECLAMACAO_GRUPOS,
   countCasosEspeciaisByCpf,
   parseReclamacaoOrgaoRoute,
@@ -113,13 +113,17 @@ router.get('/:orgao', authMiddleware, async (req, res: Response) => {
     const skip = parseInt(String(req.query.skip ?? '0'), 10) || 0;
 
     const grupoQuery = String(req.query.grupo ?? '').trim();
-    if (grupoQuery) {
-      if (!(RECLAMACAO_GRUPOS as string[]).includes(grupoQuery)) {
+    const gestao = req.query.gestao === 'true';
+    if (grupoQuery || gestao) {
+      if (grupoQuery && !(RECLAMACAO_GRUPOS as string[]).includes(grupoQuery)) {
         return res.status(400).json({ message: 'Grupo inválido' });
       }
-      const sort = req.query.sort === 'sla' ? 'sla' : 'data';
-      const page = await listByOrgaoGrupo(orgao, grupoQuery as (typeof RECLAMACAO_GRUPOS)[number], {
-        sort,
+      const chips = String(req.query.chips ?? '').split(',').map((c) => c.trim()).filter(Boolean);
+      const page = await listByOrgaoFiltro(orgao, {
+        grupo: (grupoQuery || undefined) as (typeof RECLAMACAO_GRUPOS)[number] | undefined,
+        gestao,
+        chips,
+        sort: req.query.sort === 'sla' ? 'sla' : 'data',
         limit,
         skip,
       });

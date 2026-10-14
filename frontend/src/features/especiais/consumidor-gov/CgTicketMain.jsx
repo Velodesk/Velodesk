@@ -3,12 +3,10 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import EspeciaisDeskTicketView from '../shared/EspeciaisDeskTicketView';
-import { mapChannelStatusToBadgeClass } from '../shared/especiaisStatusBadge';
 import { useNotifications } from '../../../context/NotificationContext';
 import { lookupClient } from '../../../services/clientDb';
 import { mergeTicketInto } from '../../../services/desk/ticketMergeService';
 import { isDraftTicket } from '../../../services/ticketsCache';
-import { getStatusLabel } from '../../../services/especiais/consumidorGovData';
 import {
   formatCgDeadlineLabel,
   publishCgPublicResponse,
@@ -43,8 +41,6 @@ export default function CgTicketMain({
   }, [ticket]);
 
   const channelConfig = useMemo(() => ({
-    statusLabel: cgItem ? getStatusLabel(cgItem.statusGov) : '—',
-    statusClass: mapChannelStatusToBadgeClass(cgItem?.statusGov),
     deadlineLabel: cgItem ? formatCgDeadlineLabel(cgItem.prazoLegal) : '',
     deadlinePrefix: 'Prazo de resposta no Consumidor.gov',
     onPublishPublic: publishCgPublicResponse,

@@ -23,6 +23,7 @@ import {
   resolveDeskSearchEntriesAsync,
   pickNextTicketFromEntries,
   resolveDeskWorkingEntries,
+  isPendingAiApproval,
   countByQueue,
   getEntryTicketId,
   isDeskTableQueue,
@@ -82,7 +83,7 @@ import {
 } from '../../services/ticketsCache';
 import { apiTicketToCockpit, cockpitTicketToApi } from '../../api/adapters/ticketAdapter';
 import { lookupClient, upsertClientFromContact } from '../../services/clientDb';
-import { agentsApi, clientsApi, colaboradoresApi, ticketsApi } from '../../api/client';
+import { agentsApi, aiApprovalsApi, clientsApi, colaboradoresApi, ticketsApi } from '../../api/client';
 import { persistClienteContact, applyClienteDocToTicket, mapClienteDocToContact } from '../../api/adapters/clienteAdapter';
 import {
   approveWorkflowDecision,
@@ -301,7 +302,6 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   activeQueueRef.current = activeQueue;
   const lastUrlQueueRef = useRef(String(searchParams.get('queue') || '').trim());
   const [activeSort, setActiveSort] = useState('data');
-  const [entrySortOldestFirst, setEntrySortOldestFirst] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [queueCollapsed, setQueueCollapsed] = useState(() => (
@@ -464,7 +464,9 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     }
   }, [syncTicketViews, showNotification]);
 
-  const entries = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort, entrySortOldestFirst);
+  const allWorkingEntries = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort);
+  // Área de IA: só os tickets que o agente autônomo já respondeu e aguardam a aprovação humana.
+  const entries = hideComposer ? allWorkingEntries.filter((e) => isPendingAiApproval(e.ticket)) : allWorkingEntries;
   const isTableQueueView = isDeskTableQueue(activeQueue);
   const isResolvedQueue = activeQueue === 'resolvidos';
   const isMyTicketsQueue = isMeusTicketsQueue(activeQueue);
@@ -1090,7 +1092,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
 
     let nextId = plannedNextId;
     if (!nextId) {
-      const freshList = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort, entrySortOldestFirst);
+      const workingList = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort);
+      const freshList = hideComposer ? workingList.filter((e) => isPendingAiApproval(e.ticket)) : workingList;
       nextId = pickNextTicketFromEntries(listAnchorId, freshList);
     }
 
@@ -1113,7 +1116,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       openTicket(nextId);
       pendingAdvanceTicketIdRef.current = null;
     });
-  }, [activeQueue, appliedSearch, activeSort, entrySortOldestFirst, openTicket, closeTicketTab, activeTabId, persistTabSession, syncUrlTicketParam]);
+  }, [activeQueue, appliedSearch, activeSort, hideComposer, openTicket, closeTicketTab, activeTabId, persistTabSession, syncUrlTicketParam]);
 
   const selectMainTab = (tab) => {
     persistTabSession(activeTabId);
@@ -1160,10 +1163,10 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       return;
     }
 
-    let results = resolveDeskSearchEntries(q, activeSort, entrySortOldestFirst);
+    let results = resolveDeskSearchEntries(q, activeSort);
     if (!results.length) {
       try {
-        results = await resolveDeskSearchEntriesAsync(q, activeSort, entrySortOldestFirst);
+        results = await resolveDeskSearchEntriesAsync(q, activeSort);
       } catch {
         results = [];
       }
@@ -1191,13 +1194,13 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   useEffect(() => {
     const q = appliedSearch.trim();
     if (!q) return undefined;
-    const localResults = resolveDeskSearchEntries(q, activeSort, entrySortOldestFirst);
+    const localResults = resolveDeskSearchEntries(q, activeSort);
     if (localResults.length) return undefined;
 
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const apiResults = await resolveDeskSearchEntriesAsync(q, activeSort, entrySortOldestFirst);
+        const apiResults = await resolveDeskSearchEntriesAsync(q, activeSort);
         if (!cancelled && apiResults.length) {
           bumpTicketCacheView();
         }
@@ -1210,7 +1213,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [appliedSearch, activeSort, entrySortOldestFirst, bumpTicketCacheView]);
+  }, [appliedSearch, activeSort, bumpTicketCacheView]);
 
   // Notebook / janela estreita: recolhe a coluna de caixas sozinho (sem gravar a preferência);
   // ao voltar para tela larga, restaura o que o agente tinha escolhido.
@@ -1298,7 +1301,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     try {
     status = statusId || sendStatus;
     const savedListTicketId = getEntryTicketId(entry);
-    const workingListBeforeSave = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort, entrySortOldestFirst);
+    const workingListBeforeSave = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort);
     const plannedNextId = getAutoCloseOnSave()
       ? pickNextTicketFromEntries(savedListTicketId, workingListBeforeSave)
       : null;
@@ -2144,7 +2147,44 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     });
   }, [activeTicketId, threadLen, refreshKey]);
 
-  const ticketAi = useTicketAiSuggestions(ticket, rightFields, convMsgs, internalText, ticketCacheEpoch);
+  // Área de IA (hideComposer): a resposta e a tabulação JÁ vêm prontas do agente autônomo (aiAutomation.pendente);
+  // nada é gerado ao abrir o ticket, então a sugestão ao vivo fica desligada neste módulo.
+  const iaPending = hideComposer && ticket?.aiAutomation?.status === 'aguardando_aprovacao'
+    ? (ticket.aiAutomation.pendente || null)
+    : null;
+  const ticketAiLive = useTicketAiSuggestions(hideComposer ? null : ticket, rightFields, convMsgs, internalText, ticketCacheEpoch);
+  const ticketAi = useMemo(() => {
+    if (!hideComposer) return ticketAiLive;
+    if (!iaPending) {
+      return {
+        ...ticketAiLive,
+        loading: false,
+        error: null,
+        hasSuggestion: false,
+        respostaSugerida: '',
+        waitingMessage: 'Sem resposta pendente de aprovação neste ticket.',
+      };
+    }
+    const tab = iaPending.tabulacao || {};
+    return {
+      ...ticketAiLive,
+      loading: false,
+      error: null,
+      hasSuggestion: true,
+      auditComplete: true,
+      respostaSugerida: iaPending.resposta || '',
+      tabulacao: tab,
+      tabulacaoDisplay: [tab.tipo, tab.produto, tab.motivo, tab.detalhe].filter(Boolean).join(' → '),
+      tabulacaoFonte: 'atendimento',
+      hasTabulationSuggestion: Boolean(tab.produto),
+      tabulacaoIncomplete: false,
+      auditScore: typeof iaPending.auditScore === 'number' ? iaPending.auditScore : null,
+      auditAprovado: true,
+      waitingMessage: '',
+      showIaBar: true,
+      showIaSection: true,
+    };
+  }, [hideComposer, iaPending, ticketAiLive]);
 
   const sendCommitMenuState = useMemo(() => resolveSendCommitMenuState(
     sendStatusOptionsForMenu,
@@ -2680,9 +2720,33 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     }
   }, [ticketAi, showNotification]);
 
+  // Tabulação do agente já aplicada no painel ao abrir o ticket (o aprovador só confere/ajusta).
+  const iaPendingKey = iaPending ? `${ticket?.id || ticket?._id}:${iaPending.tentativa}` : '';
+  const iaTabApplyRef = useRef({ key: '', n: 0 });
+  useEffect(() => {
+    if (!iaPending || !iaPendingKey) return;
+    if (iaTabApplyRef.current.key !== iaPendingKey) iaTabApplyRef.current = { key: iaPendingKey, n: 0 };
+    if (String(rightFields?.produto || '').trim()) return;
+    if (iaTabApplyRef.current.n >= 3) return;
+    iaTabApplyRef.current.n += 1;
+    setRightFields((prev) => applyTabulationSuggestion(prev, iaPending.tabulacao, config));
+  }, [iaPending, iaPendingKey, rightFields?.produto, config]);
+
+  // Área de IA: só existe ticket aberto aqui se estiver aguardando aprovação. Aba/URL restaurada de um ticket que não é
+  // (ou deixou de ser) pendente — resolvido, nunca enfileirado, já aprovado — é fechada, sem reter pergunta antiga na tela.
+  const iaTicketId = String(ticket?.id || ticket?._id || '');
+  const iaTicketStale = hideComposer && Boolean(iaTicketId) && !isPendingAiApproval(ticket);
+  useEffect(() => {
+    if (!iaTicketStale) return;
+    delete tabSessionsRef.current[iaTicketId];
+    closeTicketTab(iaTicketId);
+    syncUrlTicketParam('');
+  }, [iaTicketStale, iaTicketId, closeTicketTab, syncUrlTicketParam]);
+
   const handleOpenAiFeedback = useCallback(() => {
     setAiFeedbackOpen(true);
   }, []);
+
 
   const handleCloseAiFeedback = useCallback(() => {
     setAiFeedbackOpen(false);
@@ -2713,6 +2777,27 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   const handleAiFeedbackGenerate = useCallback(async (inputOperador) => {
     setAiFeedbackBusy('gerar');
     try {
+      if (iaPending) {
+        // Fila de aprovação: reprovar = a IA refaz com o feedback (2ª reprovação devolve ao atendimento humano).
+        const id = String(ticket?.id || ticket?._id || '');
+        try {
+          const rejected = await aiApprovalsApi.reject(id, inputOperador || undefined);
+          if (rejected.status === 'aguardando_aprovacao') {
+            showNotification('Nova resposta gerada com base no feedback.', 'success');
+            await loadTicketDetailFromApi(id);
+            await syncTicketViews();
+          } else {
+            showNotification('Reprovado. O ticket voltou para o atendimento humano.', 'success');
+            await syncTicketViews();
+            advanceAfterSaveIfEnabled(id, null, id, true);
+          }
+          return { success: true };
+        } catch (err) {
+          const msg = err?.response?.data?.error || err?.message || 'Não foi possível reprovar.';
+          showNotification(msg, 'warning');
+          return { success: false, error: msg };
+        }
+      }
       const result = await ticketAi.requestRevision(inputOperador);
       if (result.success) {
         showNotification('Nova resposta gerada com base no feedback.', 'success');
@@ -2723,7 +2808,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     } finally {
       setAiFeedbackBusy(null);
     }
-  }, [ticketAi, showNotification]);
+  }, [ticketAi, iaPending, ticket, showNotification, syncTicketViews, advanceAfterSaveIfEnabled]);
 
   const handleUseIaReply = useCallback((nucleo) => {
     const wrapped = wrapComposerOpeningForTicket({
@@ -2746,7 +2831,22 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     if (iaSending) return;
     setIaSending(true);
     try {
+      if (iaPending) {
+        // Aprovação da resposta que o agente autônomo já deixou pronta: envia, tabula, assume e resolve.
+        const ticketId = String(ticket?.id || ticket?._id || '');
+        const merged = mergeRightFieldsWithDefaults(rightFields, ticket, getAgentName);
+        const tab = merged.produto
+          ? { tipo: merged.tipo || '', produto: merged.produto, motivo: merged.motivo || '', detalhe: merged.detalhe || '' }
+          : undefined;
+        await aiApprovalsApi.approve(ticketId, String(text || ''), tab);
+        showNotification('Resposta enviada ao cliente e ticket resolvido.', 'success');
+        await syncTicketViews();
+        advanceAfterSaveIfEnabled(ticketId, null, ticketId, true);
+        return;
+      }
       await handleCommitWithStatus('resolvidos', { composeOverride: String(text || ''), iaApproval: true });
+    } catch (err) {
+      showNotification(err?.response?.data?.error || err?.message || 'Não foi possível aprovar.', 'error');
     } finally {
       setIaSending(false);
     }
@@ -2785,8 +2885,6 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
           onSearchSubmit={handleSearchSubmit}
         onSelectTicket={selectTicket}
         onSortChange={setActiveSort}
-          entrySortOldestFirst={entrySortOldestFirst}
-          onToggleEntrySort={() => setEntrySortOldestFirst((v) => !v)}
         onCollapse={() => handleListCollapse(true)}
         onExpand={() => handleListCollapse(false)}
         onReload={reload}
@@ -2817,8 +2915,6 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
                 onSelectTicket={selectTicket}
                 onReload={reload}
                 refreshing={ticketsLoading}
-                entrySortOldestFirst={entrySortOldestFirst}
-                onToggleEntrySort={() => setEntrySortOldestFirst((v) => !v)}
               />
             ) : showTableQueueMain && isResolvedQueue ? (
               <DeskResolvedTicketTable
