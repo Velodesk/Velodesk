@@ -1223,6 +1223,43 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
+  // Expõe a largura REAL (medida, não só lida da var CSS) do painel de filas e da lista de
+  // tickets pra fora da árvore do React — o VeloNewsTicker (portal no body, fora do
+  // #velodeskDeskV2Root) soma as duas pra nunca nascer por cima de nenhuma das duas (ver
+  // --velonews-ticker-left em velodesk-ecosystem.css). Medir em vez de referenciar
+  // --desk-col-queue/--desk-col-list direto: essas variáveis são declaradas dentro de
+  // #velodeskDeskV2Root, então um var() setado no :root/<html> não as enxerga (custom property
+  // só cascateia pra descendente, nunca pra ancestral) — ficava sempre inválido e caía no 0px.
+  // ResizeObserver também mantém a ticker acompanhando ao vivo durante a transição de 0.28s.
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof ResizeObserver === 'undefined') return undefined;
+    const root = document.documentElement;
+    const queueEl = document.querySelector('#velodeskDeskV2Root .queue-panel');
+    const listEl = document.querySelector('#velodeskDeskV2Root .ticket-list-panel');
+
+    const updateQueueWidth = () => {
+      root.style.setProperty('--desk-queue-panel-w', `${queueEl?.offsetWidth || 0}px`);
+    };
+    const updateListWidth = () => {
+      root.style.setProperty('--desk-ticketlist-panel-w', `${listEl?.offsetWidth || 0}px`);
+    };
+
+    updateQueueWidth();
+    updateListWidth();
+
+    const queueObserver = queueEl ? new ResizeObserver(updateQueueWidth) : null;
+    queueObserver?.observe(queueEl);
+    const listObserver = listEl ? new ResizeObserver(updateListWidth) : null;
+    listObserver?.observe(listEl);
+
+    return () => {
+      queueObserver?.disconnect();
+      listObserver?.disconnect();
+      root.style.removeProperty('--desk-queue-panel-w');
+      root.style.removeProperty('--desk-ticketlist-panel-w');
+    };
+  }, [isTableQueueView]);
+
   const handleQueueCollapse = (collapsed) => {
     localStorage.setItem('velodeskCrmQueueCollapsed', collapsed ? '1' : '0');
     setQueueCollapsed(collapsed);
