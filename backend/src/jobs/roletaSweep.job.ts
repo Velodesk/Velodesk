@@ -1,6 +1,8 @@
 /**
- * roletaSweep.job v1.0.0 — distribui por rodízio os tickets órfãos acumulados entre os agentes
- * online (sem teto, sem gatilho de login/heartbeat). Ver distributeOrphansRoundRobin.
+ * roletaSweep.job v1.1.0 — distribui por rodízio os tickets órfãos acumulados entre os agentes
+ * online, respeitando o teto por agente só na janela de 8h–9h de Brasília (CAP_START/END_HOUR);
+ * fora dela, sem teto. Sem gatilho de login/heartbeat. Ver distributeOrphansRoundRobin /
+ * pickRoundRobinAgent / isWithinRoletaCapWindow.
  */
 import { isMongoConnected } from '../config/database';
 import { distributeOrphansRoundRobin } from '../services/assignmentRouter.service';
