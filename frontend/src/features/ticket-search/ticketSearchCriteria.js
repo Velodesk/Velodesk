@@ -17,7 +17,7 @@ export const SEARCH_FIELD_CATALOG = [
   { value: 'detalhe', label: 'Detalhe', input: 'tabulacao', operators: ['equals', 'contains', 'not_empty'] },
   { value: 'responsavel', label: 'Responsável', input: 'text', operators: ['equals', 'contains', 'not_empty'] },
   { value: 'atribuido', label: 'Atribuído', input: 'atribuido', operators: ['equals', 'not_empty'] },
-  { value: 'canal', label: 'Canal / origem', input: 'multi', operators: ['equals', 'not_empty'] },
+  { value: 'canal', label: 'Canal', input: 'tabulacao', operators: ['equals', 'contains', 'not_empty'] },
   { value: 'prioridade', label: 'Prioridade', input: 'multi', operators: ['equals', 'not_empty'] },
   { value: 'sla', label: 'SLA', input: 'multi', operators: ['equals'] },
   { value: 'workflow', label: 'Workflow', input: 'multi', operators: ['equals'] },
@@ -45,12 +45,47 @@ export const STATUS_OPTIONS = [
   { value: 'cancelado', label: 'Cancelado' },
 ];
 
-export const CANAL_OPTIONS = [
-  { value: 'digital', label: 'Digital / Desk' },
-  { value: 'reclame-aqui', label: 'Reclame Aqui' },
-  { value: 'procon', label: 'Procon' },
-  { value: 'email-inbound', label: 'E-mail inbound' },
-];
+const toOptions = (values) => [
+  ...new Set(values.map((v) => String(v ?? '').trim()).filter(Boolean)),
+].map((value) => ({ value, label: value }));
+
+/**
+ * Opções dos campos de tabulação lidas direto da configuração (sem fallback fixo).
+ * Inclui itens inativos: tickets antigos continuam gravados com esses valores e precisam ser buscáveis.
+ */
+export function searchTipoOptions(config) {
+  return toOptions(config?.opcoes?.tipoChamado || []);
+}
+
+export function searchCanalOptions(config) {
+  return toOptions(config?.opcoes?.canalContato || []);
+}
+
+export function searchProdutoOptions(config) {
+  return toOptions((config?.produtos || []).map((p) => p.produto));
+}
+
+function produtosEscopo(config, produtos) {
+  const wanted = new Set((produtos || []).map((p) => String(p).trim()).filter(Boolean));
+  const all = config?.produtos || [];
+  const scoped = wanted.size ? all.filter((p) => wanted.has(String(p.produto || '').trim())) : all;
+  return scoped.length ? scoped : all;
+}
+
+export function searchMotivoOptions(config, produtos) {
+  return toOptions(
+    produtosEscopo(config, produtos).flatMap((p) => (p.motivos || []).map((m) => m.motivo)),
+  );
+}
+
+export function searchDetalheOptions(config, produtos, motivos) {
+  const wanted = new Set((motivos || []).map((m) => String(m).trim()).filter(Boolean));
+  const motivosList = produtosEscopo(config, produtos).flatMap((p) => p.motivos || []);
+  const scoped = wanted.size
+    ? motivosList.filter((m) => wanted.has(String(m.motivo || '').trim()))
+    : motivosList;
+  return toOptions((scoped.length ? scoped : motivosList).flatMap((m) => (m.detalhes || []).map((d) => d.detalhe)));
+}
 
 export const PRIORIDADE_OPTIONS = [
   { value: 'media', label: 'Média' },

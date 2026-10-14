@@ -7,7 +7,6 @@ import { useTabulation } from '../../context/TabulationContext';
 import CriteriaMultiSelect from '../preferencias/components/CriteriaMultiSelect';
 import {
   ATRIBUIDO_SHORTCUTS,
-  CANAL_OPTIONS,
   OPERATOR_LABELS,
   PENDING_DECISION_OPTIONS,
   PRIORIDADE_OPTIONS,
@@ -19,6 +18,11 @@ import {
   criterioValores,
   getFieldDef,
   patchValores,
+  searchCanalOptions,
+  searchDetalheOptions,
+  searchMotivoOptions,
+  searchProdutoOptions,
+  searchTipoOptions,
 } from './ticketSearchCriteria';
 
 export default function TicketSearchCriteriaEditor({
@@ -28,12 +32,7 @@ export default function TicketSearchCriteriaEditor({
   incluirLegadoOcta = false,
   onIncluirLegadoOctaChange,
 }) {
-  const {
-    getProdutoNames,
-    getTipoChamadoOptions,
-    resolveMotivoOptions,
-    resolveDetalheOptions,
-  } = useTabulation();
+  const { config } = useTabulation();
 
   const list = Array.isArray(criterios) ? criterios : [];
 
@@ -62,26 +61,24 @@ export default function TicketSearchCriteriaEditor({
     if (campo === 'sla') valores = ['ok'];
     if (campo === 'atribuido') valores = ['__me__'];
     if (campo === 'prioridade') valores = ['media'];
-    if (campo === 'canal') valores = ['digital'];
     updateRow(index, patchValores({ campo, operador }, valores));
   };
 
   const tabOptionsFor = (campo, rows) => {
-    const produtoRows = rows.filter((r) => r.campo === 'produto');
-    const produtoValores = produtoRows.flatMap((r) => criterioValores(r));
-    const produto = produtoValores[0] || '';
-    const motivoRows = rows.filter((r) => r.campo === 'motivo');
-    const motivoValores = motivoRows.flatMap((r) => criterioValores(r));
-    const motivo = motivoValores[0] || '';
+    const valoresDe = (nome) => rows
+      .filter((r) => r.campo === nome && r.operador !== 'not_empty')
+      .flatMap((r) => criterioValores(r));
     switch (campo) {
       case 'tipoChamado':
-        return (getTipoChamadoOptions?.() || []).map((value) => ({ value, label: value }));
+        return searchTipoOptions(config);
+      case 'canal':
+        return searchCanalOptions(config);
       case 'produto':
-        return (getProdutoNames?.() || []).map((value) => ({ value, label: value }));
+        return searchProdutoOptions(config);
       case 'motivo':
-        return (resolveMotivoOptions?.(produto) || []).map((value) => ({ value, label: value }));
+        return searchMotivoOptions(config, valoresDe('produto'));
       case 'detalhe':
-        return (resolveDetalheOptions?.(produto, motivo) || []).map((value) => ({ value, label: value }));
+        return searchDetalheOptions(config, valoresDe('produto'), valoresDe('motivo'));
       default:
         return [];
     }
@@ -139,18 +136,6 @@ export default function TicketSearchCriteriaEditor({
           onChange={(next) => updateRowValores(index, next)}
           placeholder="Selecione status…"
           ariaLabel="Status"
-        />
-      );
-    }
-
-    if (row.campo === 'canal') {
-      return (
-        <CriteriaMultiSelect
-          options={CANAL_OPTIONS}
-          values={criterioValores(row)}
-          onChange={(next) => updateRowValores(index, next)}
-          placeholder="Selecione canal…"
-          ariaLabel="Canal"
         />
       );
     }

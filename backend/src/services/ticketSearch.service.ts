@@ -300,6 +300,7 @@ function buildCriterioClause(criterio: SearchCriterio): Record<string, unknown> 
     case 'produto':
     case 'motivo':
     case 'detalhe':
+    case 'canal':
     case 'responsavel':
       return exprTextMatch(lastTabFieldExpr(campo), operador, valores);
 
@@ -315,7 +316,6 @@ function buildCriterioClause(criterio: SearchCriterio): Record<string, unknown> 
       return exprTextMatch(lastTabFieldExpr('atribuido'), operador, valores);
     }
 
-    case 'canal':
     case 'channel':
     case 'source': {
       if (operador === 'not_empty') {
