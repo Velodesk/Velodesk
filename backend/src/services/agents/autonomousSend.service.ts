@@ -17,10 +17,13 @@ import {
 } from '../tabulation.service';
 import { clearAiSuggestionCache } from './agentSuggestionCache.util';
 import type { TicketAiTabulationResult } from './agentTypes';
-import type { AuthPayload } from '../../middleware/auth';
-import { applyManualResponsavelClaim } from '../assignmentRouter.service';
+import { AGENTE_AUTONOMO_RESPONSAVEL } from '../../config/agenteAutonomo';
 
-function toChamadoTabulacao(chamado: IChamadoN1, tab: TicketAiTabulationResult): ITabulacao {
+function toChamadoTabulacao(
+  chamado: IChamadoN1,
+  tab: TicketAiTabulationResult,
+  atribuido?: string,
+): ITabulacao {
   const current = chamado.tabulacao?.[chamado.tabulacao.length - 1];
   return {
     tipoChamado: tab.tipo,
@@ -30,8 +33,9 @@ function toChamadoTabulacao(chamado: IChamadoN1, tab: TicketAiTabulationResult):
     motivo3: current?.motivo3 || '',
     detalhe: tab.detalhe,
     canal: current?.canal || '',
-    responsavel: current?.responsavel || '',
-    atribuido: current?.atribuido || '',
+    // O agente autônomo é o responsável (identidade fixa, sem conta de usuário); quem audita fica em `atribuido`.
+    responsavel: AGENTE_AUTONOMO_RESPONSAVEL,
+    atribuido: atribuido ?? current?.atribuido ?? '',
   };
 }
 
@@ -62,7 +66,7 @@ export async function sendAutonomousReply(
   messageText: string,
   tabulacao: TicketAiTabulationResult,
   metadados: Record<string, unknown> = {},
-  opts: { statusFinal?: 'resolvido'; claimBy?: AuthPayload } = {},
+  opts: { statusFinal?: 'resolvido'; atribuidoPor?: string } = {},
 ): Promise<void> {
   assertChamadoModifiable(chamado);
 
@@ -76,8 +80,7 @@ export async function sendAutonomousReply(
     ...metadados,
   });
 
-  chamado.tabulacao = [toChamadoTabulacao(chamado, tabulacao)];
-  if (opts.claimBy) applyManualResponsavelClaim(chamado, opts.claimBy);
+  chamado.tabulacao = [toChamadoTabulacao(chamado, tabulacao, opts.atribuidoPor)];
 
   const status = currentStatus(chamado);
   const novoStatus = opts.statusFinal || (status === 'novo' ? 'em-andamento' : null);

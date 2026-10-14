@@ -12,6 +12,7 @@ import { enqueueForApproval, canAttemptAutonomous, recordDirectSend } from './ai
 import { sendAutonomousReply, validateTabulacaoForAutonomy } from './autonomousSend.service';
 import { evaluateStrictGate } from './autonomyGate.util';
 import { wrapComposerOpening } from '../clientMessageEnvelope.service';
+import { AGENTE_AUTONOMO_ENVELOPE_NOME } from '../../config/agenteAutonomo';
 import type {
   AtendimentoInput,
   AtendimentoResult,
@@ -346,6 +347,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
         nucleo: respostaAtual,
         clientName: input.clientName,
         messages: input.messages,
+        agentName: AGENTE_AUTONOMO_ENVELOPE_NOME,
       });
       await sendAutonomousReply(chamado, composerText, tabulacaoAtual);
       await recordDirectSend(input.ticketId!, attempt);

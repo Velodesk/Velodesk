@@ -171,11 +171,11 @@ export default function IaTicketReview({
           </div>
         </section>
 
-        <section className="ia-review__card ia-review__suggestion" aria-label="Sugestão de resposta da IA">
+        <section className="ia-review__card ia-review__suggestion" aria-label="Resposta">
           <div className="ia-review__suggestion-head">
             <span className="ia-review__suggestion-icon" aria-hidden="true"><i className="ti ti-sparkles" /></span>
             <div className="ia-review__suggestion-title">
-              <h2>Sugestão de resposta da IA</h2>
+              <h2>Resposta</h2>
               <p>Será enviada{channel ? ` por ${channel}` : ''} para {firstName}</p>
             </div>
             {score != null && hasSuggestion ? (

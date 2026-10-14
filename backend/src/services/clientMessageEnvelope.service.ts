@@ -14,6 +14,8 @@ export interface WrapComposerOpeningParams {
   clientName?: string;
   messages?: TicketAiMessageInput[];
   modo?: EnvelopeModo;
+  /** Nome do agente na apresentação do 1º contato ("Eu sou X, do time de atendimento Velotax."). */
+  agentName?: string;
 }
 
 export function detectEnvelopeModo(messages?: TicketAiMessageInput[]): EnvelopeModo {
@@ -69,6 +71,11 @@ export function wrapComposerOpening(params: WrapComposerOpeningParams): string {
 
   if (modo === 'continuacao') {
     return [saudacaoCurta, '', nucleo].join('\n');
+  }
+
+  const agentName = trimStr(params.agentName, 120);
+  if (agentName) {
+    return [saudacaoLonga, '', `Eu sou ${agentName}, do time de atendimento Velotax.`, '', nucleo].join('\n');
   }
 
   return [saudacaoLonga, '', nucleo].join('\n');

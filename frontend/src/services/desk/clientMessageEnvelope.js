@@ -18,6 +18,25 @@ function resolveClientGreetingName(clientName) {
   return resolveClientFirstName(clientName);
 }
 
+/** Identidade fixa do agente autônomo de IA (espelha backend/src/config/agenteAutonomo.ts). */
+export const AGENTE_AUTONOMO_RESPONSAVEL = 'Agente Autônomo';
+export const AGENTE_AUTONOMO_ENVELOPE_NOME = 'CláudIA';
+
+function normalizeLabel(value) {
+  return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+}
+
+/**
+ * Ticket tratado pelo agente autônomo (responsável = "Agente Autônomo") se apresenta como CláudIA,
+ * nunca com o nome de quem está logado.
+ */
+export function resolveEnvelopeAgentName(ticket, agentName) {
+  const responsavel = ticket?.lateralForm?.responsavel ?? ticket?.responsavel ?? '';
+  return normalizeLabel(responsavel) === normalizeLabel(AGENTE_AUTONOMO_RESPONSAVEL)
+    ? AGENTE_AUTONOMO_ENVELOPE_NOME
+    : agentName;
+}
+
 function resolveAgentDisplayName(agentName) {
   const name = trimStr(agentName, 120);
   return name || 'Atendimento Velotax';
@@ -112,7 +131,7 @@ export function wrapComposerOpeningForTicket({ nucleo, ticket, agentName }) {
   return wrapComposerOpening({
     nucleo,
     clientName,
-    agentName,
+    agentName: resolveEnvelopeAgentName(ticket, agentName),
     modo,
   });
 }
@@ -171,7 +190,7 @@ export function wrapComposerOpeningForTicketHtml({ nucleoHtml, ticket, agentName
   return wrapComposerOpeningHtml({
     nucleoHtml,
     clientName,
-    agentName,
+    agentName: resolveEnvelopeAgentName(ticket, agentName),
     modo,
   });
 }
