@@ -1,7 +1,7 @@
 /**
  * TicketPrintModal v1.1.0 — filtros do extrato do ticket (padrão Octadesk), Desk e casos especiais.
  * Ao confirmar, abre o extrato numa nova aba pronto para Ctrl+P → Salvar como PDF.
- * "Detalhamento das interações" e "Informações de SLA" ficam visíveis como Fase 2, desabilitados.
+ * "Eventos" (detalhamento das interações) e "Informações de SLA" ficam visíveis como Fase 2, desabilitados.
  */
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -9,13 +9,13 @@ import { DEFAULT_TICKET_PRINT_OPTIONS, openTicketExtract } from '../../../servic
 import { getTicketProtocolLabel } from '../../../services/desk/utils';
 
 const FILTERS = [
-  { id: 'publicas', label: 'Interações públicas', swatch: 'publica' },
-  { id: 'internas', label: 'Anotações internas', swatch: 'interna' },
+  { id: 'publicas', label: 'Resposta Pública', swatch: 'publica' },
+  { id: 'internas', label: 'Notas', swatch: 'interna' },
   { id: 'automaticas', label: 'Ações automáticas', swatch: 'automatica' },
 ];
 
 const EXTRAS = [
-  { id: 'detalhamento', label: 'Detalhamento das interações' },
+  { id: 'detalhamento', label: 'Eventos' },
   { id: 'sla', label: 'Informações de SLA (prazos)' },
 ];
 
