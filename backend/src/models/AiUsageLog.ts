@@ -8,6 +8,7 @@ export type AiUsageProvider = 'openai' | 'gemini';
 
 export type AiUsageFeature =
   | 'atendimento'
+  | 'atendimento_classificacao'
   | 'auditoria'
   | 'criticidade_triagem'
   | 'gestao_chamados'

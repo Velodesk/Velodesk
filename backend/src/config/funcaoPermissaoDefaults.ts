@@ -37,6 +37,7 @@ export const ACESSO_MODULO_IDS: string[] = [
   'reports',
   'tickets-resolvidos',
   'legado-octa',
+  'aprovacao-ia',
 ];
 
 export const PERMISSION_CATALOG: Record<string, string[]> = {
@@ -61,6 +62,7 @@ export const PERMISSION_CATALOG: Record<string, string[]> = {
     'automacoes_editar',
     'automacoes_excluir',
     'workflows_editar',
+    'agentes_ia_editar',
   ],
   especiais: [
     'reclame_aqui_gerenciar',

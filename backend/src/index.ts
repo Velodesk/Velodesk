@@ -55,6 +55,7 @@ import macrosRoutes from './routes/macros.routes';
 import ticketIaAnalysisRoutes from './routes/ticketIaAnalysis.routes';
 import telephonyRoutes from './routes/telephony.routes';
 import consultasRoutes from './routes/consultas.routes';
+import aiApprovalsRoutes from './routes/aiApprovals.routes';
 import ticketSearchRoutes from './routes/ticketSearch.routes';
 import ticketFusaoRoutes from './routes/ticketFusao.routes';
 import reclamacoesRoutes from './routes/reclamacoes.routes';
@@ -223,6 +224,7 @@ app.use('/api/macros', macrosRoutes);
 app.use('/api/ticket-ia-analysis', ticketIaAnalysisRoutes);
 app.use('/api/telephony', telephonyRoutes);
 app.use('/api/consultas', consultasRoutes);
+app.use('/api/ai-approvals', aiApprovalsRoutes);
 app.use('/api/ticket-search', ticketSearchRoutes);
 app.use('/api/ticket-fusao', ticketFusaoRoutes);
 app.use('/api/reclamacoes', reclamacoesRoutes);
@@ -381,7 +383,6 @@ async function start() {
         const agentsStatus = getAgentsStatus();
         console.log('[agents] Programa de agentes paralelos ativo.', {
           configured: agentsStatus.configured,
-          autonomy: env.agentsAutonomyEnabled,
         });
         startGestaoChamadosJob();
       }

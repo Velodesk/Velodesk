@@ -17,6 +17,9 @@ import {
   validateTabulationResult,
   isPrimeiroContatoAgente,
   isLiteralClientQuote,
+  buildClassificacaoUserBlock,
+  CLASSIFICACAO_JSON_SCHEMA,
+  CLASSIFICACAO_SYSTEM_PROMPT,
 } from './agentTabulation.util';
 import {
   createOpenAiClient,
@@ -224,6 +227,56 @@ export async function reviseAtendimento(params: RevisaoInput): Promise<Atendimen
     };
   } catch (err) {
     console.error('[agent-atendimento-revise]', err);
+    return { success: false, error: mapOpenAiErrorMessage(err) };
+  }
+}
+
+/**
+ * Etapa 1 da hidratação: chamada curta (sem POPs, sem redação) só para o agente decidir produto/motivo.
+ * O resultado define qual consulta da conta será feita antes de redigir a resposta.
+ */
+export async function classifyAtendimento(
+  params: AtendimentoInput,
+): Promise<{ success: boolean; tabulacao?: AtendimentoResult['tabulacao']; error?: string }> {
+  if (!isAgentsConfigured()) return { success: false, error: 'Agentes não configurados' };
+
+  try {
+    const config = await loadTabulationConfig();
+    const userBlock = buildClassificacaoUserBlock(params, buildTabulationCatalog(config));
+    const openai = createOpenAiClient();
+    const response = await openai.responses.create({
+      model: env.openaiModel,
+      input: [
+        { role: 'system', content: CLASSIFICACAO_SYSTEM_PROMPT },
+        { role: 'user', content: userBlock },
+      ],
+      text: {
+        format: { type: 'json_schema', name: 'agent_classificacao', schema: CLASSIFICACAO_JSON_SCHEMA, strict: true },
+      },
+    });
+
+    if (response.usage) {
+      void logAiUsage({
+        provider: 'openai',
+        model: response.model || env.openaiModel,
+        feature: 'atendimento_classificacao',
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        cachedInputTokens: response.usage.input_tokens_details?.cached_tokens,
+        reasoningTokens: response.usage.output_tokens_details?.reasoning_tokens,
+        ticketId: params.ticketId,
+        protocolo: params.protocolo,
+        userId: params.userId,
+      });
+    }
+
+    const parsed = parseAiJson<{ tipo?: string; produto?: string; motivo?: string; detalhe?: string }>(
+      extractOutputText(response),
+    );
+    if (!parsed) return { success: false, error: 'Classificação inválida' };
+    return { success: true, tabulacao: validateTabulationResult(parsed, config) };
+  } catch (err) {
+    console.warn('[agent-atendimento] classificação falhou (fail-soft):', (err as Error)?.message);
     return { success: false, error: mapOpenAiErrorMessage(err) };
   }
 }

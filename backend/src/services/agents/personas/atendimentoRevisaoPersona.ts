@@ -6,7 +6,7 @@ import { getAtendimentoPersona } from './atendimentoPersona';
 import { getAgentNomeOficial } from '../agentRegistry';
 
 export interface RevisaoPersonaParams {
-  origemRevisao: 'automatica_baixo_compliance' | 'solicitada_operador';
+  origemRevisao: 'automatica_baixo_compliance' | 'solicitada_operador' | 'reprovada_humano';
   inputOperador?: string;
   violacoes?: string[];
   recomendacoes?: string[];
@@ -20,7 +20,9 @@ export function getAtendimentoRevisaoPersona(params: RevisaoPersonaParams): stri
   const base = getAtendimentoPersona();
   const origemLabel = params.origemRevisao === 'solicitada_operador'
     ? 'solicitada_operador: o agente humano solicitou revisão. Considere OBRIGATORIAMENTE o input do operador.'
-    : `automatica_baixo_compliance: o ${getAgentNomeOficial(2)} atribuiu score abaixo do threshold. Corrija as violações e recomendações listadas — use-as como feedback obrigatório de aprendizado — sem alterar o que já estava correto.`;
+    : params.origemRevisao === 'reprovada_humano'
+      ? 'reprovada_humano: um auditor humano REPROVOU esta resposta antes do envio ao cliente. Se houver input do operador, ele é o feedback do auditor e deve ser considerado OBRIGATORIAMENTE; sem input, reescreva buscando mais aderência ao POP, clareza e precisão.'
+      : `automatica_baixo_compliance: o ${getAgentNomeOficial(2)} atribuiu score abaixo do threshold. Corrija as violações e recomendações listadas — use-as como feedback obrigatório de aprendizado — sem alterar o que já estava correto.`;
 
   const extraBlocks: string[] = [
     '',

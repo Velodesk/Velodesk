@@ -12,7 +12,7 @@ import WorkflowsConfigSection from './workflow/WorkflowsConfigSection';
 import EmailConfigSection from './email/EmailConfigSection';
 import MacrosConfigSection from './macros/MacrosConfigSection';
 import ApiExternaConfigSection from './api/ApiExternaConfigSection';
-import TicketIaConfigSection from './ai/TicketIaConfigSection';
+import AgentesIaConfigSection from './agentes/AgentesIaConfigSection';
 import { usePermissions } from '../../context/PermissionContext';
 
 export default function ConfigView() {
@@ -112,8 +112,8 @@ export default function ConfigView() {
                 <EmailConfigSection />
               ) : section === 'api' ? (
                 <ApiExternaConfigSection />
-              ) : section === 'ticket-ia' ? (
-                <TicketIaConfigSection />
+              ) : section === 'agentes-ia' ? (
+                <AgentesIaConfigSection />
               ) : (
                 <p className="config-placeholder-msg">
                   Editor de {active?.label?.toLowerCase()} — em desenvolvimento.

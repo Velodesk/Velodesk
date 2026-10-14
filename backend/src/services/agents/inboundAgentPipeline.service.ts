@@ -4,54 +4,12 @@
  */
 import type { IChamadoN1 } from '../../models/ChamadoN1';
 import { env } from '../../config/env';
-import { currentStatus } from '../chamado.mapper';
 import { runAgentPipeline } from './agentOrchestrator.service';
-import type { TicketAiMessageInput } from './agentTypes';
 import { shouldSkipAgentPipeline } from './casosEspeciais.util';
 import { runCasosEspeciaisTriagem } from './casosEspeciaisTrigger.service';
 import { ChamadoN1 } from '../../models/ChamadoN1';
-import {
-  buildTicketIaInternalNotesFromChamado,
-  buildTicketIaMessagesFromChamado,
-  hasMeaningfulClientContextInChamado,
-} from '../ticketIaAdapter.service';
-import { resolveChamadoClientName } from '../placeholders.util';
-
-function extractMessagesFromChamado(chamado: IChamadoN1): TicketAiMessageInput[] {
-  return buildTicketIaMessagesFromChamado(chamado).map((item) => ({
-    role: item.role,
-    text: item.text,
-  }));
-}
-
-function extractCanal(chamado: IChamadoN1): string {
-  const meta = chamado.registro?.[0]?.metadados || {};
-  if (meta.source === 'email-inbound') return 'E-mail';
-  return 'digital';
-}
-
-/**
- * Primeira nota interna do agente com conteúdo, em qualquer posição do registro
- * (não só o evento inicial) — cobre tanto anotações internas explícitas quanto
- * o resumo automático de ligação (gravado como mensagemPublica de origem "agente").
- */
-function findFirstInternalContextNote(chamado: IChamadoN1): string {
-  for (const reg of chamado.registro || []) {
-    const note = String(reg.anotacaoInterna || '').trim();
-    if (note) return note;
-  }
-  const isTelephony = (chamado.registro || []).some(
-    (reg) => String(reg.metadados?.source ?? '').trim().toLowerCase() === 'telephony-inbound',
-  );
-  if (!isTelephony) return '';
-
-  for (const reg of chamado.registro || []) {
-    if (reg.origin === 'cliente') continue;
-    const pub = String(reg.mensagemPublica || '').trim();
-    if (pub) return pub;
-  }
-  return '';
-}
+import { buildInboundPipelineInput } from './inboundPipelineInput.util';
+import { isAutonomyEnabled } from './autonomyRules.service';
 
 export async function runInboundAgentPipeline(
   chamado: IChamadoN1,
@@ -66,31 +24,16 @@ export async function runInboundAgentPipeline(
   }
 
   try {
-    const messages = extractMessagesFromChamado(chamado);
-    const hasClient = hasMeaningfulClientContextInChamado(chamado);
-    // Com msg do cliente, ainda assim leva as anotações internas como contexto adicional
-    // (o Agente 1 as usa independente do contextSource) — sem elas, cai no resumo automático
-    // de ligação/1ª nota, único contexto disponível quando não há msg do cliente.
-    const internalNote = hasClient
-      ? buildTicketIaInternalNotesFromChamado(chamado)
-      : findFirstInternalContextNote(chamado);
-    if (!hasClient && !internalNote) return;
+    const base = await buildInboundPipelineInput(chamado);
+    if (!base) return;
 
-    const pipelineModo = env.agentsAutonomyEnabled ? 'inbound' as const : 'desk' as const;
+    // Chamado bloqueado para a IA (2ª reprovação humana) nunca volta ao modo autônomo:
+    // continua só com a sugestão normal para o atendente.
+    const pipelineModo = !chamado.aiAutomation?.bloqueadoIA && await isAutonomyEnabled()
+      ? 'inbound' as const
+      : 'desk' as const;
 
-    const result = await runAgentPipeline({
-      ticketId: chamado._id.toString(),
-      protocolo: chamado.chamadoProtocolo,
-      titulo: chamado.chamadoTitulo,
-      canal: extractCanal(chamado),
-      status: currentStatus(chamado),
-      clientName: await resolveChamadoClientName(chamado),
-      nomeOperador: 'Atendimento Velotax',
-      contextSource: hasClient ? 'public' : 'internal',
-      messages: hasClient ? messages : undefined,
-      internalNote: internalNote || undefined,
-      pipelineModo,
-    });
+    const result = await runAgentPipeline({ ...base, pipelineModo });
 
     console.info('[inbound-agent-pipeline]', {
       protocolo: chamado.chamadoProtocolo,

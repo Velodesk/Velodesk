@@ -66,6 +66,7 @@ export const NAV_ITEMS = [
   { id: 'reports', path: '/reports', label: 'Relatórios', icon: 'ti-chart-bar', tooltip: 'Relatórios' },
   { id: 'tickets', path: '/tickets', label: 'Tickets', icon: 'ti-ticket', tooltip: 'Tickets' },
   { id: 'ia', path: '/ia', label: 'IA', icon: 'ti-sparkles', tooltip: 'Inteligência Artificial' },
+  { id: 'aprovacao-ia', path: '/aprovacao-ia', label: 'Aprovação IA', icon: 'ti-robot', tooltip: 'Aprovação das respostas da IA' },
   {
     id: 'busca-tickets',
     path: '/busca-tickets',

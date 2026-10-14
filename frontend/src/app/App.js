@@ -64,6 +64,7 @@ import AiUsageDetailPage from '../features/workspace/components/gestaoDetail/AiU
 import CsatDetailPage from '../features/workspace/components/gestaoDetail/CsatDetailPage';
 import AtendimentoIaTelefonicoPage from '../pages/AtendimentoIaTelefonicoPage';
 import IaPage from '../pages/IaPage';
+import AprovacaoIaPage from '../pages/AprovacaoIaPage';
 import { PermissionProvider } from '../context/PermissionContext';
 
 import { initCockpitGlobals } from '../config/cockpitConfig';
@@ -109,6 +110,7 @@ function AppRoutes() {
             { path: 'tickets', element: React.createElement(TicketsPage) },
 
             { path: 'ia/*', element: React.createElement(IaPage) },
+            { path: 'aprovacao-ia', element: React.createElement(AprovacaoIaPage) },
 
             { path: 'alteracoes-cadastrais', element: React.createElement(AlteracoesCadastraisPage) },
 

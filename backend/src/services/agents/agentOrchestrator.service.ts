@@ -7,8 +7,10 @@
 import { ChamadoN1 } from '../../models/ChamadoN1';
 import type { IChamadoN1 } from '../../models/ChamadoN1';
 import { env } from '../../config/env';
-import { appendMessage, assertChamadoModifiable, currentStatus } from '../chamado.mapper';
-import { notifyAgentReplyAsync } from '../emailNotification.service';
+import { currentStatus } from '../chamado.mapper';
+import { enqueueForApproval, canAttemptAutonomous, recordDirectSend } from './aiAutomation.service';
+import { sendAutonomousReply, validateTabulacaoForAutonomy } from './autonomousSend.service';
+import { evaluateStrictGate } from './autonomyGate.util';
 import { wrapComposerOpening } from '../clientMessageEnvelope.service';
 import type {
   AtendimentoInput,
@@ -22,15 +24,21 @@ import type {
   TicketAiTabulationResult,
 } from './agentTypes';
 import { buildTabulationDisplay, tabulationCompletenessScore } from './agentTabulation.util';
-import { composeAtendimento, reviseAtendimento } from './atendimentoAgent.service';
+import { classifyAtendimento, composeAtendimento, reviseAtendimento } from './atendimentoAgent.service';
 import { validateAuditoria } from './auditoriaAgent.service';
 import { saveAgentFeedback } from './agentFeedback.service';
-import { evaluateAutonomy } from './autonomyRules.service';
+import { evaluateAutonomy, isHidratacaoEnabled } from './autonomyRules.service';
+import {
+  hydrateForRevision,
+  hydrateProductForTicket,
+  slugFromTabulacaoProduto,
+  type HidratacaoResult,
+} from '../consultaHidratacao.service';
 import { executeGestaoHandoff } from './gestaoChamadosHandoff.service';
 import { hasCasosEspeciaisTriagem } from './casosEspeciais.util';
 import { getAgentNomeOficial } from './agentRegistry';
 import { isPersistedMongoTicketId } from '../../utils/persistedTicketId';
-import { clearAiSuggestionCache, computeCanonicalFingerprint, writeAiSuggestionCache } from './agentSuggestionCache.util';
+import { computeCanonicalFingerprint, writeAiSuggestionCache } from './agentSuggestionCache.util';
 
 function resolveDeskTabulacao(
   audit: AuditoriaResult,
@@ -95,40 +103,6 @@ async function persistAgentSuggestion(
   );
 }
 
-async function sendAutonomousReply(
-  chamado: IChamadoN1,
-  messageText: string,
-): Promise<void> {
-  assertChamadoModifiable(chamado);
-  const registroIndex = chamado.registro?.length || 0;
-  appendMessage(chamado, messageText, false, 'Agente IA', [], {
-    agentAutonomousSend: true,
-    agentRun: { at: new Date().toISOString() },
-  });
-
-  const status = currentStatus(chamado);
-  if (status === 'novo') {
-    chamado.registro.push({
-      data: new Date(),
-      origin: 'agente',
-      autor: 'Agente IA',
-      mensagemPublica: '',
-      anexosMensagemPublica: [],
-      anotacaoInterna: '',
-      anexosAnotacaoInterna: [],
-      alteracoes: [{ status: 'em-andamento' }],
-      metadados: {},
-      status: 'em-andamento',
-    });
-  }
-
-  await chamado.save();
-  await notifyAgentReplyAsync(chamado, messageText, undefined, registroIndex);
-  void clearAiSuggestionCache(chamado._id.toString()).catch((err) => {
-    console.warn('[agent-pipeline] clearAiSuggestionCache (envio autônomo) fail-soft:', (err as Error)?.message);
-  });
-}
-
 export async function runAgentPipeline(input: PipelineInput): Promise<PipelineResult> {
   const auditModo = auditModoFromPipeline(input.pipelineModo);
   const maxRevisions = env.agentRevisionMaxAttempts;
@@ -140,6 +114,28 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
   }
 
   input.onStage?.('gerando');
+
+  // Hidratação em 2 etapas, com o próprio agente decidindo o produto: (1) classificação curta →
+  // (2) consulta só desse produto na conta do cliente → (3) redação já com os dados reais.
+  const hidEnabled = Boolean(chamado) && await isHidratacaoEnabled();
+  let hid: HidratacaoResult | null = null;
+  if (hidEnabled) {
+    const classe = await classifyAtendimento(input);
+    const slug = classe.success ? slugFromTabulacaoProduto(classe.tabulacao?.produto) : null;
+    if (slug) {
+      const contextText = [input.titulo, ...(input.messages || []).map((m) => m.text), input.internalNote]
+        .filter(Boolean).join(' ');
+      hid = await hydrateProductForTicket({
+        ticketId: input.ticketId,
+        protocolo: input.protocolo,
+        slug,
+        motivo: classe.tabulacao?.motivo,
+        contextText,
+      });
+      if (hid.bloco) input = { ...input, dadosConta: hid.bloco };
+    }
+  }
+
   let atendimento: AtendimentoResult = await composeAtendimento(input);
   if (!atendimento.success || !atendimento.respostaSugerida || !atendimento.tabulacao) {
     return {
@@ -149,6 +145,9 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     };
   }
 
+  if (!atendimento.respostaSugerida || !atendimento.tabulacao) {
+    return { success: false, error: `Falha no ${getAgentNomeOficial(1)}`, source: 'agent_pipeline' };
+  }
   let respostaAtual = atendimento.respostaSugerida;
   let tabulacaoAtual = atendimento.tabulacao;
 
@@ -164,6 +163,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     respostaSugerida: respostaAtual,
     tabulacao: tabulacaoAtual,
     userId: input.userId,
+    dadosConta: input.dadosConta,
   });
 
   if (!audit.success) {
@@ -216,6 +216,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
       respostaSugerida: respostaAtual,
       tabulacao: tabulacaoAtual,
       userId: input.userId,
+      dadosConta: input.dadosConta,
     });
 
     if (!audit.success) break;
@@ -262,6 +263,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     revisoesRealizadas,
     model: atendimento.model,
     source: 'agent_pipeline',
+    ...(hid ? { hidratacao: { slug: hid.slug, status: hid.status } } : {}),
   };
 
   /**
@@ -287,7 +289,17 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     && audit.aprovado
     && atendimento.confidence !== 'baixa';
 
-  if (canTryAutonomous && chamado) {
+  if (input.pipelineModo !== 'desk' && !(canTryAutonomous && chamado && canAttemptAutonomous(chamado))) {
+    console.info('[agent-autonomo] não tentou resposta autônoma', {
+      protocolo: input.protocolo,
+      decisao: audit.decisao,
+      aprovado: audit.aprovado,
+      confidence: atendimento.confidence,
+      emAndamentoOuBloqueado: chamado ? !canAttemptAutonomous(chamado) : null,
+    });
+  }
+
+  if (canTryAutonomous && chamado && canAttemptAutonomous(chamado)) {
     const autonomy = await evaluateAutonomy({
       tabulacao: tabulacaoAtual,
       canal: input.canal,
@@ -297,13 +309,46 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
       responseText: respostaAtual,
     });
 
-    if (autonomy.allowed) {
+    // Régua estrita + tabulação real da árvore: qualquer falha deixa o chamado com o humano.
+    // Com hidratação ligada, produto com consulta disponível só vai a autônomo se os dados reais
+    // daquele mesmo produto vieram (tabulação final diferente da consultada também barra).
+    const slugFinal = slugFromTabulacaoProduto(tabulacaoAtual.produto);
+    const exigeDados = hidEnabled && slugFinal !== null;
+    const gate = !autonomy.allowed
+      ? { ok: false, reason: autonomy.reason }
+      : exigeDados && !(hid?.status === 'ok' && hid.slug === slugFinal)
+        ? { ok: false, reason: 'Dados da conta do cliente indisponíveis para este produto' }
+        : evaluateStrictGate({
+          audit,
+          confidence: atendimento.confidence,
+          tabulacao: tabulacaoAtual,
+          minAuditScoreEstrito: autonomy.minAuditScoreEstrito ?? 95,
+        });
+    const tabCheck = gate.ok ? await validateTabulacaoForAutonomy(chamado, tabulacaoAtual) : { ok: false, reason: gate.reason };
+
+    if (autonomy.allowed && gate.ok && tabCheck.ok) {
+      const attempt = {
+        resposta: respostaAtual,
+        tabulacao: tabulacaoAtual,
+        audit,
+        confidence: atendimento.confidence,
+        model: atendimento.model,
+        ruleId: autonomy.matchedRuleId,
+      };
+
+      if (autonomy.modoEnvio !== 'envio_direto') {
+        await enqueueForApproval(input.ticketId!, attempt);
+        pipelineResult.aguardandoAprovacao = true;
+        return pipelineResult;
+      }
+
       const composerText = wrapComposerOpening({
         nucleo: respostaAtual,
         clientName: input.clientName,
         messages: input.messages,
       });
-      await sendAutonomousReply(chamado, composerText);
+      await sendAutonomousReply(chamado, composerText, tabulacaoAtual);
+      await recordDirectSend(input.ticketId!, attempt);
       await saveAgentFeedback({
         ticketId: input.ticketId,
         protocolo: input.protocolo,
@@ -315,6 +360,13 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
       });
       pipelineResult.envioAutonomo = true;
       return pipelineResult;
+    }
+
+    if (autonomy.allowed) {
+      console.info('[agent-autonomo] caso liberado pela regra mas barrado — segue com o humano', {
+        protocolo: input.protocolo,
+        motivo: tabCheck.reason,
+      });
     }
   }
 
@@ -339,8 +391,16 @@ export async function runRevisarSugestao(params: {
     return { success: false, error: 'Tabulação atual obrigatória' };
   }
 
+  const dadosConta = params.input.dadosConta ?? await hydrateForRevision({
+    ticketId: params.input.ticketId,
+    protocolo: params.input.protocolo,
+    produto: params.tabulacaoAtual.produto,
+    motivo: params.tabulacaoAtual.motivo,
+  });
+
   const revised = await reviseAtendimento({
     ...params.input,
+    dadosConta,
     respostaAnterior: params.respostaAtual,
     tabulacaoAnterior: params.tabulacaoAtual,
     origemRevisao: params.origemRevisao,
@@ -364,6 +424,7 @@ export async function runRevisarSugestao(params: {
     respostaSugerida: revised.respostaSugerida,
     tabulacao: revised.tabulacao,
     userId: params.input.userId,
+    dadosConta,
   });
 
   await saveAgentFeedback({

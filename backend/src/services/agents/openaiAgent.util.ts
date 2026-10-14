@@ -120,7 +120,6 @@ export function getAgentsStatus(): {
   configured: boolean;
   missing: string[];
   agentsEnabled: boolean;
-  autonomyEnabled: boolean;
 } {
   const missing: string[] = [];
   if (!env.openaiApiKey?.trim()) missing.push('OPENAI_API_KEY');
@@ -131,7 +130,6 @@ export function getAgentsStatus(): {
     configured: missing.length === 0,
     missing,
     agentsEnabled: env.agentsEnabled,
-    autonomyEnabled: env.agentsAutonomyEnabled,
   };
 }
 

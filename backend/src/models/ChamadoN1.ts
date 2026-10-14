@@ -94,6 +94,56 @@ export interface IChamadoCsat {
   repescagemEnviadaEm: Date | null;
 }
 
+export type AiAutomationStatus =
+  | 'aguardando_aprovacao'
+  | 'em_revisao'
+  | 'aprovada'
+  | 'enviada_direto'
+  | 'encerrada_humano';
+
+export interface IAiAutomationTabulacao {
+  tipo: string;
+  produto: string;
+  motivo: string;
+  detalhe: string;
+}
+
+/** Resposta gerada pelo agente autônomo aguardando (ou já passada por) auditoria humana. */
+export interface IAiAutomationTentativa {
+  tentativa: number;
+  resposta: string;
+  tabulacao: IAiAutomationTabulacao;
+  auditScore?: number;
+  confidence?: string;
+  model?: string;
+  geradaEm: Date;
+  decisao?: 'aprovada' | 'reprovada' | 'enviada_direto';
+  feedback?: string;
+  /** Texto efetivamente enviado ao cliente (com saudação), quando houve aprovação. */
+  respostaFinal?: string;
+  /** O auditor humano alterou o texto antes de aprovar. */
+  editado?: boolean;
+  /** Tabulação efetivamente gravada, quando o auditor humano a alterou antes de aprovar. */
+  tabulacaoFinal?: IAiAutomationTabulacao;
+  decididoPor?: string;
+  decididoEm?: Date;
+}
+
+/**
+ * Estado do agente autônomo neste chamado (fila de aprovação humana temporária).
+ * `pendente` é a tentativa atual; `historico` guarda as já decididas. `bloqueadoIA` = o agente
+ * nunca mais tenta responder este chamado (2ª reprovação ou falha da 2ª tentativa).
+ */
+export interface IAiAutomation {
+  status: AiAutomationStatus;
+  tentativas: number;
+  bloqueadoIA: boolean;
+  ruleId?: string;
+  pendente?: IAiAutomationTentativa;
+  historico: IAiAutomationTentativa[];
+  updatedAt: Date;
+}
+
 export interface IClienteRef {
   clienteCpf: string;
   clienteId: Types.ObjectId | null;
@@ -123,6 +173,7 @@ export interface IChamadoN1 extends Document {
   fusao?: IChamadoFusao;
   csat?: IChamadoCsat;
   aiSuggestionCache?: IAiSuggestionCache;
+  aiAutomation?: IAiAutomation;
   emailDeliveryFailures?: IEmailDeliveryFailure[];
   createdAt: Date;
   updatedAt: Date;
@@ -257,6 +308,56 @@ const AiSuggestionCacheSchema = new Schema<IAiSuggestionCache>(
   { _id: false },
 );
 
+const AiAutomationTentativaSchema = new Schema<IAiAutomationTentativa>(
+  {
+    tentativa: { type: Number, required: true },
+    resposta: { type: String, default: '' },
+    tabulacao: {
+      type: {
+        tipo: { type: String, default: '' },
+        produto: { type: String, default: '' },
+        motivo: { type: String, default: '' },
+        detalhe: { type: String, default: '' },
+      },
+      _id: false,
+      default: undefined,
+    },
+    auditScore: { type: Number, default: undefined },
+    confidence: { type: String, default: undefined },
+    model: { type: String, default: undefined },
+    geradaEm: { type: Date, default: Date.now },
+    decisao: { type: String, enum: ['aprovada', 'reprovada', 'enviada_direto'], default: undefined },
+    feedback: { type: String, default: undefined },
+    respostaFinal: { type: String, default: undefined },
+    editado: { type: Boolean, default: undefined },
+    tabulacaoFinal: {
+      type: { tipo: String, produto: String, motivo: String, detalhe: String },
+      _id: false,
+      default: undefined,
+    },
+    decididoPor: { type: String, default: undefined },
+    decididoEm: { type: Date, default: undefined },
+  },
+  { _id: false },
+);
+
+const AiAutomationSchema = new Schema<IAiAutomation>(
+  {
+    status: {
+      type: String,
+      enum: ['aguardando_aprovacao', 'em_revisao', 'aprovada', 'enviada_direto', 'encerrada_humano'],
+      required: true,
+    },
+    tentativas: { type: Number, default: 0 },
+    bloqueadoIA: { type: Boolean, default: false },
+    ruleId: { type: String, default: undefined },
+    pendente: { type: AiAutomationTentativaSchema, default: undefined },
+    historico: { type: [AiAutomationTentativaSchema], default: [] },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false },
+);
+
 const EmailDeliveryFailureSchema = new Schema<IEmailDeliveryFailure>(
   {
     em: { type: Date, default: Date.now },
@@ -279,6 +380,7 @@ const ChamadoN1Schema = new Schema<IChamadoN1>(
     fusao: { type: ChamadoFusaoSchema, default: undefined },
     csat: { type: ChamadoCsatSchema, default: undefined },
     aiSuggestionCache: { type: AiSuggestionCacheSchema, default: undefined },
+    aiAutomation: { type: AiAutomationSchema, default: undefined },
     emailDeliveryFailures: { type: [EmailDeliveryFailureSchema], default: [] },
   },
   {
@@ -300,6 +402,11 @@ ChamadoN1Schema.index({ 'csat.respondido': 1, 'csat.respondidoEm': 1 }, { name: 
 // Filas, contagens e jobs filtram pelo status atual; antes isso era `$expr` sobre o último item de
 // `registro[]`, que não usa índice e varria a coleção inteira a cada consulta.
 ChamadoN1Schema.index({ statusAtual: 1, updatedAt: -1 }, { name: 'statusAtual_1_updatedAt_-1' });
+// Fila de aprovação humana do agente autônomo: índice parcial, só indexa os poucos chamados com estado.
+ChamadoN1Schema.index(
+  { 'aiAutomation.status': 1, 'aiAutomation.updatedAt': -1 },
+  { name: 'aiAutomation_status_1', partialFilterExpression: { 'aiAutomation.status': { $exists: true } } },
+);
 // `statusAtual` espelha o último registro.status. O status só muda via save() (nenhum
 // updateOne/$push escreve em registro[]), então este hook basta para manter o campo coerente.
 ChamadoN1Schema.pre('save', function syncStatusAtual() {
