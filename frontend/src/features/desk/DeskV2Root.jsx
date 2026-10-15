@@ -2763,11 +2763,36 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     setAiFeedbackOpen(false);
   }, []);
 
+  // Modal de feedback: um único "Enviar". Com resposta pendente na fila de aprovação, enviar = reprovar:
+  // o feedback volta para a IA, que gera a nova resposta (2ª reprovação devolve o ticket ao atendimento humano).
   const handleAiFeedbackSend = useCallback(async (inputOperador) => {
     setAiFeedbackBusy('enviar');
     try {
+      const id = String(ticket?.id || ticket?._id || '');
+      if (iaPending) {
+        try {
+          const rejected = await aiApprovalsApi.reject(id, inputOperador || undefined);
+          if (rejected.status === 'aguardando_aprovacao') {
+            showNotification('Feedback enviado. A IA gerou uma nova resposta.', 'success');
+            await loadTicketDetailFromApi(id);
+            await syncTicketViews();
+          } else {
+            showNotification('Reprovado. O ticket voltou para o atendimento humano.', 'success');
+            await syncTicketViews();
+            advanceAfterSaveIfEnabled(id, null, id, true);
+          }
+          return { success: true };
+        } catch (err) {
+          const msg = err?.response?.data?.error || err?.message || 'Não foi possível reprovar.';
+          showNotification(msg, 'warning');
+          return { success: false, error: msg };
+        }
+      }
+      if (!inputOperador) {
+        return { success: false, error: 'Descreva o feedback.' };
+      }
       await agentsApi.enviarFeedback({
-        ticketId: String(ticket?.id || ticket?._id || ''),
+        ticketId: id,
         protocolo: getTicketProtocolLabel(ticket),
         inputOperador,
         respostaAntes: ticketAi.respostaSugerida,
@@ -2783,43 +2808,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     } finally {
       setAiFeedbackBusy(null);
     }
-  }, [ticket, ticketAi, showNotification]);
-
-  const handleAiFeedbackGenerate = useCallback(async (inputOperador) => {
-    setAiFeedbackBusy('gerar');
-    try {
-      if (iaPending) {
-        // Fila de aprovação: reprovar = a IA refaz com o feedback (2ª reprovação devolve ao atendimento humano).
-        const id = String(ticket?.id || ticket?._id || '');
-        try {
-          const rejected = await aiApprovalsApi.reject(id, inputOperador || undefined);
-          if (rejected.status === 'aguardando_aprovacao') {
-            showNotification('Nova resposta gerada com base no feedback.', 'success');
-            await loadTicketDetailFromApi(id);
-            await syncTicketViews();
-          } else {
-            showNotification('Reprovado. O ticket voltou para o atendimento humano.', 'success');
-            await syncTicketViews();
-            advanceAfterSaveIfEnabled(id, null, id, true);
-          }
-          return { success: true };
-        } catch (err) {
-          const msg = err?.response?.data?.error || err?.message || 'Não foi possível reprovar.';
-          showNotification(msg, 'warning');
-          return { success: false, error: msg };
-        }
-      }
-      const result = await ticketAi.requestRevision(inputOperador);
-      if (result.success) {
-        showNotification('Nova resposta gerada com base no feedback.', 'success');
-      } else if (result.error) {
-        showNotification(result.error, 'warning');
-      }
-      return result;
-    } finally {
-      setAiFeedbackBusy(null);
-    }
-  }, [ticketAi, iaPending, ticket, showNotification, syncTicketViews, advanceAfterSaveIfEnabled]);
+  }, [ticket, ticketAi, iaPending, showNotification, syncTicketViews, advanceAfterSaveIfEnabled]);
 
   const handleUseIaReply = useCallback((nucleo) => {
     const wrapped = wrapComposerOpeningForTicket({
@@ -3214,7 +3203,6 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         busyAction={aiFeedbackBusy}
         onClose={handleCloseAiFeedback}
         onSend={handleAiFeedbackSend}
-        onGenerate={handleAiFeedbackGenerate}
       />
 
       <WorkflowComunicacaoModal
