@@ -3,14 +3,14 @@ import { google, gmail_v1 } from 'googleapis';
 import { env } from '../../config/env';
 import {
   getEmailTransportSnapshot,
-  isGmailCredentialsReady,
+  isEmailTransportReady,
 } from '../emailTransport.service';
 
 export const GMAIL_SCOPE_SEND = 'https://www.googleapis.com/auth/gmail.send';
 export const GMAIL_SCOPE_READONLY = 'https://www.googleapis.com/auth/gmail.readonly';
 
 export async function createGmailClient(scopes: string[]): Promise<gmail_v1.Gmail> {
-  if (!isGmailCredentialsReady()) {
+  if (!isEmailTransportReady()) {
     throw new Error('Gmail API não configurado em desk_config.email_transport');
   }
 

@@ -68,11 +68,8 @@ function applyDoc(doc: {
   };
 }
 
-/**
- * Credenciais Gmail carregadas de desk_config.email_transport, independente de EMAIL_ENABLED.
- * EMAIL_ENABLED só liga/desliga o ENVIO; inbound (push/watch/leitura) usa isto.
- */
-export function isGmailCredentialsReady(): boolean {
+export function isEmailTransportReady(): boolean {
+  if (!env.emailEnabled) return false;
   const s = snapshot;
   return !!(
     s &&
@@ -81,11 +78,6 @@ export function isGmailCredentialsReady(): boolean {
     s.serviceAccountJson?.client_email &&
     s.serviceAccountJson?.private_key
   );
-}
-
-/** Pronto para ENVIAR: credenciais + EMAIL_ENABLED=true. */
-export function isEmailTransportReady(): boolean {
-  return env.emailEnabled && isGmailCredentialsReady();
 }
 
 export function getEmailTransportSnapshot(): EmailTransportSnapshot | null {
@@ -104,15 +96,17 @@ async function loadEmailTransportOnce(): Promise<'ready' | 'incomplete' | 'unava
   try {
     const doc = await findEmailTransportSingleton();
     applyDoc(doc);
-    if (isGmailCredentialsReady()) {
+    if (isEmailTransportReady()) {
       if (!loggedReady) {
         loggedReady = true;
-        console.log(`[emailTransport] pronto — modo=${snapshot?.transportMode} from=${getEffectiveFromAddress()} envio=${env.emailEnabled ? 'on' : 'off'}`);
+        console.log(`[emailTransport] pronto — modo=${snapshot?.transportMode} from=${getEffectiveFromAddress()}`);
       }
       return 'ready';
     }
     loggedReady = false;
-    console.warn('[emailTransport] desk_config.email_transport incompleto');
+    if (env.emailEnabled) {
+      console.warn('[emailTransport] EMAIL_ENABLED=true mas desk_config.email_transport incompleto');
+    }
     return 'incomplete';
   } catch (err) {
     console.error('[emailTransport] falha ao carregar:', (err as Error).message);
