@@ -50,6 +50,42 @@ export function buildTabulationCatalog(config: TabulationActiveDto): string {
   return lines.join('\n');
 }
 
+export interface TabulationScope {
+  config: TabulationActiveDto;
+  /** Nome oficial do produto fixado pela origem ('' quando não há ou não existe na árvore ativa). */
+  produtoFixo: string;
+}
+
+/**
+ * Árvore de tabulação para os agentes. Com `produtoFixo` (produto que veio da origem do ticket) a árvore fica
+ * restrita a esse produto: o catálogo do prompt e a validação só aceitam motivo/detalhe dele.
+ */
+export async function loadTabulationScope(produtoFixo?: string): Promise<TabulationScope> {
+  const full = await loadTabulationConfig();
+  const wanted = normalizeMatchText(produtoFixo);
+  if (!wanted) return { config: full, produtoFixo: '' };
+  const match = full.produtos.find((p) => p.ativo && normalizeMatchText(p.produto) === wanted);
+  if (!match) return { config: full, produtoFixo: '' };
+  return { config: { ...full, produtos: [match] }, produtoFixo: match.produto };
+}
+
+/** Garante o produto da origem na tabulação devolvida pelo modelo (motivo/detalhe são validados dentro dele). */
+export function withProdutoFixo<T extends { produto?: string }>(raw: T | undefined, produtoFixo: string): T {
+  const base = (raw || {}) as T;
+  return produtoFixo ? { ...base, produto: produtoFixo } : base;
+}
+
+function produtoFixoBlock(produtoFixo?: string): string[] {
+  const produto = trimStr(produtoFixo, 200);
+  if (!produto) return [];
+  return [
+    '',
+    '## Produto definido pela origem do ticket',
+    '',
+    `Produto: "${produto}". Já está definido — use EXATAMENTE este produto em tabulacao.produto e escolha tipo, motivo e detalhe apenas dentre os disponíveis neste produto (catálogo abaixo).`,
+  ];
+}
+
 export function formatMessagesBlock(messages: TicketAiMessageInput[]): string {
   return messages
     .map((m, i) => `${i + 1}. [${m.role === 'cliente' ? 'Cliente' : 'Agente'}]: ${m.text}`)
@@ -77,6 +113,7 @@ export function buildAtendimentoUserBlock(
     messages?: TicketAiMessageInput[];
     internalNote?: string;
     produtoHint?: string;
+    produtoFixo?: string;
     dadosConta?: string;
     feedbackExamples?: string;
   },
@@ -104,6 +141,7 @@ export function buildAtendimentoUserBlock(
   if (params.produtoHint) {
     parts.push('', `## Dica de produto: ${params.produtoHint}`);
   }
+  parts.push(...produtoFixoBlock(params.produtoFixo));
 
   if (params.dadosConta?.trim()) {
     parts.push(
@@ -196,6 +234,8 @@ export function buildAuditoriaUserBlock(
       'Confira se a resposta proposta contradiz ou ignora estes dados (valores, datas, status). Resposta que afirme algo diferente dos dados reais, ou que prometa algo que eles não sustentam, deve ser reprovada em veracidade.',
     );
   }
+
+  parts.push(...produtoFixoBlock(params.produtoFixo));
 
   const agenteResposta = getAgentNomeOficial(1);
 
@@ -487,6 +527,7 @@ export function buildClassificacaoUserBlock(
     titulo?: string;
     messages?: TicketAiMessageInput[];
     internalNote?: string;
+    produtoFixo?: string;
   },
   tabulationCatalog: string,
 ): string {
@@ -502,6 +543,7 @@ export function buildClassificacaoUserBlock(
   if (params.internalNote?.trim()) {
     parts.push('', '## Anotações internas (contexto do agente)', '', params.internalNote.trim());
   }
+  parts.push(...produtoFixoBlock(params.produtoFixo));
   parts.push(
     '',
     '## Catálogo de tabulação (lista fechada)',

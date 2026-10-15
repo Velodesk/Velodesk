@@ -78,5 +78,7 @@ export async function buildInboundPipelineInput(
     contextSource: hasClient ? 'public' : 'internal',
     messages: hasClient ? messages : undefined,
     internalNote: internalNote || undefined,
+    // Produto que veio da origem do ticket (o agente o mantém e classifica motivo/detalhe dentro dele).
+    produtoFixo: String(chamado.tabulacao?.[chamado.tabulacao.length - 1]?.produto || '').trim() || undefined,
   };
 }

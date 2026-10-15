@@ -18,6 +18,9 @@ import type {
 } from '../../models/ChamadoN1';
 import { stripComposerOpening, wrapComposerOpening } from '../clientMessageEnvelope.service';
 import { chamadoToTicket } from '../chamado.mapper';
+import { applyAssignmentIfNeeded } from '../assignmentRouter.service';
+import { resolveOperadorDisplayNameForAuthEmail } from '../colaboradoresCadastro.service';
+import { AGENTE_AUTONOMO_ENVELOPE_NOME, AGENTE_AUTONOMO_RESPONSAVEL } from '../../config/agenteAutonomo';
 import type { AuthPayload } from '../../middleware/auth';
 import { resolveChamadoClientName } from '../placeholders.util';
 import { buildTicketIaMessagesFromChamado } from '../ticketIaAdapter.service';
@@ -72,22 +75,30 @@ export function canAttemptAutonomous(chamado: IChamadoN1): boolean {
 
 /** 1ª tentativa: grava a resposta como pendente de auditoria humana (nada é enviado ao cliente). */
 export async function enqueueForApproval(chamadoId: string, params: EnqueueParams): Promise<void> {
-  await ChamadoN1.updateOne(
-    { _id: chamadoId },
-    {
-      $set: {
-        aiAutomation: {
-          status: 'aguardando_aprovacao' as AiAutomationStatus,
-          tentativas: 1,
-          bloqueadoIA: false,
-          ruleId: params.ruleId,
-          pendente: newTentativa(1, params),
-          historico: [],
-          updatedAt: new Date(),
-        },
-      },
-    },
-  );
+  const doc = await ChamadoN1.findById(chamadoId);
+  if (!doc) return;
+  // Quem trata o chamado é o agente autônomo: ele passa a ser o responsável (sobrepõe a roleta).
+  setResponsavel(doc, AGENTE_AUTONOMO_RESPONSAVEL);
+  doc.aiAutomation = {
+    status: 'aguardando_aprovacao' as AiAutomationStatus,
+    tentativas: 1,
+    bloqueadoIA: false,
+    ruleId: params.ruleId,
+    pendente: newTentativa(1, params),
+    historico: [],
+    updatedAt: new Date(),
+  };
+  await doc.save();
+}
+
+function setResponsavel(doc: IChamadoN1, responsavel: string): void {
+  if (!doc.tabulacao?.length) {
+    doc.tabulacao = [{
+      tipoChamado: '', produto: '', motivo: '', detalhe: '', canal: '', responsavel: '', atribuido: '',
+    }];
+  }
+  doc.tabulacao[doc.tabulacao.length - 1].responsavel = responsavel;
+  doc.markModified('tabulacao');
 }
 
 /** Registra um envio direto (sem fila) no estado do chamado, para métricas e para o dataset futuro. */
@@ -214,6 +225,10 @@ export async function approve(
   tabulacaoOverride?: unknown,
 ) {
   const by = user.email || user.userId || 'desconhecido';
+  const auditorNome = user.displayName
+    || (await resolveOperadorDisplayNameForAuthEmail(user.email).catch(() => ''))
+    || user.name
+    || by;
   const chamado = await claim(id);
   const pendente = chamado.aiAutomation!.pendente!;
   const custom = typeof textoFinal === 'string' ? textoFinal.trim().slice(0, 32_000) : '';
@@ -229,16 +244,17 @@ export async function approve(
       nucleo: pendente.resposta,
       clientName: await resolveChamadoClientName(chamado),
       messages,
+      agentName: AGENTE_AUTONOMO_ENVELOPE_NOME,
     });
     enviado = custom || padrao;
-    const norm = (t: string) => t.replace(/s+/g, ' ').trim();
+    const norm = (t: string) => t.replace(/\s+/g, ' ').trim();
     editado = Boolean(custom) && norm(stripComposerOpening(custom)) !== norm(pendente.resposta);
     await sendAutonomousReply(
       chamado,
       enviado,
       tabFinal || pendente.tabulacao,
       { aprovadoPor: by, aiAutomationTentativa: pendente.tentativa, aiAutomationEditado: editado },
-      { statusFinal: 'resolvido', claimBy: user },
+      { statusFinal: 'resolvido', atribuidoPor: auditorNome },
     );
   } catch (err) {
     await release(id);
@@ -260,6 +276,7 @@ export async function approve(
 }
 
 async function closeToHuman(id: string, extraHistorico: IAiAutomationTentativa[]) {
+  await releaseToHumans(id);
   await ChamadoN1.updateOne(
     { _id: id },
     {
@@ -272,6 +289,21 @@ async function closeToHuman(id: string, extraHistorico: IAiAutomationTentativa[]
       $push: { 'aiAutomation.historico': { $each: extraHistorico } },
     },
   );
+}
+
+/** O agente autônomo deixa o chamado: libera o responsável e deixa a roleta atribuir a um humano. */
+async function releaseToHumans(id: string): Promise<void> {
+  try {
+    const doc = await ChamadoN1.findById(id);
+    if (!doc) return;
+    const atual = doc.tabulacao?.[doc.tabulacao.length - 1]?.responsavel;
+    if (atual !== AGENTE_AUTONOMO_RESPONSAVEL) return;
+    setResponsavel(doc, '');
+    await applyAssignmentIfNeeded(doc, { source: 'inbound-ticket' });
+    await doc.save();
+  } catch (err) {
+    console.warn('[aiAutomation] falha ao devolver o chamado ao humano (fail-soft):', (err as Error)?.message);
+  }
 }
 
 /**
@@ -334,6 +366,7 @@ export async function reject(id: string, by: string, feedback?: string) {
       respostaSugerida: revised.respostaSugerida,
       tabulacao: revised.tabulacao,
       dadosConta,
+      produtoFixo: base.produtoFixo,
     });
 
     const cfg = await getAgentesConfig();
