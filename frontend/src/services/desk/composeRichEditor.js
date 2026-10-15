@@ -22,6 +22,7 @@ export function isAllowedComposeImageSrc(src) {
   const value = String(src || '').trim();
   return /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(value)
     || /^https:\/\/.+/i.test(value)
+    || /^\/api\/uploads\/inbound\/[^\s"'<>]+$/i.test(value)
     || /^desk-sig:[a-zA-Z0-9._-]+$/i.test(value);
 }
 
