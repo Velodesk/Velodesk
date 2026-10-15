@@ -4,7 +4,11 @@ import {
   findChamadoForEmailReply,
   processInboundEmail,
 } from '../email-inbound.service';
-import { collectChamadoAttachmentFingerprints } from '../attachmentFilter.util';
+import {
+  attachmentHashFingerprint,
+  attachmentSizeNameFingerprint,
+  collectChamadoAttachmentFingerprints,
+} from '../attachmentFilter.util';
 import type { InboundEmailProcessResult } from '../inbound-email/types';
 import { createGmailClient, GMAIL_SCOPE_READONLY } from './gmailAuth';
 import { gmailMessageToInboundPayload, shouldSkipGmailMessage } from './gmailMessageParser';
@@ -154,13 +158,24 @@ export async function processGmailHistory(
           if (rewrittenHtml) {
             payload.htmlBody = rewrittenHtml;
           }
-          // inlineAttachments (logo, assinatura, estrelas do CSAT e demais imagens `cid:` do HTML
-          // citado) existem só para reescrever o corpo e renderizar a imagem — não são anexos do
-          // cliente, então NÃO entram em payload.attachments. Anexo = só o que o cliente anexou
-          // (downloadGmailAttachments, que já exclui imagens do corpo/do próprio VeloDesk).
-          void inlineAttachments;
-          if (inboundAttachments.length) {
-            payload.attachments = inboundAttachments;
+          // Imagens coladas no corpo pelo cliente também viram anexo (além de renderizarem no corpo).
+          // downloadAndRewriteGmailInlineImages já descarta logo/assinatura/estrelas do VeloDesk;
+          // aqui dedupe contra anexos reais e contra o que o ticket já tem.
+          const allAttachments = [...inboundAttachments];
+          const seenHashes = new Set(allAttachments.map((a) => a.contentHash).filter(Boolean));
+          for (const inline of inlineAttachments) {
+            const fps = [
+              attachmentHashFingerprint(String(inline.contentHash ?? '')),
+              attachmentSizeNameFingerprint(inline.filename, inline.bytes ?? 0),
+            ];
+            if (inline.contentHash && seenHashes.has(inline.contentHash)) continue;
+            if (fps.some((fp) => knownFingerprints.has(fp))) continue;
+            fps.forEach((fp) => knownFingerprints.add(fp));
+            if (inline.contentHash) seenHashes.add(inline.contentHash);
+            allAttachments.push(inline);
+          }
+          if (allAttachments.length) {
+            payload.attachments = allAttachments;
           }
 
           try {

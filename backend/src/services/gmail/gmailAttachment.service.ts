@@ -335,6 +335,7 @@ export async function downloadAndRewriteGmailInlineImages(
   ) => {
     if (buffer.length > MAX_ATTACHMENT_BYTES) return;
     if (isBrandInlineAttachmentFilename(filename)) return;
+    if (isOwnInlineContentId(contentId)) return;
     const guard = inspectAttachmentGuard(filename, mimeType, buffer);
     if (!guard.ok) {
       console.warn('[gmailAttachment] imagem inline bloqueada pelo filtro', {
@@ -345,6 +346,8 @@ export async function downloadAndRewriteGmailInlineImages(
       return;
     }
     const contentHash = crypto.createHash('sha256').update(buffer).digest('hex');
+    // Logo/assinatura/estrelas do VeloDesk reanexadas pelo cliente de e-mail não são imagem do cliente.
+    if (isKnownDeskAssetHash(contentHash)) return;
     const saved = await persistInboundAttachment({
       messageId: messageIdForStorage,
       filename,

@@ -112,6 +112,8 @@ function shouldPreferHtmlBody(text: string, htmlRaw: string): boolean {
   if (!htmlRaw.trim()) return false;
   if (!text.trim()) return true;
   if (plainLooksLikeImagePlaceholders(text)) return true;
+  // HTML com imagem do cliente já hospedada (cid: reescrito) — o texto puro perderia a imagem.
+  if (/<img\b[^>]*\bsrc\s*=\s*["']\/api\/uploads\/inbound\//i.test(htmlRaw)) return true;
   return plainTextLooksTruncatedVsHtml(text, htmlRaw);
 }
 
