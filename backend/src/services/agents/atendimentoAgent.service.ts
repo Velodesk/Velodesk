@@ -12,7 +12,8 @@ import {
   ATENDIMENTO_JSON_SCHEMA,
   buildAtendimentoUserBlock,
   buildTabulationDisplay,
-  loadTabulationConfig,
+  loadTabulationScope,
+  withProdutoFixo,
   buildTabulationCatalog,
   validateTabulationResult,
   isPrimeiroContatoAgente,
@@ -129,12 +130,12 @@ export async function composeAtendimento(params: AtendimentoInput): Promise<Aten
   }
 
   try {
-    const config = await loadTabulationConfig();
+    const { config, produtoFixo } = await loadTabulationScope(params.produtoFixo);
     const catalog = buildTabulationCatalog(config);
     const feedbackExamples = await getFeedbackExamplesForPrompt(params.produtoHint);
 
     const userBlock = buildAtendimentoUserBlock(
-      { ...params, feedbackExamples },
+      { ...params, produtoFixo, feedbackExamples },
       catalog,
     );
 
@@ -151,7 +152,7 @@ export async function composeAtendimento(params: AtendimentoInput): Promise<Aten
     }
 
     const enforced = enforceLiteralClientQuote(parsed, buildClientTextForQuoteCheck(params.messages));
-    const tabulacao = validateTabulationResult(enforced.tabulacao || {}, config);
+    const tabulacao = validateTabulationResult(withProdutoFixo(enforced.tabulacao, produtoFixo), config);
 
     return {
       success: true,
@@ -174,7 +175,7 @@ export async function reviseAtendimento(params: RevisaoInput): Promise<Atendimen
   }
 
   try {
-    const config = await loadTabulationConfig();
+    const { config, produtoFixo } = await loadTabulationScope(params.produtoFixo);
     const catalog = buildTabulationCatalog(config);
     const feedbackExamples = await getFeedbackExamplesForPrompt(
       params.tabulacaoAnterior.produto || params.produtoHint,
@@ -196,7 +197,7 @@ export async function reviseAtendimento(params: RevisaoInput): Promise<Atendimen
     });
 
     const userBlock = buildAtendimentoUserBlock(
-      { ...params, feedbackExamples },
+      { ...params, produtoFixo, feedbackExamples },
       catalog,
       { modoRevisao: true },
     );
@@ -214,7 +215,7 @@ export async function reviseAtendimento(params: RevisaoInput): Promise<Atendimen
     }
 
     const enforced = enforceLiteralClientQuote(parsed, buildClientTextForQuoteCheck(params.messages));
-    const tabulacao = validateTabulationResult(enforced.tabulacao || {}, config);
+    const tabulacao = validateTabulationResult(withProdutoFixo(enforced.tabulacao, produtoFixo), config);
 
     return {
       success: true,
@@ -241,8 +242,8 @@ export async function classifyAtendimento(
   if (!isAgentsConfigured()) return { success: false, error: 'Agentes não configurados' };
 
   try {
-    const config = await loadTabulationConfig();
-    const userBlock = buildClassificacaoUserBlock(params, buildTabulationCatalog(config));
+    const { config, produtoFixo } = await loadTabulationScope(params.produtoFixo);
+    const userBlock = buildClassificacaoUserBlock({ ...params, produtoFixo }, buildTabulationCatalog(config));
     const openai = createOpenAiClient();
     const response = await openai.responses.create({
       model: env.openaiModel,
@@ -274,7 +275,7 @@ export async function classifyAtendimento(
       extractOutputText(response),
     );
     if (!parsed) return { success: false, error: 'Classificação inválida' };
-    return { success: true, tabulacao: validateTabulationResult(parsed, config) };
+    return { success: true, tabulacao: validateTabulationResult(withProdutoFixo(parsed, produtoFixo), config) };
   } catch (err) {
     console.warn('[agent-atendimento] classificação falhou (fail-soft):', (err as Error)?.message);
     return { success: false, error: mapOpenAiErrorMessage(err) };

@@ -19,6 +19,8 @@ import {
   buildTabulationCatalog,
   buildTabulationDisplay,
   loadTabulationConfig,
+  loadTabulationScope,
+  withProdutoFixo,
   validateTabulationResult,
 } from './agentTabulation.util';
 import {
@@ -183,10 +185,10 @@ export async function validateAuditoria(params: AuditoriaInput): Promise<Auditor
   );
 
   try {
-    const config = await loadTabulationConfig();
+    const { config, produtoFixo } = await loadTabulationScope(params.produtoFixo);
     const tabulationCatalog = buildTabulationCatalog(config);
     const userBlock = buildAuditoriaUserBlock(
-      { ...params, palavrasCriticasPrecheck: precheckKeywords },
+      { ...params, produtoFixo, palavrasCriticasPrecheck: precheckKeywords },
       tabulationCatalog,
     );
 
@@ -235,7 +237,10 @@ export async function validateAuditoria(params: AuditoriaInput): Promise<Auditor
       return { success: false, error: 'Resposta de auditoria inválida' };
     }
 
-    const tabulacaoSugerida = resolveTabulacaoSugerida(parsed.tabulacaoSugerida, config);
+    const tabulacaoSugerida = resolveTabulacaoSugerida(
+      produtoFixo ? withProdutoFixo(parsed.tabulacaoSugerida, produtoFixo) : parsed.tabulacaoSugerida,
+      config,
+    );
 
     const llmKeywords = parsed.palavrasCriticasDetectadas || [];
     const candidateKeywords = [...new Set([...precheckKeywords, ...llmKeywords])];

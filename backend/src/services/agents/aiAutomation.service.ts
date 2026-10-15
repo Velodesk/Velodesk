@@ -366,6 +366,7 @@ export async function reject(id: string, by: string, feedback?: string) {
       respostaSugerida: revised.respostaSugerida,
       tabulacao: revised.tabulacao,
       dadosConta,
+      produtoFixo: base.produtoFixo,
     });
 
     const cfg = await getAgentesConfig();

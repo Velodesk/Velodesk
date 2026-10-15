@@ -165,6 +165,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     tabulacao: tabulacaoAtual,
     userId: input.userId,
     dadosConta: input.dadosConta,
+    produtoFixo: input.produtoFixo,
   });
 
   if (!audit.success) {
@@ -218,6 +219,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
       tabulacao: tabulacaoAtual,
       userId: input.userId,
       dadosConta: input.dadosConta,
+      produtoFixo: input.produtoFixo,
     });
 
     if (!audit.success) break;

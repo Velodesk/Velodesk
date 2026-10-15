@@ -2182,7 +2182,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       auditAprovado: true,
       waitingMessage: '',
       showIaBar: true,
-      showIaSection: true,
+      showIaSection: false,
     };
   }, [hideComposer, iaPending, ticketAiLive]);
 
@@ -2726,11 +2726,22 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   useEffect(() => {
     if (!iaPending || !iaPendingKey) return;
     if (iaTabApplyRef.current.key !== iaPendingKey) iaTabApplyRef.current = { key: iaPendingKey, n: 0 };
-    if (String(rightFields?.produto || '').trim()) return;
+    const agentTab = iaPending.tabulacao || {};
+    const cur = rightFields || {};
+    // O produto pode já vir preenchido pela origem do ticket (vale esse); o agente completa tipo/motivo/detalhe.
+    const faltaAlgo = !String(cur.produto || '').trim()
+      || !String(cur.tipo || '').trim()
+      || (agentTab.motivo && !String(cur.motivo || '').trim())
+      || (agentTab.detalhe && !String(cur.detalhe || '').trim());
+    if (!faltaAlgo) return;
     if (iaTabApplyRef.current.n >= 3) return;
     iaTabApplyRef.current.n += 1;
-    setRightFields((prev) => applyTabulationSuggestion(prev, iaPending.tabulacao, config));
-  }, [iaPending, iaPendingKey, rightFields?.produto, config]);
+    setRightFields((prev) => applyTabulationSuggestion(
+      prev,
+      { ...agentTab, produto: String(prev?.produto || '').trim() || agentTab.produto },
+      config,
+    ));
+  }, [iaPending, iaPendingKey, rightFields, config]);
 
   // Área de IA: só existe ticket aberto aqui se estiver aguardando aprovação. Aba/URL restaurada de um ticket que não é
   // (ou deixou de ser) pendente — resolvido, nunca enfileirado, já aprovado — é fechada, sem reter pergunta antiga na tela.

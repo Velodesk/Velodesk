@@ -49,6 +49,8 @@ export interface AtendimentoInput {
   produtoHint?: string;
   /** Dados reais da conta do cliente (já filtrados) para personalizar a resposta. */
   dadosConta?: string;
+  /** Produto já definido pela origem do ticket: o agente o mantém e escolhe motivo/detalhe só dentro da árvore dele. */
+  produtoFixo?: string;
   /** Id do colaborador (req.user.userId) que acionou o agente — usado no relatório de custo de IA por colaborador. */
   userId?: string;
 }
@@ -105,6 +107,8 @@ export interface AuditoriaInput {
   palavrasCriticasPrecheck?: string[];
   /** Mesmos dados da conta que o Agente de Resposta recebeu, para conferir a resposta contra a realidade. */
   dadosConta?: string;
+  /** Produto definido pela origem do ticket (a árvore do auditor também fica restrita a ele). */
+  produtoFixo?: string;
   /** Id do colaborador (req.user.userId) que acionou o agente — usado no relatório de custo de IA por colaborador. */
   userId?: string;
 }
