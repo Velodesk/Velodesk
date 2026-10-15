@@ -27,7 +27,8 @@ function decodeStorageKey(rawKey: string): string {
   if (!decoded || decoded.includes('..') || decoded.includes('\\') || decoded.startsWith('/')) {
     throw new Error('Chave de anexo inválida');
   }
-  return decoded.replace(new RegExp(STORAGE_KEY_SEP, 'g'), '/');
+  // Só o 1º separador é o "/" protocolo/arquivo: o nome sanitizado pode conter "__" (ex.: "ção" → "__").
+  return decoded.replace(STORAGE_KEY_SEP, '/');
 }
 
 export interface PersistOctadeskLegacyAttachmentInput {
