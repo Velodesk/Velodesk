@@ -27,7 +27,8 @@ function decodeStorageKey(rawKey: string): string {
   if (!decoded || decoded.includes('..') || decoded.includes('\\') || decoded.startsWith('/')) {
     throw new Error('Chave de anexo inválida');
   }
-  return decoded.replace(new RegExp(STORAGE_KEY_SEP, 'g'), '/');
+  // Só o 1º separador é o "/" protocolo/arquivo: o nome sanitizado pode conter "__" (ex.: "ção" → "__").
+  return decoded.replace(STORAGE_KEY_SEP, '/');
 }
 
 export interface PersistOctadeskLegacyAttachmentInput {
@@ -36,6 +37,8 @@ export interface PersistOctadeskLegacyAttachmentInput {
   filename: string;
   contentType: string;
   buffer: Buffer;
+  /** Falha se o upload ao GCS não ocorrer, mesmo com o transporte "não pronto" (evita URL só-disco). */
+  requireGcs?: boolean;
 }
 
 export interface StoredOctadeskLegacyAttachment {
@@ -63,7 +66,7 @@ export async function persistOctadeskLegacyAttachment(
     input.buffer,
     input.contentType,
   );
-  if (isGcsAttachmentStorageConfigured() && !gcsUploaded) {
+  if ((input.requireGcs || isGcsAttachmentStorageConfigured()) && !gcsUploaded) {
     throw new Error(`Falha ao enviar anexo "${safeName}" para o bucket ${env.gcpStorageBucket}`);
   }
 

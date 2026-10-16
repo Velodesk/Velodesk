@@ -13,7 +13,7 @@ import {
   startHugmeImportJob,
   subscribeHugmeImportJob,
 } from '../../../services/especiais/hugmeImportService';
-import { refreshReclamacoesFromApi } from '../../../services/especiais/reclameAquiStore';
+import { refreshServerCounts } from '../../../services/especiais/reclameAquiStore';
 
 const STEPS = { upload: 'upload', preview: 'preview', importing: 'importing', done: 'done' };
 
@@ -100,7 +100,9 @@ export default function RaHugmeImportModal({ open, onClose, onComplete }) {
       setProgress({ current: job.current || 0, total: job.total || 0 });
       if (openRef.current) setStep(STEPS.done);
       try {
-        refreshReclamacoesFromApi();
+        // Sem baixar a base inteira: atualiza só os cards e pede à lista para refazer a página atual.
+        void refreshServerCounts();
+        window.dispatchEvent(new CustomEvent('velodesk:ra-sync'));
       } catch {
         // fail-soft na atualização da lista
       }

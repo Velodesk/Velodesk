@@ -12,11 +12,15 @@ import {
   ATENDIMENTO_JSON_SCHEMA,
   buildAtendimentoUserBlock,
   buildTabulationDisplay,
-  loadTabulationConfig,
+  loadTabulationScope,
+  withProdutoFixo,
   buildTabulationCatalog,
   validateTabulationResult,
   isPrimeiroContatoAgente,
   isLiteralClientQuote,
+  buildClassificacaoUserBlock,
+  CLASSIFICACAO_JSON_SCHEMA,
+  CLASSIFICACAO_SYSTEM_PROMPT,
 } from './agentTabulation.util';
 import {
   createOpenAiClient,
@@ -126,12 +130,12 @@ export async function composeAtendimento(params: AtendimentoInput): Promise<Aten
   }
 
   try {
-    const config = await loadTabulationConfig();
+    const { config, produtoFixo } = await loadTabulationScope(params.produtoFixo);
     const catalog = buildTabulationCatalog(config);
     const feedbackExamples = await getFeedbackExamplesForPrompt(params.produtoHint);
 
     const userBlock = buildAtendimentoUserBlock(
-      { ...params, feedbackExamples },
+      { ...params, produtoFixo, feedbackExamples },
       catalog,
     );
 
@@ -148,7 +152,7 @@ export async function composeAtendimento(params: AtendimentoInput): Promise<Aten
     }
 
     const enforced = enforceLiteralClientQuote(parsed, buildClientTextForQuoteCheck(params.messages));
-    const tabulacao = validateTabulationResult(enforced.tabulacao || {}, config);
+    const tabulacao = validateTabulationResult(withProdutoFixo(enforced.tabulacao, produtoFixo), config);
 
     return {
       success: true,
@@ -171,7 +175,7 @@ export async function reviseAtendimento(params: RevisaoInput): Promise<Atendimen
   }
 
   try {
-    const config = await loadTabulationConfig();
+    const { config, produtoFixo } = await loadTabulationScope(params.produtoFixo);
     const catalog = buildTabulationCatalog(config);
     const feedbackExamples = await getFeedbackExamplesForPrompt(
       params.tabulacaoAnterior.produto || params.produtoHint,
@@ -193,7 +197,7 @@ export async function reviseAtendimento(params: RevisaoInput): Promise<Atendimen
     });
 
     const userBlock = buildAtendimentoUserBlock(
-      { ...params, feedbackExamples },
+      { ...params, produtoFixo, feedbackExamples },
       catalog,
       { modoRevisao: true },
     );
@@ -211,7 +215,7 @@ export async function reviseAtendimento(params: RevisaoInput): Promise<Atendimen
     }
 
     const enforced = enforceLiteralClientQuote(parsed, buildClientTextForQuoteCheck(params.messages));
-    const tabulacao = validateTabulationResult(enforced.tabulacao || {}, config);
+    const tabulacao = validateTabulationResult(withProdutoFixo(enforced.tabulacao, produtoFixo), config);
 
     return {
       success: true,
@@ -224,6 +228,56 @@ export async function reviseAtendimento(params: RevisaoInput): Promise<Atendimen
     };
   } catch (err) {
     console.error('[agent-atendimento-revise]', err);
+    return { success: false, error: mapOpenAiErrorMessage(err) };
+  }
+}
+
+/**
+ * Etapa 1 da hidratação: chamada curta (sem POPs, sem redação) só para o agente decidir produto/motivo.
+ * O resultado define qual consulta da conta será feita antes de redigir a resposta.
+ */
+export async function classifyAtendimento(
+  params: AtendimentoInput,
+): Promise<{ success: boolean; tabulacao?: AtendimentoResult['tabulacao']; error?: string }> {
+  if (!isAgentsConfigured()) return { success: false, error: 'Agentes não configurados' };
+
+  try {
+    const { config, produtoFixo } = await loadTabulationScope(params.produtoFixo);
+    const userBlock = buildClassificacaoUserBlock({ ...params, produtoFixo }, buildTabulationCatalog(config));
+    const openai = createOpenAiClient();
+    const response = await openai.responses.create({
+      model: env.openaiModel,
+      input: [
+        { role: 'system', content: CLASSIFICACAO_SYSTEM_PROMPT },
+        { role: 'user', content: userBlock },
+      ],
+      text: {
+        format: { type: 'json_schema', name: 'agent_classificacao', schema: CLASSIFICACAO_JSON_SCHEMA, strict: true },
+      },
+    });
+
+    if (response.usage) {
+      void logAiUsage({
+        provider: 'openai',
+        model: response.model || env.openaiModel,
+        feature: 'atendimento_classificacao',
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        cachedInputTokens: response.usage.input_tokens_details?.cached_tokens,
+        reasoningTokens: response.usage.output_tokens_details?.reasoning_tokens,
+        ticketId: params.ticketId,
+        protocolo: params.protocolo,
+        userId: params.userId,
+      });
+    }
+
+    const parsed = parseAiJson<{ tipo?: string; produto?: string; motivo?: string; detalhe?: string }>(
+      extractOutputText(response),
+    );
+    if (!parsed) return { success: false, error: 'Classificação inválida' };
+    return { success: true, tabulacao: validateTabulationResult(withProdutoFixo(parsed, produtoFixo), config) };
+  } catch (err) {
+    console.warn('[agent-atendimento] classificação falhou (fail-soft):', (err as Error)?.message);
     return { success: false, error: mapOpenAiErrorMessage(err) };
   }
 }

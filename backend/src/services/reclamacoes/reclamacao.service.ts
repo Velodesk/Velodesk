@@ -547,41 +547,71 @@ function buildGrupoExpressions() {
 export type ReclamacaoGrupo = 'vencendo-hoje' | 'finalizadas' | 'nao-respondidas' | 'respondidas';
 export const RECLAMACAO_GRUPOS: ReclamacaoGrupo[] = ['vencendo-hoje', 'finalizadas', 'nao-respondidas', 'respondidas'];
 
-/** Página de reclamações de UM grupo (mesma regra dos cards), ordenada no banco — mais antigo primeiro, sem data no fim (igual ao front). */
-export async function listByOrgaoGrupo(
+export interface ListaFiltroOpts {
+  /** Grupo único (fila do CRM). Omitido na visão de gestão (tabela), que usa chips. */
+  grupo?: ReclamacaoGrupo;
+  /** Visão de gestão: esconde Finalizadas, a não ser que o chip 'finalizadas' esteja ativo. */
+  gestao?: boolean;
+  chips?: string[];
+  sort?: 'data' | 'sla';
+  limit?: number;
+  skip?: number;
+}
+
+/** Página de reclamações filtrada por grupo/chips (mesmas regras do front), ordenada no banco —
+ * mais antigo primeiro, sem data no fim (igual ao front). */
+export async function listByOrgaoFiltro(
   orgao: CasoEspecialOrgao,
-  grupoKey: ReclamacaoGrupo,
-  opts: { sort?: 'data' | 'sla'; limit?: number; skip?: number } = {},
+  opts: ListaFiltroOpts = {},
 ): Promise<{ items: IReclamacao[]; total: number }> {
   const Model = resolveReclamacaoModel(orgao);
   if (!Model) return { items: [], total: 0 };
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
   const skip = Math.max(opts.skip ?? 0, 0);
-  const { grupo } = buildGrupoExpressions();
+  const { grupo, statusLower } = buildGrupoExpressions();
+  const chips = opts.chips ?? [];
+
+  const conds: Record<string, unknown>[] = [];
+  if (opts.grupo) conds.push({ _grupo: opts.grupo });
+  if (opts.gestao) {
+    conds.push(chips.includes('finalizadas') ? { _grupo: 'finalizadas' } : { _grupo: { $ne: 'finalizadas' } });
+  }
+  for (const chip of chips) {
+    if (chip === 'nao-respondidas') conds.push({ $or: [{ _grupo: 'nao-respondidas' }, { _statusLower: 'nao-respondida' }] });
+    if (chip === 'abertas') conds.push({ _grupo: { $in: ['vencendo-hoje', 'nao-respondidas'] }, aberta: { $ne: false } });
+    if (chip === 'passivel-nota') conds.push({ 'meta.passivelNota': true });
+    if (chip === 'vencendo-hoje') conds.push({ _grupo: 'vencendo-hoje' });
+  }
+  const match = conds.length ? { $and: conds } : {};
   const sort: Record<string, 1 | -1> = opts.sort === 'sla'
     ? { prazoLegal: 1, _id: 1 }
     : { _dataOrd: 1, _id: 1 };
+  const prep = {
+    $addFields: {
+      _grupo: grupo,
+      _statusLower: statusLower,
+      _dataOrd: { $ifNull: ['$dataReclamacao', new Date('9999-12-31')] },
+    },
+  };
 
   const [page, totalRows] = await Promise.all([
-    Model.aggregate([
-      { $addFields: { _grupo: grupo, _dataOrd: { $ifNull: ['$dataReclamacao', new Date('9999-12-31')] } } },
-      { $match: { _grupo: grupoKey } },
-      { $sort: sort },
-      { $skip: skip },
-      { $limit: limit },
-      { $project: { _id: 1 } },
-    ]).exec(),
-    Model.aggregate([
-      { $addFields: { _grupo: grupo } },
-      { $match: { _grupo: grupoKey } },
-      { $count: 'n' },
-    ]).exec(),
+    Model.aggregate([prep, { $match: match }, { $sort: sort }, { $skip: skip }, { $limit: limit }, { $project: { _id: 1 } }]).exec(),
+    Model.aggregate([prep, { $match: match }, { $count: 'n' }]).exec(),
   ]);
   const ids = (page as Array<{ _id: Types.ObjectId }>).map((r) => r._id);
   const docs = await Model.find({ _id: { $in: ids } }).exec();
   const byId = new Map(docs.map((d) => [String(d._id), d]));
   const items = ids.map((id) => byId.get(String(id))).filter(Boolean) as IReclamacao[];
   return { items, total: (totalRows as Array<{ n: number }>)[0]?.n ?? 0 };
+}
+
+/** Página de UM grupo (fila do CRM). */
+export function listByOrgaoGrupo(
+  orgao: CasoEspecialOrgao,
+  grupoKey: ReclamacaoGrupo,
+  opts: { sort?: 'data' | 'sla'; limit?: number; skip?: number } = {},
+) {
+  return listByOrgaoFiltro(orgao, { ...opts, grupo: grupoKey });
 }
 
 /**

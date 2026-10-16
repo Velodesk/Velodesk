@@ -28,6 +28,7 @@ import ClientContactFieldsEditor, {
   validateClientContactDraft,
 } from './ClientContactFieldsEditor';
 import TicketPresenceAvatars from '../../../components/TicketPresenceAvatars';
+import TicketPrintModal from './TicketPrintModal';
 
 function resolveProtocolLabel(ticket) {
   const protocol = getTicketProtocolLabel(ticket);
@@ -71,6 +72,7 @@ export default function DeskClientProfileBar({
     clienteId: '',
   });
   const [emailErrors, setEmailErrors] = useState({});
+  const [printOpen, setPrintOpen] = useState(false);
   const contact = getClientContactFields(ticket, client);
   const cadastroNaoEncontrado = Boolean(contact.cpf) && (!contact.name || !contact.email);
   const presentAgents = useTicketPresence(ticket?.id || ticket?._id);
@@ -272,6 +274,23 @@ export default function DeskClientProfileBar({
             >
               <i className="ti ti-pencil" aria-hidden="true" />
             </button>
+            <button
+              type="button"
+              className="crm-edit-client-btn crm-print-ticket-btn"
+              id="btnPrintTicket"
+              title="Imprimir ticket"
+              aria-label="Imprimir ticket"
+              aria-haspopup="dialog"
+              aria-expanded={printOpen}
+              onClick={() => setPrintOpen(true)}
+            >
+              <i className="ti ti-printer" aria-hidden="true" />
+            </button>
+            <TicketPrintModal
+              open={printOpen}
+              ticket={ticket}
+              onClose={() => setPrintOpen(false)}
+            />
             {editOpen && (
               <div className="crm-client-edit-popover crm-client-edit-popover--wide" id="clientEditPopover" role="dialog" aria-labelledby="clientEditPopoverTitle">
                 <button type="button" className="crm-client-edit-popover__close" id="btnCloseClientEdit" title="Fechar" aria-label="Fechar" onClick={() => setEditOpen(false)}>

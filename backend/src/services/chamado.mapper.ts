@@ -721,6 +721,32 @@ export interface RegistroHistoricoDto {
   metadados?: Record<string, unknown>;
 }
 
+/** Estado do agente autônomo no chamado; a resposta pendente só vai no detalhe (não na lista). */
+function serializeAiAutomationDto(
+  a: IChamadoN1['aiAutomation'] | undefined,
+  listOnly: boolean,
+): TicketDto['aiAutomation'] {
+  if (!a) return undefined;
+  const p = a.pendente;
+  return {
+    status: a.status,
+    tentativa: p?.tentativa ?? a.tentativas ?? 0,
+    bloqueadoIA: a.bloqueadoIA === true,
+    ...(p && !listOnly
+      ? {
+        pendente: {
+          resposta: p.resposta,
+          tabulacao: { ...p.tabulacao },
+          auditScore: p.auditScore,
+          confidence: p.confidence,
+          tentativa: p.tentativa,
+          geradaEm: p.geradaEm,
+        },
+      }
+      : {}),
+  };
+}
+
 export interface TicketDto {
   _id: string;
   chamadoProtocolo: string;
@@ -784,6 +810,20 @@ export interface TicketDto {
     childProtocolo?: string;
     childProtocolos?: string[];
     childIds?: string[];
+  };
+  /** Fila de aprovação humana do agente autônomo (só presente em chamados que passaram por ela). */
+  aiAutomation?: {
+    status: string;
+    tentativa: number;
+    bloqueadoIA: boolean;
+    pendente?: {
+      resposta: string;
+      tabulacao: { tipo: string; produto: string; motivo: string; detalhe: string };
+      auditScore?: number;
+      confidence?: string;
+      tentativa: number;
+      geradaEm?: Date;
+    };
   };
 }
 
@@ -849,6 +889,15 @@ export function buildBoxListFindOptions(
  * Contagem tem que sempre refletir o total real (respeitando ver_todos vs
  * meus-chamados, igual buildChamadoQueryFilter já faz).
  */
+/**
+ * Chamado que o agente autônomo está tratando (aguardando aprovação ou sendo reescrito) NÃO pertence
+ * às filas dos agentes humanos: só aparece na Área de IA até ser aprovado ou devolvido ao humano.
+ * `$nin` também casa chamados sem o campo aiAutomation.
+ */
+export function excludeAiAutomationFlowFilter(): Record<string, unknown> {
+  return { 'aiAutomation.status': { $nin: ['aguardando_aprovacao', 'em_revisao'] } };
+}
+
 export function buildBoxCountFilter(
   status: string,
   queue?: string,
@@ -857,7 +906,7 @@ export function buildBoxCountFilter(
 ): Record<string, unknown> {
   const baseFilter = buildChamadoQueryFilter(status, queue, responsavelCandidates, extraFilter);
   const excludeAbsorvidos = excludeFusaoAbsorvidosFilter();
-  return { $and: [baseFilter, excludeAbsorvidos] };
+  return { $and: [baseFilter, excludeAbsorvidos, excludeAiAutomationFlowFilter()] };
 }
 
 export async function chamadosToTickets(
@@ -2260,6 +2309,7 @@ function buildTicketDtoCore(
     listOnly: listOnly || undefined,
     queueEntryAt: listOnly ? resolveQueueEntryAt(chamado) : undefined,
     fusao: serializeFusaoDto(chamado.fusao),
+    aiAutomation: serializeAiAutomationDto(chamado.aiAutomation, listOnly),
   };
 }
 
@@ -2327,18 +2377,23 @@ function emailLocalPart(email?: string): string {
   return normalized.split('@')[0] ?? '';
 }
 
+/** Mesma normalização do frontend (trim + minúsculas) — contagem e lista precisam concordar. */
 function lastTabulacaoResponsavelExpr() {
   return {
     $toLower: {
-      $ifNull: [
-        {
-          $let: {
-            vars: { lastTab: { $arrayElemAt: ['$tabulacao', -1] } },
-            in: '$$lastTab.responsavel',
-          },
+      $trim: {
+        input: {
+          $ifNull: [
+            {
+              $let: {
+                vars: { lastTab: { $arrayElemAt: ['$tabulacao', -1] } },
+                in: '$$lastTab.responsavel',
+              },
+            },
+            '',
+          ],
         },
-        '',
-      ],
+      },
     },
   };
 }
@@ -2414,18 +2469,29 @@ export function meusChamadosNovosResponsavelFilter(candidates: string[]) {
   };
 }
 
+/** Igual ao frontend: trim, minúsculas e sem o sufixo "(eu)" que a UI acrescenta ao próprio usuário. */
 function lastTabulacaoAtribuidoExpr() {
   return {
-    $toLower: {
-      $ifNull: [
-        {
-          $let: {
-            vars: { lastTab: { $arrayElemAt: ['$tabulacao', -1] } },
-            in: '$$lastTab.atribuido',
+    $trim: {
+      input: {
+        $replaceAll: {
+          input: {
+            $toLower: {
+              $ifNull: [
+                {
+                  $let: {
+                    vars: { lastTab: { $arrayElemAt: ['$tabulacao', -1] } },
+                    in: '$$lastTab.atribuido',
+                  },
+                },
+                '',
+              ],
+            },
           },
+          find: '(eu)',
+          replacement: '',
         },
-        '',
-      ],
+      },
     },
   };
 }

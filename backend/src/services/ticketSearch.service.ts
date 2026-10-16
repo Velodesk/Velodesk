@@ -175,6 +175,31 @@ function cpfToleranceRegex(digits: string): string {
   return digits.split('').map(escapeRegex).join('\\D*');
 }
 
+/** CPF só-dígitos e com máscara — ambos batem no índice cliente_clienteCpf_1 (busca exata). */
+function cpfExactVariants(digits: string): string[] {
+  const d = digits.replace(/\D/g, '');
+  if (d.length !== 11) return [d];
+  return [d, `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`];
+}
+
+/**
+ * Busca chamados do CPF. O regex tolerante (`1\D*2\D*...`) não usa índice: lê o índice inteiro e
+ * busca todos os documentos (~0,7s de CPU por consulta no Mongo de 1 núcleo, o que satura o
+ * cluster quando vários agentes abrem histórico). O caminho comum é a busca exata (índice); o
+ * regex só entra como fallback quando a exata não acha nada.
+ */
+async function findChamadosByCpf(
+  digits: string,
+  extraClauses: Record<string, unknown>[],
+  limit: number,
+): Promise<IChamadoN1[]> {
+  const run = (cpfClause: Record<string, unknown>) =>
+    ChamadoN1.find({ $and: [cpfClause, ...extraClauses] }).sort({ updatedAt: -1 }).limit(limit);
+  const exact = await run({ 'cliente.clienteCpf': { $in: cpfExactVariants(digits) } });
+  if (exact.length) return exact;
+  return run({ 'cliente.clienteCpf': { $regex: cpfToleranceRegex(digits) } });
+}
+
 function parseDateBound(raw: string, endOfDay = false): Date | null {
   const s = String(raw || '').trim();
   if (!s) return null;
@@ -275,6 +300,7 @@ function buildCriterioClause(criterio: SearchCriterio): Record<string, unknown> 
     case 'produto':
     case 'motivo':
     case 'detalhe':
+    case 'canal':
     case 'responsavel':
       return exprTextMatch(lastTabFieldExpr(campo), operador, valores);
 
@@ -290,7 +316,6 @@ function buildCriterioClause(criterio: SearchCriterio): Record<string, unknown> 
       return exprTextMatch(lastTabFieldExpr('atribuido'), operador, valores);
     }
 
-    case 'canal':
     case 'channel':
     case 'source': {
       if (operador === 'not_empty') {
@@ -813,21 +838,12 @@ export async function searchTicketsByCpf(
     resolved.responsavelCandidates = buildResponsavelCandidates(authUser, dbUser);
   }
 
-  const andClauses: Record<string, unknown>[] = [
-    {
-      $or: [
-        { 'cliente.clienteCpf': cpf },
-        { 'cliente.clienteCpf': { $regex: cpfToleranceRegex(cpf) } },
-      ],
-    },
-    excludeFusaoAbsorvidosFilter(),
-  ];
+  const andClauses: Record<string, unknown>[] = [excludeFusaoAbsorvidosFilter()];
 
   const visibility = await buildVisibilityFilter(resolved);
   if (visibility) andClauses.push(visibility);
 
-  const filter = { $and: andClauses };
-  const chamados = await ChamadoN1.find(filter).sort({ updatedAt: -1 }).limit(BY_CPF_LIMIT);
+  const chamados = await findChamadosByCpf(cpf, andClauses, BY_CPF_LIMIT);
   const boxes = await Box.find().sort({ order: 1 });
   const ctx = await buildChamadoMapContext(chamados, 'list');
 
@@ -856,19 +872,7 @@ export async function searchTicketsByCpfDeskBar(
     throw Object.assign(new Error('CPF inválido'), { status: 400 });
   }
 
-  const filter = {
-    $and: [
-      {
-        $or: [
-          { 'cliente.clienteCpf': cpf },
-          { 'cliente.clienteCpf': { $regex: cpfToleranceRegex(cpf) } },
-        ],
-      },
-      excludeFusaoAbsorvidosFilter(),
-    ],
-  };
-
-  const chamados = await ChamadoN1.find(filter).sort({ updatedAt: -1 }).limit(BY_CPF_LIMIT);
+  const chamados = await findChamadosByCpf(cpf, [excludeFusaoAbsorvidosFilter()], BY_CPF_LIMIT);
   const boxes = await Box.find().sort({ order: 1 });
   const ctx = await buildChamadoMapContext(chamados, 'list');
 
@@ -898,19 +902,11 @@ export async function fetchCpfHistoryChamadosRaw(
   const cpf = digitsOnlyCpf(cpfRaw);
   if (cpf.length !== 11) return [];
 
-  const andClauses: Record<string, unknown>[] = [
-    {
-      $or: [
-        { 'cliente.clienteCpf': cpf },
-        { 'cliente.clienteCpf': { $regex: cpfToleranceRegex(cpf) } },
-      ],
-    },
-    excludeFusaoAbsorvidosFilter(),
-  ];
+  const andClauses: Record<string, unknown>[] = [excludeFusaoAbsorvidosFilter()];
   if (opts.excludeChamadoId && mongoose.Types.ObjectId.isValid(opts.excludeChamadoId)) {
     andClauses.push({ _id: { $ne: new mongoose.Types.ObjectId(opts.excludeChamadoId) } });
   }
 
   const limit = Math.min(Math.max(opts.limit ?? CPF_HISTORY_RAW_LIMIT, 1), CPF_HISTORY_RAW_LIMIT);
-  return ChamadoN1.find({ $and: andClauses }).sort({ updatedAt: -1 }).limit(limit).exec();
+  return findChamadosByCpf(cpf, andClauses, limit);
 }

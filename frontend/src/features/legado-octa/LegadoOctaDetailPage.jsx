@@ -18,12 +18,23 @@ function formatDateTime(value) {
 // A rota de anexo exige Authorization Bearer (authMiddleware) — um <a href> simples não
 // carrega o token. Baixa via axios (que já injeta o header) e abre o blob numa aba nova.
 async function openAttachment(url, filename) {
+  // URL absoluta (ex.: bucket do Octadesk) não passa pelo nosso backend: baixar via XHR
+  // dispara CORS. Abre direto numa aba — o navegador faz a navegação sem preflight.
+  if (/^https?:\/\//i.test(url)) {
+    window.open(url, '_blank', 'noopener');
+    return;
+  }
   try {
     // `api` já tem baseURL '/api' — a URL guardada no ticket já vem com esse prefixo.
     const path = url.startsWith('/api/') ? url.slice(4) : url;
     const res = await api.get(path, { responseType: 'blob' });
     const blobUrl = URL.createObjectURL(res.data);
-    window.open(blobUrl, '_blank', 'noopener');
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename || 'anexo';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
   } catch (err) {
     // eslint-disable-next-line no-alert

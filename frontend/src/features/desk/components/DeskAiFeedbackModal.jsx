@@ -1,8 +1,7 @@
 /**
  * DeskAiFeedbackModal v1.0.0 — Área de IA: feedback do operador ao reprovar a sugestão
  * VERSION: v1.0.0 | DATE: 2026-10-02
- * — Enviar: grava o feedback para aprendizado da IA (agent_feedback).
- * — Gerar: pede uma nova resposta à IA com base no feedback digitado.
+ * — Cancelar fecha; Enviar manda o feedback (opcional). Na fila de aprovação, enviar reprova e a IA gera a nova resposta.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -12,7 +11,6 @@ export default function DeskAiFeedbackModal({
   auditScore,
   onClose,
   onSend,
-  onGenerate,
   busyAction = null,
 }) {
   const [input, setInput] = useState('');
@@ -46,7 +44,7 @@ export default function DeskAiFeedbackModal({
   const trimmed = input.trim();
 
   const run = async (action) => {
-    if (!trimmed || busy) return;
+    if (busy) return;
     const result = await action(trimmed);
     if (result?.success) {
       setInput('');
@@ -97,10 +95,6 @@ export default function DeskAiFeedbackModal({
 
         <form onSubmit={(e) => { e.preventDefault(); run(onSend); }}>
           <div className="queue-box-modal__body">
-            <p className="desk-ai-revision-modal__hint">
-              Descreva a correção da resposta sugerida. Enviar registra o feedback para o aprendizado da IA;
-              Gerar cria uma nova resposta com base nele.
-            </p>
             <textarea
               ref={inputRef}
               className="desk-ai-revision-modal__input"
@@ -115,15 +109,15 @@ export default function DeskAiFeedbackModal({
             <button
               type="button"
               className="btn-secondary queue-box-modal__btn"
-              onClick={() => run(onGenerate)}
-              disabled={busy || !trimmed}
+              onClick={onClose}
+              disabled={busy}
             >
-              {busyAction === 'gerar' ? 'Gerando…' : 'Gerar'}
+              Cancelar
             </button>
             <button
               type="submit"
               className="btn-primary queue-box-modal__btn"
-              disabled={busy || !trimmed}
+              disabled={busy}
             >
               {busyAction === 'enviar' ? 'Enviando…' : 'Enviar'}
             </button>

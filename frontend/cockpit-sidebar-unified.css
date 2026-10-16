@@ -16,6 +16,8 @@
 }
 
 .velo-nav-rail-wrap {
+    /* Sempre do topo à base da viewport, independente da ticker — ela nasce depois dele
+       (ver --velonews-ticker-left em velodesk-ecosystem.css), nunca por cima. */
     position: fixed;
     top: 0;
     left: 0;
@@ -470,7 +472,8 @@ body.velo-sidebar-pinned {
 body.desk-v2-mode #mainSidebar.velo-nav-rail {
     z-index: 8300;
     top: 0;
-    height: 100vh;
+    bottom: 0;
+    height: auto;
 }
 
 body.desk-v2-mode #velodeskDeskV2Root {

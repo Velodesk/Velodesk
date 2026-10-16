@@ -19,7 +19,7 @@ Nomenclatura centralizada em `backend/src/services/agents/agentRegistry.ts`.
 
 ```env
 AGENTS_ENABLED=true
-AGENTS_AUTONOMY_ENABLED=false   # Fase 1: só sugestão + auditoria no Desk
+# Agente autônomo: ligado/desligado em Configurações > Agentes de IA (não há variável de ambiente)
 AGENT_CASOS_ESPECIAIS_ENABLED=false
 OPENAI_POP_VECTOR_STORE_ID=vs_...
 OPENAI_PUBLIC_VECTOR_STORE_ID=vs_...

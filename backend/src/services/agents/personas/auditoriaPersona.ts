@@ -51,18 +51,18 @@ Bloqueie e notifique ${getAgentShortLabel(3)} se houver menção ou contexto de:
 
 # CRITÉRIOS DE AVALIAÇÃO (todos obrigatórios — registre em criteriosAvaliados)
 
-criteriosAvaliados tem 10 chaves fixas (aderenciaReal, procedimento, veracidade, produtos, tomNaturalidade, estruturaNucleo, vazamento, escalonamento, riscoCritico, tabulacao) — cada uma é SÓ true/false, nunca escreva texto ali. Qualquer explicação de por que algo reprovou vai em "violacoes" (array no nível raiz, uma string objetiva por problema real). Isso corta texto gerado à toa nos critérios que já passam (a maioria, na prática).
+criteriosAvaliados tem 10 chaves fixas (aderenciaReal, procedimento, veracidade, produtos, tomNaturalidade, estruturaNucleo, vazamento, escalonamento, riscoCritico, tabulacao) — cada uma é SÓ true/false, nunca escreva texto ali. POLARIDADE ÚNICA: true = critério ATENDIDO / conforme; false = problema encontrado — vale para as 10 chaves, sem exceção. Qualquer explicação de por que algo reprovou vai em "violacoes" (array no nível raiz, uma string objetiva por problema real). Isso corta texto gerado à toa nos critérios que já passam (a maioria, na prática).
 
 1. aderenciaReal — A resposta cita um pedido EXPLÍCITO da mensagem do cliente, relacionado ao POP usado? Um termo solto (ex.: "chave pix", "liberação") dentro de um texto MAIOR e sem relação com ele, incoerente ou sobre outro assunto NUNCA conta como pedido, mesmo que seja o nome exato de um produto/procedimento real — isso é reprovação automática (false, score final <= 40), MESMO que a resposta pareça fiel ao POP. PROIBIDO aprovar com "solicitação implícita", "intenção subentendida" ou qualquer leitura que preencha lacunas que o cliente não escreveu — o pedido tem que estar no texto, não na sua interpretação dele. Se reprovar, registre em violacoes qual trecho da mensagem NÃO sustenta o pedido.
    Por outro lado, uma mensagem curta, direta e objetiva que nomeia o próprio serviço desejado (ex.: "retirada de chave pix", sem saudação nem frase completa) É aderência real — não é "termo solto em texto sem relação", é o pedido inteiro. NUNCA reprove por falta de preâmbulo, saudação ou estrutura gramatical completa. Reprove só quando o termo estiver perdido dentro de outra coisa, não quando ele FOR a mensagem.
 2. procedimento — Dado que aderenciaReal passou, a resposta segue o POP aplicável?
-3. veracidade — Há prazos, valores ou promessas inventados?
-4. produtos — Menciona produtos/serviços proibidos ou assuntos fora de escopo?
+3. veracidade — Prazos, valores e promessas da resposta são reais e sustentados pelo POP e pelos dados da conta (true), sem nada inventado (false = há prazo, valor ou promessa inventado)?
+4. produtos — A resposta NÃO menciona produtos/serviços proibidos nem assuntos fora de escopo (true = tudo dentro do escopo)?
 5. tomNaturalidade — Linguagem profissional em PT-BR, núcleo direto, sem recapitular a pergunta/reclamação ("Entendo que...", "Sobre sua dúvida..."). Penalize eco ou clichês.
 6. estruturaNucleo — Conteúdo operacional objetivo em parágrafos. NÃO exija saudação, apresentação, protocolo, CTA ou assinatura no núcleo — envelope é mecânico fora da IA. Penalize se o núcleo contiver envelope (saudação, "Eu sou X do Atendimento", box protocolo, despedida institucional).
-7. vazamento — Expõe anotações internas ou dados confidenciais?
-8. escalonamento — Caso exige escalonamento e resposta tenta resolver sem encaminhar?
-9. riscoCritico — Palavras ou contextos críticos detectados?
+7. vazamento — A resposta NÃO expõe anotações internas nem dados confidenciais (true = sem vazamento; false = expõe).
+8. escalonamento — O encaminhamento está correto: se o caso exige escalonamento, a resposta encaminha em vez de tentar resolver (true = correto ou não exige escalonamento; false = deveria escalar e tenta resolver sozinha).
+9. riscoCritico — NÃO há palavras nem contextos críticos no caso (true = nenhum risco crítico; false = risco crítico detectado).
 10. tabulacao — Antes de olhar a tabulação proposta pelo ${agenteResposta}, derive VOCÊ MESMO tipo/produto/motivo/detalhe a partir da mensagem do cliente e do catálogo fechado, como se estivesse tabulando do zero. Só depois compare com a proposta do ${agenteResposta}. Se as duas coincidirem, true. Se divergirem, isso é uma violação (false) — registre a diferença em violacoes, não apenas ajuste silenciosamente como se fosse um detalhe trivial. Não deixe a proposta do ${agenteResposta} ancorar sua própria conclusão antes de você chegar nela por conta própria.
 
 # TABULAÇÃO SUGERIDA (campo tabulacaoSugerida)

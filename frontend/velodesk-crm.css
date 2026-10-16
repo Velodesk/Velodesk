@@ -1,6 +1,10 @@
 ﻿/* Velodesk CRM v1.18.0 - workflow concluído com badge verde */
 
 #velodeskDeskV2Root {
+    /* Sempre do topo à base da viewport, igual o menu lateral — não desce com a ticker.
+       .queue-panel e .ticket-list-panel (as duas colunas "fila de atendimento", azul e branca)
+       ficam paradas junto, em altura total. Quem desce é só a área principal (.crm-main-content),
+       via padding-top logo abaixo — sem precisar mexer na estrutura de nenhuma das duas colunas. */
     position: fixed;
     top: 0;
     right: 0;
@@ -13,6 +17,12 @@
     font-family: 'Poppins', sans-serif;
     font-size: var(--desk-fs-base);
     background: #F3F4F8;
+}
+
+#velodeskDeskV2Root .app-shell > .crm-main-content {
+    padding-top: var(--velonews-ticker-offset, 0px);
+    transition: padding-top 0.4s ease;
+    box-sizing: border-box;
 }
 
 #velodeskDeskV2Root .page.active {
@@ -1306,6 +1316,7 @@
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .status-badge--resolvido { background: #F3F4F6; color: #6B7280; }
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .status-badge--fechado,
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .status-badge--cancelado { background: #ffebee; color: #dc3545; }
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .status-badge--arquivo { background: #ECEEF1; color: #5A6472; }
 
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .desk-workflow-compose-lock--ticket-closed {
     border-color: #dc3545;
@@ -11122,3 +11133,410 @@ body.desk-v2-mode #cockpitFocusContext {
 
 #velodeskDeskV2Root .ia-tabulation-card__apply:hover:not(:disabled) { background: #0F27CC; }
 #velodeskDeskV2Root .ia-tabulation-card__apply:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Configurações > Agentes de IA > Agente Autônomo */
+.config-agente-autonomo { display: flex; flex-direction: column; gap: 16px; margin-top: 12px; }
+.config-agente-box { border: 1px solid var(--border, #e2e5ea); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.config-agente-box h4 { margin: 0; }
+.config-agente-box p { margin: 0; opacity: 0.8; }
+.config-agente-warn { color: #b45309; opacity: 1 !important; }
+.config-agente-row { display: flex; align-items: center; gap: 8px; }
+.config-agente-selects { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: end; }
+.config-agente-rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.config-agente-rules li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border, #e2e5ea); border-radius: 8px; }
+.config-agente-rules li.is-disabled .config-agente-rule-scope { opacity: 0.5; text-decoration: line-through; }
+
+/* Botão Imprimir ticket (ao lado do Editar cadastro) — Desk e casos especiais */
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-edit-client-btn.crm-print-ticket-btn {
+    width: 28px;
+    height: 28px;
+    margin-left: 4px;
+    border: 1px solid #C5CFFF;
+    border-radius: 7px;
+    background: #fff;
+    color: #1634FF;
+    font-size: 1rem;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-edit-client-btn.crm-print-ticket-btn:hover {
+    background: #EEF1FF;
+    border-color: #1634FF;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-edit-client-btn.crm-print-ticket-btn:focus-visible {
+    outline: 2px solid #1634FF;
+    outline-offset: 2px;
+}
+
+/* Modal Imprimir ticket (portal no body) */
+.ticket-print-modal__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: rgba(15, 23, 42, 0.35);
+}
+
+.ticket-print-modal {
+    width: min(400px, 100%);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    padding: 20px;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 18px 48px rgba(0, 0, 88, 0.18);
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
+    color: #111827;
+}
+
+.ticket-print-modal__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.ticket-print-modal__head h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.ticket-print-modal__protocol {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 0.85rem;
+    color: #4b5563;
+    font-variant-numeric: tabular-nums;
+}
+
+.ticket-print-modal__group {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.ticket-print-modal__group h3 {
+    margin: 0 0 2px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #4b5563;
+}
+
+.ticket-print-modal__option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.ticket-print-modal__option input {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    accent-color: #1E4FD8;
+    cursor: pointer;
+}
+
+.ticket-print-modal__option.is-disabled { cursor: not-allowed; color: #374151; }
+.ticket-print-modal__option.is-disabled input { cursor: not-allowed; }
+
+.ticket-print-modal__swatch {
+    width: 11px;
+    height: 11px;
+    border-radius: 2px;
+    border: 1px solid;
+}
+
+.ticket-print-modal__swatch--publica { background: #E8ECF6; border-color: #C9D3EE; }
+.ticket-print-modal__swatch--interna { background: #FEF3C7; border-color: #F5D565; }
+.ticket-print-modal__swatch--automatica { background: #F3F4F6; border-color: #D1D5DB; }
+
+.ticket-print-modal__phase {
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #FEF3C7;
+    color: #B45309;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.ticket-print-modal__foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    padding-top: 16px;
+    border-top: 1px solid #E5E7EB;
+}
+
+.ticket-print-modal__hint {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 0.78rem;
+    color: #B45309;
+    text-align: right;
+}
+
+.ticket-print-modal__btn {
+    padding: 9px 16px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.ticket-print-modal__btn:focus-visible { outline: 2px solid #1E4FD8; outline-offset: 2px; }
+
+.ticket-print-modal__btn--ghost {
+    background: #fff;
+    border-color: #D1D5DB;
+    color: #111827;
+}
+
+.ticket-print-modal__btn--ghost:hover { background: #F9FAFB; }
+
+.ticket-print-modal__btn--primary {
+    background: #1E4FD8;
+    color: #fff;
+}
+
+.ticket-print-modal__btn--primary:hover:not(:disabled) { background: #173FB0; }
+.ticket-print-modal__btn--primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Visualizar e-mail — botão (envelope) ao lado esquerdo do balão do agente, alinhado à base */
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .msg-bubble-line {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    max-width: 100%;
+    min-width: 0;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .msg-bubble-line > .msg-bubble {
+    min-width: 0;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .msg-bubble__email-preview-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid rgba(22, 52, 255, 0.25);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.7);
+    color: #1634FF;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .msg-bubble__email-preview-btn:hover {
+    background: #EEF1FF;
+    border-color: #1634FF;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .msg-bubble__email-preview-btn:focus-visible {
+    outline: 2px solid #1634FF;
+    outline-offset: 2px;
+}
+
+/* Modal de visualização do e-mail (portal no body) */
+.email-preview__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.email-preview {
+    display: flex;
+    flex-direction: column;
+    width: min(760px, 100%);
+    height: min(860px, calc(100vh - 32px));
+    overflow: hidden;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 18px 48px rgba(0, 0, 88, 0.22);
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
+    color: #111827;
+}
+
+.email-preview__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid #E5E7EB;
+    background: #F9FAFB;
+}
+
+.email-preview__top h2 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.email-preview__top p {
+    margin: 2px 0 0;
+    font-size: 0.78rem;
+    color: #6b7280;
+}
+
+.email-preview__close {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #6b7280;
+    font-size: 1.05rem;
+    cursor: pointer;
+}
+
+.email-preview__close:hover { background: #E5E7EB; color: #111827; }
+.email-preview__close:focus-visible { outline: 2px solid #1634FF; outline-offset: 2px; }
+
+.email-preview__envelope {
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.email-preview__subject {
+    margin: 0 0 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    line-height: 1.3;
+    text-wrap: balance;
+}
+
+.email-preview__from-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.email-preview__avatar {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: #000058;
+    color: #fff;
+    font-weight: 700;
+}
+
+.email-preview__parties {
+    flex: 1;
+    min-width: 0;
+}
+
+.email-preview__parties p {
+    margin: 0;
+    font-size: 0.84rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.email-preview__addr,
+.email-preview__to {
+    color: #6b7280;
+}
+
+.email-preview__to { font-size: 0.78rem !important; }
+
+.email-preview__date {
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    color: #6b7280;
+    font-variant-numeric: tabular-nums;
+}
+
+.email-preview__attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.email-preview__attachments li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 5px 10px;
+    border: 1px solid #E5E7EB;
+    border-radius: 999px;
+    background: #F9FAFB;
+    font-size: 0.75rem;
+    color: #374151;
+    overflow-wrap: anywhere;
+}
+
+.email-preview__body {
+    flex: 1;
+    min-height: 0;
+    background: #f4f6fb;
+}
+
+.email-preview__frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #f4f6fb;
+}
+
+.email-preview__state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 100%;
+    margin: 0;
+    padding: 24px;
+    font-size: 0.88rem;
+    color: #6b7280;
+    text-align: center;
+}
+
+.email-preview__state.is-error { color: #B91C1C; }
+
+.email-preview__spin { animation: email-preview-spin 0.9s linear infinite; }
+
+@keyframes email-preview-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .email-preview__spin { animation: none; }
+}
+
+.email-preview__note {
+    margin: 0;
+    padding: 8px 18px;
+    border-top: 1px solid #E5E7EB;
+    font-size: 0.72rem;
+    color: #9ca3af;
+}

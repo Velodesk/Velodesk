@@ -5,6 +5,7 @@
 import { getDeskDisplayName } from '../../utils/userDisplayName';
 import { normalizeProfileId } from '../../config/profiles';
 import { sanitizeResponsavel } from '../tabulationConfig';
+import { getServerResponsavelCandidates } from './serverResponsavelCandidates';
 import {
   readCachedPermissions,
   shouldUseMeusChamadosFila as permShouldUseMeusChamados,
@@ -98,6 +99,8 @@ export function buildResponsavelCandidates() {
   push(colaborador?.email);
   push(colaborador?.aliasColaborador);
   push(getDeskDisplayName(user, colaborador));
+  // Mesmos candidatos que o backend usa na contagem (alias do cadastro de colaboradores etc.).
+  getServerResponsavelCandidates().forEach(push);
 
   return [...new Set(values.filter(Boolean))];
 }

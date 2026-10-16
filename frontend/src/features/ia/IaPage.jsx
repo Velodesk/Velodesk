@@ -1,7 +1,9 @@
 /**
- * IaPage v1.2.0 — Área de IA (barra lateral, logo abaixo de Tickets)
- * Tickets abertos no layout padrão do Desk, sem o composer de texto; fila só com a caixa Novos.
- * Os motivos que encaminham um ticket para esta área ainda serão definidos.
+ * IaPage v1.3.0 — Área de IA (barra lateral, logo abaixo de Tickets)
+ * Fila de aprovação humana: lista só os tickets que o agente autônomo já respondeu e tabulou
+ * (aiAutomation.status = aguardando_aprovacao). A resposta e a tabulação já estão prontas ao abrir o ticket;
+ * o auditor humano só aprova (envia, tabula e resolve) ou reprova (a IA refaz; na 2ª reprovação volta ao humano).
+ * Nenhuma sugestão é gerada ao entrar no módulo.
  */
 import React, { useEffect } from 'react';
 import DeskPortal from '../desk/DeskPortal';

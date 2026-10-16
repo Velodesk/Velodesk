@@ -6,6 +6,7 @@
 import { boxesApi } from '../../api/client';
 import { isBackendJwtUsable } from '../../utils/backendJwt';
 import { isApiMode } from '../ticketsCache';
+import { setServerResponsavelCandidates } from './serverResponsavelCandidates';
 import { AGENT_DESK_QUEUE_IDS, MEUS_TICKETS_QUEUE_ID } from './constants';
 
 const REAL_COUNT_QUEUE_IDS = new Set([...AGENT_DESK_QUEUE_IDS, MEUS_TICKETS_QUEUE_ID]);
@@ -131,7 +132,7 @@ export function getDeskQueueOptimisticDelta(queueId) {
 
 function toDeskQueueCountId(queueId) {
   const id = String(queueId || '').trim();
-  if (AGENT_DESK_QUEUE_IDS.has(id)) return id;
+  if (AGENT_DESK_QUEUE_IDS.has(id) || id === MEUS_TICKETS_QUEUE_ID) return id;
   if (id === 'meus-novos') return 'novos';
   if (id === 'em-aberto' || id === 'meus-em-aberto' || id === 'meus-em-andamento') return 'em-andamento';
   if (id === 'em-espera' || id === 'pendentes' || id === 'meus-pendente') return 'pendente';
@@ -176,6 +177,9 @@ export async function refreshQueueCountsFromApi(userEmail = '') {
       const data = await boxesApi.queueCounts(params);
       cachedCounts = normalizeCounts(data?.counts);
       cachedUnsupportedCriteria = data?.unsupportedCriteria || {};
+      if (Array.isArray(data?.responsavelCandidates)) {
+        setServerResponsavelCandidates(data.responsavelCandidates, userEmail);
+      }
       optimisticDeltas = emptyDeltas();
       persistCountsToStorage(userEmail);
       dispatchCountsChanged();

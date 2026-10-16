@@ -143,6 +143,22 @@ export function resolveWaChatIdFromChamado(chamado: IChamadoN1, hint?: string): 
   return '';
 }
 
+/**
+ * Últimos 8 dígitos — tolera DDI/DDD e a ambiguidade do 9º dígito do celular BR: normalizePhoneE164
+ * só prefixa +55, não reconcilia 10 (sem o 9) vs 11 dígitos (com o 9) locais, então o mesmo número
+ * pode normalizar diferente dependendo de quem informou (cadastro x remetente real da Twilio).
+ * Mesma convenção já usada em waActiveConversation.service.ts para casar números.
+ */
+function waChatIdSuffix(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 8 ? digits.slice(-8) : digits;
+}
+
+function waChatIdsMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  return waChatIdSuffix(a) === waChatIdSuffix(b);
+}
+
 export function findWhatsAppThreadRegistro(
   chamado: IChamadoN1,
   waChatId?: string,
@@ -155,7 +171,8 @@ export function findWhatsAppThreadRegistro(
     const meta = registroMetadados(reg);
     if (String(meta.source ?? '') !== WHATSAPP_THREAD_SOURCE) continue;
     if (!targetChatId) return { registro: reg, index };
-    if (normalizeWaChatId(meta.waChatId) === targetChatId) return { registro: reg, index };
+    // Comparação tolerante (sufixo) em vez de igualdade exata — ver waChatIdsMatch acima.
+    if (waChatIdsMatch(normalizeWaChatId(meta.waChatId), targetChatId)) return { registro: reg, index };
   }
 
   return null;

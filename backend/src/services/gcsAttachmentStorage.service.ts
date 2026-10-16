@@ -2,7 +2,7 @@
 import { Readable } from 'stream';
 import { google } from 'googleapis';
 import { env } from '../config/env';
-import { getEmailTransportSnapshot, isEmailTransportReady } from './emailTransport.service';
+import { getEmailTransportSnapshot, isGmailCredentialsReady } from './emailTransport.service';
 
 const GCS_SCOPE = 'https://www.googleapis.com/auth/devstorage.read_write';
 
@@ -31,7 +31,7 @@ export function getInboundQuarantinePrefix(): string {
 }
 
 export function isGcsAttachmentStorageConfigured(): boolean {
-  return Boolean(String(env.gcpStorageBucket || '').trim()) && isEmailTransportReady();
+  return Boolean(String(env.gcpStorageBucket || '').trim()) && isGmailCredentialsReady();
 }
 
 export function buildGcsObjectUri(prefix: string, storageKey: string): string {

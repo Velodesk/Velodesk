@@ -50,6 +50,42 @@ export function buildTabulationCatalog(config: TabulationActiveDto): string {
   return lines.join('\n');
 }
 
+export interface TabulationScope {
+  config: TabulationActiveDto;
+  /** Nome oficial do produto fixado pela origem ('' quando não há ou não existe na árvore ativa). */
+  produtoFixo: string;
+}
+
+/**
+ * Árvore de tabulação para os agentes. Com `produtoFixo` (produto que veio da origem do ticket) a árvore fica
+ * restrita a esse produto: o catálogo do prompt e a validação só aceitam motivo/detalhe dele.
+ */
+export async function loadTabulationScope(produtoFixo?: string): Promise<TabulationScope> {
+  const full = await loadTabulationConfig();
+  const wanted = normalizeMatchText(produtoFixo);
+  if (!wanted) return { config: full, produtoFixo: '' };
+  const match = full.produtos.find((p) => p.ativo && normalizeMatchText(p.produto) === wanted);
+  if (!match) return { config: full, produtoFixo: '' };
+  return { config: { ...full, produtos: [match] }, produtoFixo: match.produto };
+}
+
+/** Garante o produto da origem na tabulação devolvida pelo modelo (motivo/detalhe são validados dentro dele). */
+export function withProdutoFixo<T extends { produto?: string }>(raw: T | undefined, produtoFixo: string): T {
+  const base = (raw || {}) as T;
+  return produtoFixo ? { ...base, produto: produtoFixo } : base;
+}
+
+function produtoFixoBlock(produtoFixo?: string): string[] {
+  const produto = trimStr(produtoFixo, 200);
+  if (!produto) return [];
+  return [
+    '',
+    '## Produto definido pela origem do ticket',
+    '',
+    `Produto: "${produto}". Já está definido — use EXATAMENTE este produto em tabulacao.produto e escolha tipo, motivo e detalhe apenas dentre os disponíveis neste produto (catálogo abaixo).`,
+  ];
+}
+
 export function formatMessagesBlock(messages: TicketAiMessageInput[]): string {
   return messages
     .map((m, i) => `${i + 1}. [${m.role === 'cliente' ? 'Cliente' : 'Agente'}]: ${m.text}`)
@@ -77,6 +113,8 @@ export function buildAtendimentoUserBlock(
     messages?: TicketAiMessageInput[];
     internalNote?: string;
     produtoHint?: string;
+    produtoFixo?: string;
+    dadosConta?: string;
     feedbackExamples?: string;
   },
   tabulationCatalog: string,
@@ -102,6 +140,18 @@ export function buildAtendimentoUserBlock(
 
   if (params.produtoHint) {
     parts.push('', `## Dica de produto: ${params.produtoHint}`);
+  }
+  parts.push(...produtoFixoBlock(params.produtoFixo));
+
+  if (params.dadosConta?.trim()) {
+    parts.push(
+      '',
+      '## DADOS REAIS DA CONTA DO CLIENTE (consulta oficial)',
+      '',
+      params.dadosConta.trim(),
+      '',
+      'Use estes dados para tornar a resposta específica deste cliente (valores, datas, status, próximos passos). Não invente nada além deles, não cite campos que não estejam acima e, se algo necessário não constar, oriente de forma geral ou encaminhe. Nunca peça ao cliente informações que já constam aqui.',
+    );
   }
 
   parts.push('', '## Catálogo de tabulação (lista fechada)', '', tabulationCatalog);
@@ -173,6 +223,19 @@ export function buildAuditoriaUserBlock(
   if (params.ultimaMensagemCliente) {
     parts.push('', '## Última mensagem do cliente', '', params.ultimaMensagemCliente);
   }
+
+  if (params.dadosConta?.trim()) {
+    parts.push(
+      '',
+      '## DADOS REAIS DA CONTA DO CLIENTE (consulta oficial)',
+      '',
+      params.dadosConta.trim(),
+      '',
+      'Confira se a resposta proposta contradiz ou ignora estes dados (valores, datas, status). Resposta que afirme algo diferente dos dados reais, ou que prometa algo que eles não sustentam, deve ser reprovada em veracidade.',
+    );
+  }
+
+  parts.push(...produtoFixoBlock(params.produtoFixo));
 
   const agenteResposta = getAgentNomeOficial(1);
 
@@ -436,3 +499,64 @@ export const AUDITORIA_JSON_SCHEMA = {
     'notificarAgente3', 'violacoes', 'recomendacoes', 'criteriosAvaliados', 'tabulacaoSugerida',
   ],
 } as const;
+
+export const CLASSIFICACAO_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    tipo: { type: 'string' },
+    produto: { type: 'string' },
+    motivo: { type: 'string' },
+    detalhe: { type: 'string' },
+  },
+  required: ['tipo', 'produto', 'motivo', 'detalhe'],
+} as const;
+
+export const CLASSIFICACAO_SYSTEM_PROMPT = [
+  'Você classifica chamados de atendimento da Velotax segundo a árvore de tabulação fornecida.',
+  'Leia a mensagem do cliente (e as anotações internas, se houver) e escolha tipo, produto, motivo e detalhe.',
+  'Use SOMENTE valores da lista fechada do catálogo, exatamente como escritos. Se o produto não puder ser identificado com segurança, retorne produto, motivo e detalhe vazios.',
+  'Não redija resposta. Retorne apenas o JSON de classificação.',
+].join('\n');
+
+/** Prompt enxuto só para classificar produto/motivo (etapa que antecede a consulta de dados da conta). */
+export function buildClassificacaoUserBlock(
+  params: {
+    protocolo?: string;
+    canal?: string;
+    titulo?: string;
+    messages?: TicketAiMessageInput[];
+    internalNote?: string;
+    produtoFixo?: string;
+  },
+  tabulationCatalog: string,
+): string {
+  const parts: string[] = [
+    '## Chamado',
+    `Protocolo: ${params.protocolo || 'não informado'}`,
+    `Canal: ${params.canal || 'não informado'}`,
+    `Título: ${params.titulo || 'não informado'}`,
+  ];
+  if (params.messages?.length) {
+    parts.push('', '## Histórico da conversa (mensagens públicas)', '', formatMessagesBlock(params.messages));
+  }
+  if (params.internalNote?.trim()) {
+    parts.push('', '## Anotações internas (contexto do agente)', '', params.internalNote.trim());
+  }
+  parts.push(...produtoFixoBlock(params.produtoFixo));
+  parts.push(
+    '',
+    '## Catálogo de tabulação (lista fechada)',
+    '',
+    tabulationCatalog,
+    '',
+    '## Tipos permitidos',
+    '',
+    'Reclamação, Solicitação, Dúvida, Informação',
+    '',
+    '## Tarefa',
+    '',
+    'Retorne o JSON com tipo, produto, motivo e detalhe do chamado.',
+  );
+  return parts.join('\n');
+}

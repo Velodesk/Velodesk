@@ -758,10 +758,21 @@ export function upsertDeskSearchTicketsInCache(apiTicket) {
   return ticket;
 }
 
+// No máximo 1 recarga em voo + 1 pendente. Antes cada chamada entrava numa fila serial: com o
+// servidor lento (45s de timeout por tentativa) e vários gatilhos (agentes mexendo em tickets,
+// ações do operador) a fila crescia sem limite e mantinha o /boxes sempre ocupado.
+let loadBoxesPending = null;
+
 export async function loadBoxesFromApi(userEmail = '') {
-  const run = async () => loadBoxesFromApiOnce(userEmail);
-  loadBoxesFromApiChain = loadBoxesFromApiChain.then(run, run);
-  return loadBoxesFromApiChain;
+  if (loadBoxesPending) return loadBoxesPending;
+  const run = async () => {
+    loadBoxesPending = null; // a partir daqui, novas chamadas valem uma nova rodada
+    return loadBoxesFromApiOnce(userEmail);
+  };
+  const next = loadBoxesFromApiChain.then(run, run);
+  loadBoxesPending = next;
+  loadBoxesFromApiChain = next.catch(() => {});
+  return next;
 }
 
 async function loadBoxesFromApiOnce(userEmail = '') {

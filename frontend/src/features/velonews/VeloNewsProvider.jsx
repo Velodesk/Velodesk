@@ -107,6 +107,32 @@ export function VeloNewsProvider({ children }) {
     return () => clearInterval(intervalId);
   }, [authStatus, userEmail, refreshFeed]);
 
+  // DEBUG — só em dev, não toca a API real do VeloHub. Console do navegador:
+  // veloNewsDebugInject() ou veloNewsDebugInject('Título', 'Texto da notícia').
+  // Some sozinho no próximo refreshFeed (poll de 3min ou ação que chame refreshFeed).
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
+    window.veloNewsDebugInject = (
+      title = 'VeloNews de teste',
+      content = 'Essa é uma notícia fake só pra validar o visual do ticker, sem tocar o VeloHub real.',
+    ) => {
+      const fakeItem = {
+        _id: `fake-${Date.now()}`,
+        title,
+        content,
+        is_critical: 'N',
+        solved: false,
+        media: { images: [], videos: [] },
+        thread: [],
+        createdAt: new Date().toISOString(),
+      };
+      setVeloNews((prev) => [fakeItem, ...prev]);
+      setUnreadCount((prev) => prev + 1);
+      console.log('[veloNewsDebugInject] notícia fake adicionada:', fakeItem);
+    };
+    return () => { delete window.veloNewsDebugInject; };
+  }, []);
+
   useEffect(() => {
     if (!pendingCriticalNews || criticalModalNews) return undefined;
 

@@ -24,7 +24,7 @@ async function runCycleSafe(): Promise<void> {
 
 export function startChamadoIaAnaliseJob(): void {
   if (!env.chamadoIaAnaliseEnabled) {
-    console.info('[chamado-ia-analise-job] CHAMADO_IA_ANALISE_ENABLED=false — job não iniciado.');
+    console.info('[chamado-ia-analise-job] CHAMADO_IA_ANALISE_ENABLED != true — job não iniciado.');
     return;
   }
   if (timer) return;

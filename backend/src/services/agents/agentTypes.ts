@@ -20,7 +20,7 @@ export type ConfidenceLevel = 'alta' | 'media' | 'baixa';
 
 export type PipelineModo = 'desk' | 'auto_envio' | 'inbound';
 
-export type RevisaoOrigem = 'automatica_baixo_compliance' | 'solicitada_operador';
+export type RevisaoOrigem = 'automatica_baixo_compliance' | 'solicitada_operador' | 'reprovada_humano';
 
 export interface TicketAiMessageInput {
   role: 'cliente' | 'agente';
@@ -47,6 +47,10 @@ export interface AtendimentoInput {
   messages?: TicketAiMessageInput[];
   internalNote?: string;
   produtoHint?: string;
+  /** Dados reais da conta do cliente (já filtrados) para personalizar a resposta. */
+  dadosConta?: string;
+  /** Produto já definido pela origem do ticket: o agente o mantém e escolhe motivo/detalhe só dentro da árvore dele. */
+  produtoFixo?: string;
   /** Id do colaborador (req.user.userId) que acionou o agente — usado no relatório de custo de IA por colaborador. */
   userId?: string;
 }
@@ -101,6 +105,10 @@ export interface AuditoriaInput {
   mensagemOperador?: string;
   ultimaMensagemCliente?: string;
   palavrasCriticasPrecheck?: string[];
+  /** Mesmos dados da conta que o Agente de Resposta recebeu, para conferir a resposta contra a realidade. */
+  dadosConta?: string;
+  /** Produto definido pela origem do ticket (a árvore do auditor também fica restrita a ele). */
+  produtoFixo?: string;
   /** Id do colaborador (req.user.userId) que acionou o agente — usado no relatório de custo de IA por colaborador. */
   userId?: string;
 }
@@ -149,6 +157,10 @@ export interface PipelineResult {
   auditComplete?: boolean;
   nivelCriticidade?: NivelCriticidade;
   envioAutonomo?: boolean;
+  /** Resultado da consulta de dados da conta usada na resposta (quando habilitada). */
+  hidratacao?: { slug: string; status: 'ok' | 'sem_dados' | 'indisponivel' };
+  /** Resposta gravada na fila de aprovação humana (não enviada ao cliente). */
+  aguardandoAprovacao?: boolean;
   revisoesRealizadas?: number;
   model?: string;
   error?: string;

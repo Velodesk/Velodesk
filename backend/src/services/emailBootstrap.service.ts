@@ -2,7 +2,7 @@
 import { env } from '../config/env';
 import { isAllMongoReady, isDeskConfigConnected } from '../config/database';
 import { ensureGmailInboundMessageIndexes } from '../models/GmailInboundMessage';
-import { loadEmailTransport, isEmailTransportReady } from './emailTransport.service';
+import { loadEmailTransport, isGmailCredentialsReady } from './emailTransport.service';
 import { loadMailRules } from './mailRules.service';
 import { loadMailPrioritySubjectRules } from './mailPrioritySubjectRules.service';
 import {
@@ -35,7 +35,7 @@ async function trySetupGmailWatchWithRetries(): Promise<void> {
   startGmailWatchRenewalLoop();
 
   for (let attempt = 1; attempt <= WATCH_SETUP_MAX_ATTEMPTS; attempt++) {
-    if (!isEmailTransportReady()) {
+    if (!isGmailCredentialsReady()) {
       console.warn(`[emailBootstrap] watch adiado — transport não pronto (tentativa ${attempt}/${WATCH_SETUP_MAX_ATTEMPTS})`);
       await new Promise((resolve) => setTimeout(resolve, WATCH_SETUP_RETRY_MS));
       continue;
@@ -105,7 +105,7 @@ export async function bootstrapEmailServices(): Promise<void> {
 
   if (!env.gmailInboundEnabled) return;
 
-  if (!isEmailTransportReady()) {
+  if (!isGmailCredentialsReady()) {
     if (env.emailEnabled) {
       console.warn('[emailBootstrap] GMAIL_INBOUND_ENABLED mas desk_config.email_transport incompleto');
     }

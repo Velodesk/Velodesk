@@ -202,8 +202,10 @@ export function normalizeMessageHtmlForDisplay(html) {
     li.querySelectorAll('div').forEach((div) => {
       if (div.querySelector('ol, ul, img')) return;
       const br = document.createElement('br');
+      // br ainda não tem pai: br.before() não faz nada e o while nunca terminava (travava a aba).
+      // Move os filhos para antes do próprio div (que tem pai) e só então troca o div pelo br.
       while (div.firstChild) {
-        br.before(div.firstChild);
+        div.before(div.firstChild);
       }
       div.replaceWith(br);
     });
