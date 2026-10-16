@@ -1,6 +1,7 @@
 /**
  * Mesclagem de tickets estilo Ouvidoria — ativo + inativos
- * VERSION: v1.1.1 | DATE: 2026-08-04
+ * VERSION: v1.2.0 | DATE: 2026-10-16
+ * — aceita resolvidos na mesclagem; principal resolvido é reaberto (em-andamento)
  * — absorvidos: status resolvido via appendStatusTransition (sai das filas abertas)
  * — textos de usuário: mesclar / mesclagem
  */
@@ -173,6 +174,9 @@ export async function executeTicketFusao(
     ...childIds.filter((id) => !existingChildIds.some((e) => String(e) === String(id))),
   ].slice(0, 50);
 
+  // Principal resolvido volta para em-andamento (o ticket volta a ser trabalhado).
+  const reabrirAtivo = String(currentStatus(active)).trim().toLowerCase() === 'resolvido';
+
   const firstChild = inativos[0];
   active.fusao = {
     fundido: true,
@@ -197,6 +201,15 @@ export async function executeTicketFusao(
     },
     authUser,
   });
+
+  if (reabrirAtivo) {
+    appendStatusTransition(active, 'em-andamento', {
+      autor: resolveRegistroAutor('agente', { authUser }),
+      anotacaoInterna: 'Ticket resolvido reaberto automaticamente ao ser definido como principal de uma mesclagem.',
+      metadados: { fusao: { role: 'ativo', reaberto: true } },
+      origin: 'agente',
+    });
+  }
 
   for (const doc of inativos) {
     doc.fusao = {

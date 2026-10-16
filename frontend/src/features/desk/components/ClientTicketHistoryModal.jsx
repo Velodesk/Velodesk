@@ -1,6 +1,7 @@
 /**
  * ClientTicketHistoryModal — histórico Mongo por CPF + mesclagem multi-seleção
- * VERSION: v2.2.0 | DATE: 2026-08-18
+ * VERSION: v2.3.0 | DATE: 2026-10-16
+ * — seções Tickets abertos / resolvidos / fechados; abertos e resolvidos mesclam entre si
  * — histórico via by-cpf inclui chamados_n1 + chamados_reclamacoes
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -30,8 +31,19 @@ function ticketIdOf(t) {
   return String(t?.id || t?._id || '');
 }
 
+function isTicketResolvedStatus(t) {
+  const s = String(t?.status || '').trim().toLowerCase();
+  return s === 'resolvido' || s === 'resolvidos';
+}
+
+/** Mesclável = aberto ou resolvido; fechado/cancelado não. */
+function isTicketMergeable(t) {
+  return isTicketResolvedStatus(t) || !isTicketTerminalStatus(t);
+}
+
 function TicketRows({
   tickets,
+  selectable,
   mergeEnabled,
   selectedIds,
   onToggle,
@@ -76,14 +88,16 @@ function TicketRows({
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >
-            <input
-              type="checkbox"
-              className="client360-merge-check"
-              checked={isSelected}
-              disabled={merging}
-              onChange={() => onToggle(ticketId)}
-              aria-label={`Selecionar #${getTicketProtocolLabel(t) || ticketId} para mesclagem`}
-            />
+            {selectable ? (
+              <input
+                type="checkbox"
+                className="client360-merge-check"
+                checked={isSelected}
+                disabled={merging}
+                onChange={() => onToggle(ticketId)}
+                aria-label={`Selecionar #${getTicketProtocolLabel(t) || ticketId} para mesclagem`}
+              />
+            ) : null}
           </td>
         ) : null}
         <td>
@@ -250,14 +264,16 @@ export default function ClientTicketHistoryModal({
     return () => { cancelled = true; };
   }, [tickets, enableSimilarSubject, clientIdentified, ticket, sourceTicketId]);
 
-  const { openTickets, closedTickets } = useMemo(() => {
+  const { openTickets, resolvedTickets, closedTickets } = useMemo(() => {
     const openList = [];
+    const resolvedList = [];
     const closedList = [];
     tickets.forEach((t) => {
-      if (isTicketTerminalStatus(t)) closedList.push(t);
+      if (isTicketResolvedStatus(t)) resolvedList.push(t);
+      else if (isTicketTerminalStatus(t)) closedList.push(t);
       else openList.push(t);
     });
-    return { openTickets: openList, closedTickets: closedList };
+    return { openTickets: openList, resolvedTickets: resolvedList, closedTickets: closedList };
   }, [tickets]);
 
   const selectedTickets = useMemo(
@@ -292,7 +308,7 @@ export default function ClientTicketHistoryModal({
     if (selectedIds.size < 2 || merging || !onFundirTickets) return;
     const preferred = sourceTicketId && selectedIds.has(String(sourceTicketId))
       ? String(sourceTicketId)
-      : selectedTickets.find((t) => !isTicketTerminalStatus(t));
+      : selectedTickets.find((t) => !isTicketResolvedStatus(t) && isTicketMergeable(t));
     setActivePickId(preferred ? ticketIdOf(preferred) : ticketIdOf(selectedTickets[0]));
     setConfirmOpen(true);
   };
@@ -310,7 +326,7 @@ export default function ClientTicketHistoryModal({
     await refreshList();
   };
 
-  const renderTable = (sectionTickets, title) => (
+  const renderTable = (sectionTickets, title, selectable = true) => (
     <div className="client360-section" key={title}>
       <h6 className="client360-section-subtitle">
         {title}
@@ -333,6 +349,7 @@ export default function ClientTicketHistoryModal({
           <tbody>
             <TicketRows
               tickets={sectionTickets}
+              selectable={selectable}
               mergeEnabled={mergeEnabled}
               selectedIds={selectedIds}
               onToggle={handleToggle}
@@ -439,11 +456,13 @@ export default function ClientTicketHistoryModal({
               <>
                 {mergeEnabled ? (
                   <p className="client360-merge-hint">
-                    Selecione dois ou mais tickets e clique em Mesclar. Em seguida escolha qual permanece Ativo.
+                    Selecione dois ou mais tickets abertos ou resolvidos e clique em Mesclar. Em seguida escolha qual
+                    permanece Ativo (se for um ticket resolvido, ele volta para Em andamento).
                   </p>
                 ) : null}
-                {renderTable(openTickets, 'Em aberto')}
-                {renderTable(closedTickets, 'Fechados')}
+                {renderTable(openTickets, 'Tickets abertos')}
+                {renderTable(resolvedTickets, 'Tickets resolvidos')}
+                {renderTable(closedTickets, 'Tickets fechados', false)}
               </>
             )}
           </div>
@@ -504,7 +523,8 @@ export default function ClientTicketHistoryModal({
                   <tbody>
                     {selectedTickets.map((t) => {
                       const id = ticketIdOf(t);
-                      const terminal = isTicketTerminalStatus(t);
+                      const terminal = !isTicketMergeable(t);
+                      const resolved = isTicketResolvedStatus(t);
                       const statusMeta = getTicketStatusBadgeMeta(t);
                       const workflowIcon = getClient360WorkflowIconMeta(t);
                       return (
@@ -535,6 +555,8 @@ export default function ClientTicketHistoryModal({
                               #{getTicketProtocolLabel(t) || id}
                               {terminal ? (
                                 <span className="client360-fusao-pick-hint">Não pode ser o ativo</span>
+                              ) : resolved ? (
+                                <span className="client360-fusao-pick-hint client360-fusao-pick-hint--info">Voltará para Em andamento</span>
                               ) : null}
                             </span>
                           </td>
@@ -580,7 +602,7 @@ export default function ClientTicketHistoryModal({
                 disabled={
                   merging
                   || !activePickId
-                  || selectedTickets.find((t) => ticketIdOf(t) === activePickId && isTicketTerminalStatus(t))
+                  || selectedTickets.find((t) => ticketIdOf(t) === activePickId && !isTicketMergeable(t))
                 }
               >
                 {merging ? 'Mesclando…' : 'Confirmar mesclagem'}
