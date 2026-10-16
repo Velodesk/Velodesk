@@ -464,7 +464,14 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     }
   }, [syncTicketViews, showNotification]);
 
-  const allWorkingEntries = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort);
+  // Filas dos agentes humanos nunca mostram o que está no fluxo do agente autônomo; a Área de IA mostra só isso.
+  const allWorkingEntries = resolveDeskWorkingEntries(
+    activeQueue,
+    appliedSearch,
+    activeSort,
+    false,
+    { aiFlow: hideComposer ? 'only' : 'exclude' },
+  );
   // Área de IA: só os tickets que o agente autônomo já respondeu e aguardam a aprovação humana.
   const entries = hideComposer ? allWorkingEntries.filter((e) => isPendingAiApproval(e.ticket)) : allWorkingEntries;
   const isTableQueueView = isDeskTableQueue(activeQueue);
@@ -1092,7 +1099,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
 
     let nextId = plannedNextId;
     if (!nextId) {
-      const workingList = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort);
+      const workingList = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort, false, { aiFlow: hideComposer ? 'only' : 'exclude' });
       const freshList = hideComposer ? workingList.filter((e) => isPendingAiApproval(e.ticket)) : workingList;
       nextId = pickNextTicketFromEntries(listAnchorId, freshList);
     }
@@ -1301,7 +1308,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     try {
     status = statusId || sendStatus;
     const savedListTicketId = getEntryTicketId(entry);
-    const workingListBeforeSave = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort);
+    const workingListBeforeSave = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort, false, { aiFlow: hideComposer ? 'only' : 'exclude' });
     const plannedNextId = getAutoCloseOnSave()
       ? pickNextTicketFromEntries(savedListTicketId, workingListBeforeSave)
       : null;

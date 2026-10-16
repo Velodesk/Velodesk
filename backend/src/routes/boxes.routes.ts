@@ -12,6 +12,7 @@ import {
   buildChamadoMapContext,
   buildResponsavelCandidates,
   chamadoToTicketListItem,
+  excludeAiAutomationFlowFilter,
   MEUS_CHAMADOS_COLUMNS,
   meusChamadosAgentScopeFilter,
   statusFromBoxName,
@@ -98,8 +99,19 @@ async function loadQueueCounts(
     resolvidos: 0,
   };
 
+  // Colunas cujos status se sobrepõem (em-aberto ⊂ em-andamento; boxes "Em aberto"/"Em Andamento"
+  // resolvem pro mesmo status) contariam o mesmo chamado duas vezes — conta cada status uma só vez.
+  const hasEmAndamento = columns.some((c) => c.status === 'em-andamento');
+  const seenStatuses = new Set<string>();
+  const countableColumns = columns.filter((column) => {
+    if (column.status === 'em-aberto' && hasEmAndamento) return false;
+    if (seenStatuses.has(column.status)) return false;
+    seenStatuses.add(column.status);
+    return true;
+  });
+
   await Promise.all(
-    columns.map(async (column) => {
+    countableColumns.map(async (column) => {
       // Contagem do badge nunca usa buildBoxListFindOptions — aquela função injeta uma
       // janela de 30 dias pra status terminal (resolvido/cancelado/fechado) só pra
       // manter a LISTA paginada rápida; usada aqui, capava o total exibido em ~150.
@@ -150,7 +162,9 @@ async function loadBoxesWithListTickets(
 }
 
 /** Status ativos considerados em "Meus Tickets" — nunca inclui resolvido/fechado/cancelado. */
-const MEUS_TICKETS_ATIVOS_STATUSES = ['novo', 'em-aberto', 'em-andamento', 'pendente', 'em-espera'];
+// 'em-aberto' NÃO entra aqui: STATUS_VARIANTS['em-andamento'] já o inclui — listar os dois contava
+// em dobro todo ticket 'em-aberto' (ex.: "Cliente respondeu"), gerando o contador fantasma.
+const MEUS_TICKETS_ATIVOS_STATUSES = ['novo', 'em-andamento', 'pendente', 'em-espera'];
 
 /**
  * Contagem real (countDocuments, sem limite) de "Meus Tickets" — SOMENTE responsável OU
@@ -248,7 +262,7 @@ async function computeQueueCounts(
             box.criterios || [],
             responsavelCandidates,
           );
-          counts[box.id] = await ChamadoN1.countDocuments(filter);
+          counts[box.id] = await ChamadoN1.countDocuments({ $and: [filter, excludeAiAutomationFlowFilter()] });
           if (unsupported.length) customBoxUnsupported[box.id] = unsupported;
         }),
       );

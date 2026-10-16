@@ -1298,15 +1298,27 @@ function filterCustomQueueEntries(customBox, searchQuery) {
   });
 }
 
-export function filterTickets(activeQueue, searchQuery, activeSort, entrySortOldestFirst = false) {
+/**
+ * Chamado em tratamento pelo agente autônomo (aguardando aprovação ou sendo reescrito pela IA).
+ * Vive só na Área de IA: não pode aparecer nas filas dos agentes humanos até ser devolvido.
+ */
+export function isInAiAutonomousFlow(ticket) {
+  const status = ticket?.aiAutomation?.status;
+  return status === 'aguardando_aprovacao' || status === 'em_revisao';
+}
+
+/** options.aiFlow: 'exclude' (padrão — filas dos agentes humanos) | 'only' (Área de IA). */
+export function filterTickets(activeQueue, searchQuery, activeSort, entrySortOldestFirst = false, options = {}) {
   const q = String(searchQuery || '').trim();
+  const onlyAiFlow = options.aiFlow === 'only';
+  const keepByAiFlow = (entry) => (onlyAiFlow ? isInAiAutonomousFlow(entry.ticket) : !isInAiAutonomousFlow(entry.ticket));
   if (isMeusTicketsQueue(activeQueue)) {
-    return sortTicketEntries(filterMyTicketsEntries(q), 'data', 'asc');
+    return sortTicketEntries(filterMyTicketsEntries(q).filter(keepByAiFlow), 'data', 'asc');
   }
   const customBox = getCustomQueueById(activeQueue);
   if (customBox) {
     return sortTicketEntries(
-      filterCustomQueueEntries(customBox, searchQuery),
+      filterCustomQueueEntries(customBox, searchQuery).filter(keepByAiFlow),
       activeSort,
       'asc',
       entrySortOldestFirst,
@@ -1317,6 +1329,7 @@ export function filterTickets(activeQueue, searchQuery, activeSort, entrySortOld
     .filter((entry) => {
       if (shouldExcludeEspeciaisFromDesk(entry.ticket)) return false;
       if (isFusaoAbsorvido(entry.ticket)) return false;
+      if (!keepByAiFlow(entry)) return false;
       if (entry.queueId !== activeQueue) return false;
       if (activeQueue === 'novos' && !ticketBelongsInAgentNovosQueue(entry.ticket)) return false;
       if (filterByResponsavel && !ticketMatchesAgentResponsavel(entry.ticket)) {
@@ -1470,14 +1483,15 @@ export function resolveDeskWorkingEntries(
   appliedSearch,
   activeSort,
   entrySortOldestFirst = false,
+  options = {},
 ) {
   const search = String(appliedSearch || '').trim();
   if (isMeusTicketsQueue(activeQueue)) {
-    return filterTickets(activeQueue, search, activeSort, entrySortOldestFirst);
+    return filterTickets(activeQueue, search, activeSort, entrySortOldestFirst, options);
   }
   return search
     ? resolveDeskSearchEntries(search, activeSort, entrySortOldestFirst)
-    : filterTickets(activeQueue, '', activeSort, entrySortOldestFirst);
+    : filterTickets(activeQueue, '', activeSort, entrySortOldestFirst, options);
 }
 
 /** Próximo ticket na lista visível após salvar/fechar o atual. */
