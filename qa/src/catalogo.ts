@@ -441,8 +441,12 @@ export const CATALOGO: CasoCatalogo[] = [
     id: 'X07',
     area: 'Erros',
     funcionalidade: 'Tickets parados em "novo"',
-    objetivo: 'Nenhum ticket demora demais ainda em "novo", com ou sem responsável já atribuído',
-    esperado: 'Nenhum ticket em "novo" há mais de 3h (e nenhum há mais de 5h)',
+    objetivo:
+      'Dentro do horário de atendimento (8h–19h), nenhum ticket demora demais ainda em "novo" — ' +
+      'fora desse horário é só informativo (backlog da madrugada é esperado)',
+    esperado:
+      'Nenhum ticket em "novo" parado há mais de 2h (relógio contado a partir das 8h pra quem é da ' +
+      'madrugada); crítico com 5+ parados há mais de 3h, ou qualquer quantidade parada há mais de 5h',
     modos: ['oficial', 'vigilancia'],
   },
 

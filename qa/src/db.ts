@@ -107,6 +107,35 @@ export const filtroExcluirEspeciais = (): Document => ({
   ],
 });
 
+export interface TicketEmNovo {
+  protocolo: string;
+  createdAt: Date;
+  responsavel: string;
+}
+
+/**
+ * Tickets em "novo" com o suficiente pra X07 decidir por ticket (não só contar): protocolo,
+ * criação (pra aplicar o relógio ajustado de horarioComercial.ts) e responsável atual.
+ */
+export async function buscarTicketsEmNovo(): Promise<TicketEmNovo[]> {
+  const col = await colChamados();
+  const docs = await col
+    .find(
+      { $and: [filtroStatusAtual('novo'), filtroExcluirEspeciais(), { $nor: [filtroQa()] }] },
+      { projection: { chamadoProtocolo: 1, createdAt: 1, tabulacao: 1 } },
+    )
+    .toArray();
+  return docs.map((d: any) => {
+    const tabulacao = d.tabulacao ?? [];
+    const ultima = tabulacao[tabulacao.length - 1];
+    return {
+      protocolo: String(d.chamadoProtocolo ?? ''),
+      createdAt: new Date(d.createdAt),
+      responsavel: String(ultima?.responsavel ?? '').trim(),
+    };
+  });
+}
+
 /**
  * Repete uma leitura no Mongo até a condição bater, ou desiste depois de
  * `tentativas`. Existe porque o agente lê o banco por uma conexão separada da
