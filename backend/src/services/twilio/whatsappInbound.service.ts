@@ -12,9 +12,9 @@ import {
   appendStatusTransition,
   currentStatus,
   normalizeStatusValue,
-  resolveInboundClientReplyStatus,
   shouldSpawnNewTicketOnInbound,
 } from '../chamado.mapper';
+import { resolveInboundClientReplyStatusSmart } from '../agents/gratitudeReplyGate.service';
 import {
   getTwilioActiveAccountSid,
   getTwilioCredentialMode,
@@ -176,7 +176,7 @@ async function saveWhatsAppReplyOnChamado(
   storedMedia: PersistedTwilioInboundMedia[],
 ): Promise<void> {
   const waChatId = appendInboundWhatsAppToChamado(chamado, payload, storedMedia);
-  const reopenStatus = resolveInboundClientReplyStatus(chamado);
+  const reopenStatus = await resolveInboundClientReplyStatusSmart(chamado, String(payload.body ?? ''));
   if (reopenStatus && reopenStatus !== normalizeStatusValue(currentStatus(chamado))) {
     appendStatusTransition(chamado, reopenStatus, {
       origin: 'cliente',
