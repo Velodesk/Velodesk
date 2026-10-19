@@ -1,9 +1,14 @@
 /**
- * telegram v2.1.0 — notificação curta da rodada de QA pro Telegram (gestão)
+ * telegram v2.2.0 — notificação curta da rodada de QA pro Telegram (gestão)
  *
  * Formato pensado para quem recebe a mensagem (gestão), não para quem vai investigar — o
- * detalhe técnico ("Esperado"/"Encontrado") continua só no Excel e no painel Sentinela
- * (QA_PAINEL_URL), atrás do botão "Ver detalhes". Ver mockup-notificacao-qa-velodesk_3.html.
+ * detalhe técnico (percentuais, canais, protocolos, "esperado/encontrado") continua só no Excel
+ * e no painel Sentinela (QA_PAINEL_URL), atrás do botão "Ver no Sentinela". 🔴 Falha e 🟢 Tudo
+ * certo viraram um placar objetivo por área (ver montarMensagemFalha/montarMensagemTudoCerto e
+ * mockup-notificacao-qa-v2-objetiva.html, Opção B) — no máximo ~10 linhas, sem número
+ * secundário/percentual/protocolo na frase de cada área, só a contagem entre parênteses. 🟡
+ * Atenção e 🟢 Resolvido ainda usam o formato anterior, mais detalhado (ver
+ * montarMensagemAtencao/montarMensagemResolvido) — não fizeram parte deste pedido.
  *
  * Em rodada de vigilância (QA_MODO_EXECUCAO=vigilancia, a cada 30 min em horário comercial),
  * enviarRelatorioTelegram suprime o envio quando o tipo decidido é 'resolvido' ou 'tudo-certo'
@@ -15,7 +20,9 @@ import type { Resultado, Metrica } from './resultado';
 import type { Area } from './catalogo';
 import type { CasoAnterior } from './estadoSentinela';
 
-/** Telegram recusa mensagem acima de 4096 caracteres; fica com folga para o cabeçalho e o rodapé. */
+/** Telegram recusa mensagem acima de 4096 caracteres; fica com folga para o cabeçalho e o rodapé.
+ * Só usado por montarMensagemAtencao (formato antigo, por ocorrência) — o placar por área
+ * (montarMensagemFalha) é curto o bastante (no máximo ~10 linhas) pra nunca precisar cortar. */
 const LIMITE_MENSAGEM = 3500;
 
 /** Nome mais curto/comercial para a área, só nesta notificação — o resto do sistema (Excel,
@@ -26,6 +33,32 @@ const AREA_LABEL: Partial<Record<Area, string>> = {
 
 function rotuloArea(area: Area): string {
   return AREA_LABEL[area] ?? area;
+}
+
+/** Emoji + rótulo curto por área, só pro placar de 🔴 Falha (ver montarPlacarPorArea) — mais
+ * enxuto que AREA_LABEL, que é usado no formato antigo (por ocorrência) do 🟡 Atenção. */
+const AREA_PLACAR: Record<Area, { emoji: string; label: string }> = {
+  'Saúde do sistema': { emoji: '🩺', label: 'Saúde' },
+  'Tickets novos': { emoji: '🆕', label: 'Tickets novos' },
+  'Mensagens e respostas': { emoji: '💬', label: 'Mensagens' },
+  Finalização: { emoji: '⚙️', label: 'Finalização' },
+  Mesclas: { emoji: '🔀', label: 'Mesclas' },
+  'Envios de e-mail': { emoji: '📧', label: 'E-mails' },
+  CSAT: { emoji: '⭐', label: 'CSAT' },
+  Erros: { emoji: '🚨', label: 'Erros' },
+  'Telas (navegador)': { emoji: '🖥️', label: 'Telas' },
+};
+
+/** "dd/mm hh:mm" — mais curto que formatarDataHora (que usa "dd/mm às hh:mm"), só pro placar. */
+function formatarDataHoraCurta(d: Date): string {
+  const data = new Intl.DateTimeFormat('pt-BR', { timeZone: cfg.timezone, day: '2-digit', month: '2-digit' }).format(d);
+  const hora = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: cfg.timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+  return `${data} ${hora}`;
 }
 
 function escapeHtml(texto: unknown): string {
@@ -50,7 +83,7 @@ function formatarDataHora(d: Date): string {
 export type TipoMensagemRodada = 'falha' | 'resolvido' | 'atencao' | 'tudo-certo';
 
 export interface EnvioTelegramOpts {
-  /** Mostra o botão inline "🔎 Ver detalhes" apontando para QA_PAINEL_URL. */
+  /** Mostra o botão inline "🔎 Ver no Sentinela" apontando para QA_PAINEL_URL. */
   comBotaoDetalhes?: boolean;
   /** Tipo de mensagem decidido por montarMensagemResumo — junto com `modoExecucao`,
    * decide se o envio é suprimido (ver comentário mais abaixo). */
@@ -89,7 +122,7 @@ export async function enviarRelatorioTelegram(mensagem: string, opts: EnvioTeleg
 
   if (opts.comBotaoDetalhes && cfg.painelUrl) {
     body.reply_markup = {
-      inline_keyboard: [[{ text: '🔎 Ver detalhes', url: cfg.painelUrl }]],
+      inline_keyboard: [[{ text: '🔎 Ver no Sentinela', url: cfg.painelUrl }]],
     };
   }
 
@@ -203,14 +236,51 @@ function montarBlocoPorArea(resultados: Resultado[]): { texto: string; ocorrenci
   return { texto, ocorrencias: totalOcorrencias };
 }
 
-function montarMensagemFalha(agora: Date, novas: Resultado[]): string {
-  const { texto, ocorrencias } = montarBlocoPorArea(novas);
+/** Uma linha do placar: área + quantas ocorrências (ocorrencias[] quando o caso detalha por
+ * item, senão 1 por resultado) + frase objetiva (resumoCurto do(s) caso(s) daquela área,
+ * deduplicada — ver CasoCatalogo.resumoCurto em catalogo.ts). */
+interface LinhaPlacar {
+  area: Area;
+  n: number;
+  frase: string;
+}
+
+function montarPlacarPorArea(resultados: Resultado[]): LinhaPlacar[] {
+  // Conta ocorrências de verdade (uma por item de `ocorrencias`, ex.: um modelo de e-mail em
+  // E09) — EXCETO quando o caso tem `ocorrenciasPorRegistro: true` (ex.: X07, uma ocorrência
+  // por ticket parado): nesse caso sempre conta como 1, senão "Erros" viraria "(28)" em vez de
+  // "(1)" com 28 tickets parados — a granularidade por registro é só pro Excel/painel.
+  const porArea = new Map<Area, { n: number; frases: string[] }>();
+  for (const r of resultados) {
+    const n = r.caso.ocorrenciasPorRegistro ? 1 : r.ocorrencias?.length || 1;
+    const entry = porArea.get(r.caso.area) ?? { n: 0, frases: [] };
+    entry.n += n;
+    const frase = r.caso.resumoCurto ?? r.caso.funcionalidade;
+    if (!entry.frases.includes(frase)) entry.frases.push(frase);
+    porArea.set(r.caso.area, entry);
+  }
+  return [...porArea.entries()]
+    .map(([area, { n, frases }]) => ({ area, n, frase: frases.join('; ') }))
+    .sort((a, b) => b.n - a.n);
+}
+
+/**
+ * Placar objetivo por área (Opção B do mockup v2) — "📧 E-mails (4): atrasos e e-mails que não
+ * saíram". Só a contagem entre parênteses e uma frase curta por área, sem percentual, canal,
+ * protocolo ou explicação — isso continua só no Excel e no painel Sentinela (botão "Ver no
+ * Sentinela"). No máximo ~10 linhas (1 cabeçalho + 1 por área, tipicamente 1-9 áreas).
+ */
+function montarMensagemFalha(agora: Date, novas: Resultado[], totalAnalisados: number): string {
+  const placar = montarPlacarPorArea(novas);
+  const total = placar.reduce((s, l) => s + l.n, 0);
+  const linhas = placar.map(({ area, n, frase }) => {
+    const info = AREA_PLACAR[area];
+    return `${info.emoji} <b>${escapeHtml(info.label)} (${n}):</b> ${escapeHtml(frase)}`;
+  });
   return (
-    `🔴 <b>QA Velodesk · Falha encontrada</b>\n` +
-    `Rodada ${formatarDataHora(agora)}\n\n` +
-    `${ocorrencias} ocorrência${ocorrencias === 1 ? '' : 's'}:\n\n` +
-    `${texto}\n\n` +
-    `✅ Suporte já acionado.`
+    `🔴 <b>QA Velodesk</b> · ${formatarDataHoraCurta(agora)}\n` +
+    `De ${totalAnalisados} somente <b>${total} falha${total === 1 ? '' : 's'}</b> encontrada${total === 1 ? '' : 's'}\n\n` +
+    linhas.join('\n')
   );
 }
 
@@ -249,23 +319,8 @@ function montarMensagemResolvido(agora: Date, resolvidas: string[]): string {
   );
 }
 
-function areasVerificadasLabel(resultados: Resultado[]): string {
-  const vistas: string[] = [];
-  for (const r of resultados) {
-    const label = rotuloArea(r.caso.area);
-    if (!vistas.includes(label)) vistas.push(label);
-  }
-  if (vistas.length <= 3) return vistas.join(', ');
-  return `${vistas.slice(0, 2).join(', ')} e demais verificações`;
-}
-
-function montarMensagemTudoCerto(agora: Date, resultados: Resultado[]): string {
-  return (
-    `🟢 <b>QA Velodesk · Tudo certo</b>\n` +
-    `Rodada ${formatarDataHora(agora)}\n\n` +
-    `Nenhuma falha encontrada hoje.\n` +
-    `${escapeHtml(areasVerificadasLabel(resultados))}: ok.`
-  );
+function montarMensagemTudoCerto(agora: Date): string {
+  return `🟢 <b>QA Velodesk</b> · ${formatarDataHoraCurta(agora)}\nTudo certo, nenhuma falha.`;
 }
 
 export interface MensagemRodada {
@@ -314,7 +369,7 @@ export function montarMensagemResumo(
   const parciais = resultados.filter((r) => r.situacao === 'Parcial');
 
   if (novas.length) {
-    return { texto: montarMensagemFalha(agora, novas), comBotaoDetalhes: true, tipo: 'falha' };
+    return { texto: montarMensagemFalha(agora, novas, resultados.length), comBotaoDetalhes: true, tipo: 'falha' };
   }
   if (resolvidas.length) {
     return { texto: montarMensagemResolvido(agora, resolvidas), comBotaoDetalhes: false, tipo: 'resolvido' };
@@ -326,5 +381,5 @@ export function montarMensagemResumo(
       tipo: 'atencao',
     };
   }
-  return { texto: montarMensagemTudoCerto(agora, resultados), comBotaoDetalhes: false, tipo: 'tudo-certo' };
+  return { texto: montarMensagemTudoCerto(agora), comBotaoDetalhes: false, tipo: 'tudo-certo' };
 }

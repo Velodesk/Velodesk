@@ -50,6 +50,21 @@ export interface CasoCatalogo {
    * leitura que ela cobre (ver Coletor.checar em resultado.ts).
    */
   modos?: ModoExecucao[];
+  /**
+   * Frase curta e objetiva (poucas palavras, sem número/percentual/protocolo) usada no placar
+   * por área da notificação do Telegram (ver montarMensagemFalha em telegram.ts) — ex.:
+   * "📧 E-mails (4): atrasos e e-mails que não saíram". Omitido = usa `funcionalidade` como
+   * frase padrão (já curta o bastante pra maioria dos casos).
+   */
+  resumoCurto?: string;
+  /**
+   * `ocorrencias` deste caso detalha por REGISTRO individual (ex.: X07, uma por ticket parado),
+   * não por problema distinto (ex.: E09, uma por modelo/canal) — no placar da notificação de
+   * falha, esse caso sempre conta como 1 na área, nunca pelo tamanho de `ocorrencias` (senão
+   * "Erros" apareceria como "(28)" em vez de "(1)" com 28 tickets parados). O detalhe por
+   * registro continua existindo normalmente no Excel/painel Sentinela.
+   */
+  ocorrenciasPorRegistro?: boolean;
 }
 
 export const CATALOGO: CasoCatalogo[] = [
@@ -196,6 +211,7 @@ export const CATALOGO: CasoCatalogo[] = [
     funcionalidade: 'Trava: finalizar sem responsável',
     objetivo: 'O sistema impede encerrar ticket sem responsável definido',
     esperado: 'A tentativa é recusada com aviso para atribuir um responsável real',
+    resumoCurto: 'ticket fechado sem responsável',
     escreve: true,
   },
   {
@@ -217,9 +233,10 @@ export const CATALOGO: CasoCatalogo[] = [
   {
     id: 'F04',
     area: 'Finalização',
-    funcionalidade: 'Fechamento automático após 48h',
+    funcionalidade: 'Fechamento automático de resolvidos',
     objetivo: 'A rotina que fecha tickets resolvidos está rodando',
     esperado: 'Não há acúmulo de tickets resolvidos há mais de 3 dias ainda sem fechamento',
+    resumoCurto: 'fechamento automático parado',
   },
   {
     id: 'F05',
@@ -227,6 +244,7 @@ export const CATALOGO: CasoCatalogo[] = [
     funcionalidade: 'Resolução automática de pendentes',
     objetivo: 'A rotina que resolve pendentes antigos está rodando',
     esperado: 'Não há acúmulo de tickets pendentes há mais de 3 dias sem resolução',
+    resumoCurto: 'resolução automática de pendentes parada',
   },
 
   // ── Mesclas ───────────────────────────────────────────────────────────────
@@ -328,6 +346,7 @@ export const CATALOGO: CasoCatalogo[] = [
     id: 'E09',
     area: 'Envios de e-mail',
     funcionalidade: 'Cobertura de canal e prazo dos encerramentos automáticos',
+    resumoCurto: 'atrasos e e-mails que não saíram',
     objetivo:
       'Cada modelo ativo de encerramento por status/SLA (fora o CSAT) cobre os canais reais dos ' +
       'tickets e cumpre o prazo configurado (imediato, em horas, ou SLA estourado/personalizado)',
@@ -418,6 +437,7 @@ export const CATALOGO: CasoCatalogo[] = [
     id: 'X04',
     area: 'Erros',
     funcionalidade: 'Tickets parados como novos',
+    resumoCurto: 'tickets parados há mais de 24h sem atendimento',
     objetivo: 'Tickets não estão travados em "novo" por tempo demais',
     esperado: 'Nenhum ticket com mais de 24h ainda em "novo"',
     modos: ['oficial', 'vigilancia'],
@@ -433,6 +453,7 @@ export const CATALOGO: CasoCatalogo[] = [
     id: 'X06',
     area: 'Erros',
     funcionalidade: 'Novos sem responsável',
+    resumoCurto: 'tickets sem responsável atribuído',
     objetivo: 'A fila de Novos não acumula ticket sem ninguém atribuído (roteamento/roleta parado)',
     esperado: 'Poucos ou nenhum ticket em "novo" sem responsável atribuído neste instante',
     modos: ['oficial', 'vigilancia'],
@@ -441,6 +462,7 @@ export const CATALOGO: CasoCatalogo[] = [
     id: 'X07',
     area: 'Erros',
     funcionalidade: 'Tickets parados em "novo"',
+    resumoCurto: 'tickets novos sem atendimento',
     objetivo:
       'Dentro do horário de atendimento (8h–19h), nenhum ticket demora demais ainda em "novo" — ' +
       'fora desse horário é só informativo (backlog da madrugada é esperado)',
@@ -448,6 +470,7 @@ export const CATALOGO: CasoCatalogo[] = [
       'Nenhum ticket em "novo" parado há mais de 2h (relógio contado a partir das 8h pra quem é da ' +
       'madrugada); crítico com 5+ parados há mais de 3h, ou qualquer quantidade parada há mais de 5h',
     modos: ['oficial', 'vigilancia'],
+    ocorrenciasPorRegistro: true,
   },
 
   // ── Telas (navegador) ─────────────────────────────────────────────────────
