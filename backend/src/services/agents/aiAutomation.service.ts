@@ -234,10 +234,26 @@ export async function approve(
   const custom = typeof textoFinal === 'string' ? textoFinal.trim().slice(0, 32_000) : '';
   let enviado = '';
   let editado = false;
-  const override = cleanTab(tabulacaoOverride);
+  const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/s+/g, ' ').trim().toLowerCase();
   const sameTab = (a: IAiAutomationTabulacao, b: IAiAutomationTabulacao) =>
-    a.tipo === b.tipo && a.produto === b.produto && a.motivo === b.motivo && a.detalhe === b.detalhe;
-  const tabFinal = override && !sameTab(override, pendente.tabulacao) ? override : null;
+    norm(a.tipo) === norm(b.tipo) && norm(a.produto) === norm(b.produto)
+    && norm(a.motivo) === norm(b.motivo) && norm(a.detalhe) === norm(b.detalhe);
+  // A tela do auditor pode mandar a tabulação incompleta (ex.: só o produto vindo da origem). Os níveis que
+  // ele deixou vazios são completados com a proposta da IA, até onde ele não divergiu dela; divergiu, vale o que ele escolheu.
+  const proposta = pendente.tabulacao;
+  let merged: IAiAutomationTabulacao | null = null;
+  const override = cleanTab(tabulacaoOverride);
+  if (override) {
+    merged = { tipo: override.tipo || proposta.tipo, produto: '', motivo: '', detalhe: '' };
+    let diverged = false;
+    for (const nivel of ['produto', 'motivo', 'detalhe'] as const) {
+      if (diverged) { merged[nivel] = override[nivel]; continue; }
+      if (!norm(override[nivel])) { merged[nivel] = proposta[nivel]; continue; }
+      merged[nivel] = override[nivel];
+      if (norm(override[nivel]) !== norm(proposta[nivel])) diverged = true;
+    }
+  }
+  const tabFinal = merged && !sameTab(merged, proposta) ? merged : null;
   try {
     const messages = buildTicketIaMessagesFromChamado(chamado).map((m) => ({ role: m.role, text: m.text }));
     const padrao = wrapComposerOpening({

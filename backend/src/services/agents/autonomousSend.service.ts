@@ -16,6 +16,7 @@ import {
   validateComboSoft,
 } from '../tabulation.service';
 import { clearAiSuggestionCache } from './agentSuggestionCache.util';
+import { loadTabulationConfig, validateTabulationResult } from './agentTabulation.util';
 import type { TicketAiTabulationResult } from './agentTypes';
 import { AGENTE_AUTONOMO_RESPONSAVEL } from '../../config/agenteAutonomo';
 
@@ -37,6 +38,11 @@ function toChamadoTabulacao(
     responsavel: AGENTE_AUTONOMO_RESPONSAVEL,
     atribuido: atribuido ?? current?.atribuido ?? '',
   };
+}
+
+/** Normaliza a tabulação para os valores exatos da árvore ativa (espaços, acentos e caixa vindos da tela ou do agente). */
+export async function canonicalTab(tab: TicketAiTabulationResult): Promise<TicketAiTabulationResult> {
+  return validateTabulationResult(tab, await loadTabulationConfig());
 }
 
 /**
@@ -70,7 +76,8 @@ export async function sendAutonomousReply(
 ): Promise<void> {
   assertChamadoModifiable(chamado);
 
-  const check = await validateTabulacaoForAutonomy(chamado, tabulacao);
+  const tab = await canonicalTab(tabulacao);
+  const check = await validateTabulacaoForAutonomy(chamado, tab);
   if (!check.ok) throw new TabulacaoValidationError(check.reason || 'Tabulação inválida');
 
   const registroIndex = chamado.registro?.length || 0;
@@ -80,7 +87,7 @@ export async function sendAutonomousReply(
     ...metadados,
   });
 
-  chamado.tabulacao = [toChamadoTabulacao(chamado, tabulacao, opts.atribuidoPor)];
+  chamado.tabulacao = [toChamadoTabulacao(chamado, tab, opts.atribuidoPor)];
 
   const status = currentStatus(chamado);
   const novoStatus = opts.statusFinal || (status === 'novo' ? 'em-andamento' : null);
