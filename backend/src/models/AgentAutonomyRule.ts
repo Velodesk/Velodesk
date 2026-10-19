@@ -1,23 +1,16 @@
 /**
- * AgentAutonomyRule v1.1.0 — regras configuráveis de envio autônomo (escopo = árvore de tabulação)
- * VERSION: v1.1.0 | DATE: 2026-10-07
+ * AgentAutonomyRule v2.0.0 — escopo do agente autônomo pela árvore de tabulação
+ * VERSION: v2.0.0 | DATE: 2026-10-19
  *
  * Escopo hierárquico: produto (obrigatório) > motivo > detalhe. Campo vazio = curinga para baixo.
- * `tipo` é legado: mantido no schema, mas não usado como filtro.
  */
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IAgentAutonomyRule extends Document {
   enabled: boolean;
-  tipo?: string;
   produto?: string;
   motivo?: string;
   detalhe?: string;
-  minAuditScore: number;
-  maxMessagesInThread: number;
-  canais: string[];
-  bloqueios: string[];
-  prioridade: number;
   createdBy?: string;
   updatedBy?: string;
   createdAt: Date;
@@ -27,15 +20,9 @@ export interface IAgentAutonomyRule extends Document {
 const AgentAutonomyRuleSchema = new Schema<IAgentAutonomyRule>(
   {
     enabled: { type: Boolean, default: true },
-    tipo: { type: String },
     produto: { type: String },
     motivo: { type: String },
     detalhe: { type: String },
-    minAuditScore: { type: Number, default: 85 },
-    maxMessagesInThread: { type: Number, default: 2 },
-    canais: { type: [String], default: [] },
-    bloqueios: { type: [String], default: [] },
-    prioridade: { type: Number, default: 0 },
     createdBy: { type: String },
     updatedBy: { type: String },
   },

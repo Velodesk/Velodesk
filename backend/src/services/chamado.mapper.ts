@@ -898,7 +898,7 @@ export function excludeAiAutomationFlowFilter(): Record<string, unknown> {
   // Só conta como "no fluxo do agente" se o chamado ainda está aberto: cancelado/resolvido/fechado volta às listas normais.
   return {
     $nor: [{
-      'aiAutomation.status': { $in: ['aguardando_aprovacao', 'em_revisao'] },
+      'aiAutomation.status': { $in: ['processando', 'aguardando_aprovacao', 'em_revisao'] },
       statusAtual: { $nin: ['resolvido', 'cancelado', 'fechado'] },
     }],
   };

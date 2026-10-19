@@ -1304,7 +1304,7 @@ function filterCustomQueueEntries(customBox, searchQuery) {
  */
 export function isInAiAutonomousFlow(ticket) {
   const status = ticket?.aiAutomation?.status;
-  if (status !== 'aguardando_aprovacao' && status !== 'em_revisao') return false;
+  if (status !== 'processando' && status !== 'aguardando_aprovacao' && status !== 'em_revisao') return false;
   return !TERMINAL_TICKET_STATUSES.has(String(ticket?.status || '').trim().toLowerCase());
 }
 

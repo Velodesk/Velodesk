@@ -1,13 +1,15 @@
 /**
- * aiAutomation.service v1.0.0 — fila de aprovação humana do agente autônomo
- * VERSION: v1.0.0 | DATE: 2026-10-07
+ * aiAutomation.service v2.0.0 — fila do agente autônomo e aprovação humana
+ * VERSION: v2.0.0 | DATE: 2026-10-19
  *
- * Máquina de estados (chamado.aiAutomation):
+ * Máquina de estados (chamado.aiAutomation.status):
+ *   (criação, canal+tabulação no escopo) --> processando --> aguardando_aprovacao
+ *                                                       \--> encerrada_humano (agente não conseguiu entregar)
  *   aguardando_aprovacao --aprovar--> aprovada (resposta enviada, tabulação gravada)
  *   aguardando_aprovacao --reprovar (1ª)--> em_revisao --> aguardando_aprovacao (tentativa 2)
- *                                                     \--> encerrada_humano (2ª tentativa não passou na régua)
  *   aguardando_aprovacao --reprovar (2ª)--> encerrada_humano (bloqueadoIA = true)
- * `em_revisao` é também o estado transitório de "em processamento" (trava contra clique duplo).
+ *   ticket encerrado enquanto aguarda --> cancelada (hook do modelo)
+ * `em_revisao` é o estado transitório de "decisão em andamento" (trava contra clique duplo).
  */
 import { ChamadoN1 } from '../../models/ChamadoN1';
 import type {
@@ -26,11 +28,11 @@ import { resolveChamadoClientName } from '../placeholders.util';
 import { buildTicketIaMessagesFromChamado } from '../ticketIaAdapter.service';
 import { reviseAtendimento } from './atendimentoAgent.service';
 import { validateAuditoria } from './auditoriaAgent.service';
-import { sendAutonomousReply, validateTabulacaoForAutonomy } from './autonomousSend.service';
-import { evaluateStrictGate } from './autonomyGate.util';
-import { getAgentesConfig, isHidratacaoEnabled } from './autonomyRules.service';
+import { sendAutonomousReply } from './autonomousSend.service';
+import { isHidratacaoEnabled } from './autonomyRules.service';
 import { hydrateForRevision, slugFromTabulacaoProduto } from '../consultaHidratacao.service';
 import { buildInboundPipelineInput } from './inboundPipelineInput.util';
+import { retryTecnico } from './retryTecnico.util';
 import type { AuditoriaResult, ConfidenceLevel, TicketAiTabulationResult } from './agentTypes';
 
 export const MAX_TENTATIVAS = 2;
@@ -67,10 +69,46 @@ function newTentativa(n: number, p: EnqueueParams): IAiAutomationTentativa {
   };
 }
 
-/** O agente só tenta quando o chamado não tem estado de automação em andamento nem bloqueio. */
-export function canAttemptAutonomous(chamado: IChamadoN1): boolean {
-  const a = chamado.aiAutomation;
-  return !a || (!a.bloqueadoIA && !['aguardando_aprovacao', 'em_revisao', 'encerrada_humano'].includes(a.status));
+/**
+ * Escopo atendido na criação: o ticket já nasce na fila do agente autônomo (responsável "Agente Autônomo",
+ * fora das filas humanas e sem passar pela roleta) enquanto a tabulação e a resposta são preparadas.
+ */
+export function enterAutonomousQueue(partial: Partial<IChamadoN1>, ruleId?: string): void {
+  if (!partial.tabulacao?.length) {
+    partial.tabulacao = [{
+      tipoChamado: '', produto: '', motivo: '', detalhe: '', canal: '', responsavel: '', atribuido: '',
+    }];
+  }
+  partial.tabulacao[partial.tabulacao.length - 1].responsavel = AGENTE_AUTONOMO_RESPONSAVEL;
+  partial.aiAutomation = {
+    status: 'processando' as AiAutomationStatus,
+    tentativas: 0,
+    bloqueadoIA: false,
+    ruleId,
+    historico: [],
+    updatedAt: new Date(),
+  };
+}
+
+/** O agente não conseguiu entregar a resposta: o chamado volta às filas humanas. Atômico (vale uma única vez). */
+export async function releaseProcessing(chamadoId: string, motivo?: string): Promise<void> {
+  const claimed = await ChamadoN1.findOneAndUpdate(
+    { _id: chamadoId, 'aiAutomation.status': 'processando' },
+    { $set: { 'aiAutomation.status': 'encerrada_humano', 'aiAutomation.updatedAt': new Date() } },
+    { projection: { _id: 1 } },
+  );
+  if (!claimed) return;
+  await releaseToHumans(chamadoId);
+  if (motivo) console.info('[agent-autonomo] chamado devolvido ao atendimento humano', { chamadoId, motivo });
+}
+
+/** Decisão humana que ficou travada em em_revisao (instância reiniciada, falha de gravação): volta à fila. */
+export async function recoverStaleReviews(before: Date): Promise<number> {
+  const res = await ChamadoN1.updateMany(
+    { 'aiAutomation.status': 'em_revisao', 'aiAutomation.updatedAt': { $lt: before } },
+    { $set: { 'aiAutomation.status': 'aguardando_aprovacao', 'aiAutomation.updatedAt': new Date() } },
+  );
+  return res.modifiedCount;
 }
 
 /** 1ª tentativa: grava a resposta como pendente de auditoria humana (nada é enviado ao cliente). */
@@ -269,7 +307,6 @@ export async function approve(
       agentName: AGENTE_AUTONOMO_ENVELOPE_NOME,
     });
     enviado = custom || padrao;
-    const norm = (t: string) => t.replace(/\s+/g, ' ').trim();
     editado = Boolean(custom) && norm(stripComposerOpening(custom)) !== norm(pendente.resposta);
     await sendAutonomousReply(
       chamado,
@@ -297,14 +334,15 @@ export async function approve(
   return { id, status: 'aprovada' as const, editado };
 }
 
-async function closeToHuman(id: string, extraHistorico: IAiAutomationTentativa[]) {
+/** Tira o chamado da IA e o entrega aos humanos. `bloquear` = a IA não volta a tentar este chamado (2ª reprovação). */
+async function closeToHuman(id: string, extraHistorico: IAiAutomationTentativa[], bloquear = false) {
   await releaseToHumans(id);
   await ChamadoN1.updateOne(
     { _id: id },
     {
       $set: {
         'aiAutomation.status': 'encerrada_humano',
-        'aiAutomation.bloqueadoIA': true,
+        'aiAutomation.bloqueadoIA': bloquear,
         'aiAutomation.updatedAt': new Date(),
       },
       $unset: { 'aiAutomation.pendente': '' },
@@ -314,7 +352,7 @@ async function closeToHuman(id: string, extraHistorico: IAiAutomationTentativa[]
 }
 
 /** O agente autônomo deixa o chamado: libera o responsável e deixa a roleta atribuir a um humano. */
-async function releaseToHumans(id: string): Promise<void> {
+export async function releaseToHumans(id: string): Promise<void> {
   try {
     const doc = await ChamadoN1.findById(id);
     if (!doc) return;
@@ -329,8 +367,9 @@ async function releaseToHumans(id: string): Promise<void> {
 }
 
 /**
- * Reprova (com ou sem feedback). 1ª reprovação ⇒ revisão automática e nova tentativa;
- * 2ª reprovação (ou nova tentativa que não passa na régua) ⇒ atendimento humano, sem mais IA.
+ * Reprova (com ou sem feedback). 1ª reprovação ⇒ a IA reescreve e a nova resposta volta à fila (tentativa 2);
+ * 2ª reprovação ⇒ atendimento humano, sem mais IA. Falha técnica (IA/API fora do ar, mesmo após repetir) NÃO descarta
+ * o chamado: ele volta à fila e a reprovação pode ser refeita.
  */
 export async function reject(id: string, by: string, feedback?: string) {
   const chamado = await claim(id);
@@ -341,7 +380,7 @@ export async function reject(id: string, by: string, feedback?: string) {
   };
 
   if (pendente.tentativa >= MAX_TENTATIVAS) {
-    await closeToHuman(id, [rejected]);
+    await closeToHuman(id, [rejected], true);
     return { id, status: 'encerrada_humano' as const, motivo: 'segunda_reprovacao' as const };
   }
 
@@ -352,18 +391,22 @@ export async function reject(id: string, by: string, feedback?: string) {
       return { id, status: 'encerrada_humano' as const, motivo: 'sem_contexto' as const };
     }
 
-    const dadosConta = await hydrateForRevision({
-      ticketId: base.ticketId,
-      protocolo: base.protocolo,
-      produto: pendente.tabulacao.produto,
-      motivo: pendente.tabulacao.motivo,
-    });
-    if (!dadosConta && (await isHidratacaoEnabled()) && slugFromTabulacaoProduto(pendente.tabulacao.produto)) {
-      await closeToHuman(id, [rejected]);
-      return { id, status: 'encerrada_humano' as const, motivo: 'sem_dados_conta' as const };
+    const precisaDados = (await isHidratacaoEnabled()) && slugFromTabulacaoProduto(pendente.tabulacao.produto) !== null;
+    let dadosConta: string | undefined;
+    for (let i = 0; i < 3 && !dadosConta; i += 1) {
+      dadosConta = await hydrateForRevision({
+        ticketId: base.ticketId,
+        protocolo: base.protocolo,
+        produto: pendente.tabulacao.produto,
+        motivo: pendente.tabulacao.motivo,
+      });
+      if (!precisaDados) break;
+    }
+    if (precisaDados && !dadosConta) {
+      throw new AiAutomationError('Não foi possível consultar os dados da conta agora. Tente reprovar novamente.', 503);
     }
 
-    const revised = await reviseAtendimento({
+    const revised = await retryTecnico(() => reviseAtendimento({
       ...base,
       dadosConta,
       respostaAnterior: pendente.resposta,
@@ -371,41 +414,27 @@ export async function reject(id: string, by: string, feedback?: string) {
       origemRevisao: 'reprovada_humano',
       inputOperador: fb,
       auditScore: pendente.auditScore,
-    });
+    }));
     if (!revised.success || !revised.respostaSugerida || !revised.tabulacao) {
-      await closeToHuman(id, [rejected]);
-      return { id, status: 'encerrada_humano' as const, motivo: 'falha_revisao' as const };
+      throw new AiAutomationError('A IA não conseguiu reescrever a resposta agora. Tente reprovar novamente.', 503);
     }
 
-    const audit = await validateAuditoria({
+    const audit = await retryTecnico(() => validateAuditoria({
       modo: 'auto_envio',
+      autonomo: true,
       protocolo: base.protocolo,
       canal: base.canal,
       status: base.status,
       contextSource: base.contextSource,
       messages: base.messages,
       internalNote: base.internalNote,
-      respostaSugerida: revised.respostaSugerida,
-      tabulacao: revised.tabulacao,
+      respostaSugerida: revised.respostaSugerida!,
+      tabulacao: revised.tabulacao!,
       dadosConta,
       produtoFixo: base.produtoFixo,
-    });
+    }));
 
-    const cfg = await getAgentesConfig();
-    const gate = evaluateStrictGate({
-      audit,
-      confidence: revised.confidence,
-      tabulacao: revised.tabulacao,
-      minAuditScoreEstrito: cfg.minAuditScoreEstrito,
-    });
-    const tabOk = gate.ok ? await validateTabulacaoForAutonomy(chamado, revised.tabulacao) : { ok: false };
-
-    if (!gate.ok || !tabOk.ok) {
-      // A tentativa reescrita não atinge a régua: não vale mostrar ao auditor humano — vai pro atendimento.
-      await closeToHuman(id, [rejected]);
-      return { id, status: 'encerrada_humano' as const, motivo: 'segunda_tentativa_reprovada_pela_ia' as const };
-    }
-
+    // Após a 1ª reprovação humana a resposta reescrita sempre volta à fila: é o humano quem decide.
     const next = newTentativa(pendente.tentativa + 1, {
       resposta: revised.respostaSugerida,
       tabulacao: revised.tabulacao,

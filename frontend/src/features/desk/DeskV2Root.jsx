@@ -2727,6 +2727,34 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     }
   }, [ticketAi, showNotification]);
 
+  // Área de IA: itens que entram/saem da fila aparecem sozinhos — poll leve (só ids) a cada 15 s; quando muda, dispara a
+  // atualização silenciosa das listas (sem F5, sem botão de atualizar, sem recarregar a tela).
+  const iaPollSigRef = useRef(null);
+  useEffect(() => {
+    if (!hideComposer) return undefined;
+    let cancelled = false;
+    const check = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      try {
+        const data = await aiApprovalsApi.list({ status: 'aguardando_aprovacao', limit: 100 });
+        if (cancelled) return;
+        const sig = (data.items || []).map((i) => `${i.id}:${i.tentativa}`).sort().join(',');
+        if (iaPollSigRef.current !== null && iaPollSigRef.current !== sig) {
+          window.dispatchEvent(new CustomEvent('velodesk:queue-counts-changed'));
+        }
+        iaPollSigRef.current = sig;
+      } catch {
+        /* poll silencioso */
+      }
+    };
+    void check();
+    const timer = window.setInterval(check, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [hideComposer]);
+
   // Tabulação do agente já aplicada no painel ao abrir o ticket (o aprovador só confere/ajusta).
   const iaPendingKey = iaPending ? `${ticket?.id || ticket?._id}:${iaPending.tentativa}` : '';
   const iaTabApplyRef = useRef({ key: '', n: 0 });

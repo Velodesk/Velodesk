@@ -21,7 +21,7 @@ async function main() {
       { key: 'agente_autonomo' },
       {
         $set: { autonomiaHabilitada: ligar, updatedBy: 'seed-acionamento-servicos', updatedAt: now },
-        $setOnInsert: { key: 'agente_autonomo', modoEnvio: 'fila_aprovacao', minAuditScoreEstrito: 95, createdAt: now },
+        $setOnInsert: { key: 'agente_autonomo', modoEnvio: 'fila_aprovacao', minAuditScoreEstrito: 85, createdAt: now },
       },
       { upsert: true },
     );

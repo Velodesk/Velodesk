@@ -208,12 +208,12 @@ router.post('/pipeline', authMiddleware, async (req: Request, res: Response) => 
     });
   }
 
-  const pipelineModo = req.body?.pipelineModo === 'auto_envio' ? 'auto_envio' : 'desk';
   const nomeOperador = await resolveOperadorDisplayNameForAuthEmail(req.user?.email || '');
   const result = await runAgentPipeline({
     ...parsed.data,
     nomeOperador: nomeOperador || undefined,
-    pipelineModo,
+    // Esta rota é só a sugestão ao atendente: o modo autônomo nasce na criação do ticket, nunca por requisição.
+    pipelineModo: 'desk',
     userId: req.user?.userId,
   });
 

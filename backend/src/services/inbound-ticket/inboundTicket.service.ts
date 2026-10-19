@@ -25,6 +25,8 @@ import type {
   InboundTicketResult,
 } from './types';
 import { ORIGIN_CANAL_CONFIG } from './types';
+import { resolveEscopoAutonomo } from '../agents/autonomyRules.service';
+import { enterAutonomousQueue } from '../agents/aiAutomation.service';
 import { normalizeBrPhoneLocal } from '../phone.util';
 
 function trim(value: unknown): string {
@@ -321,10 +323,21 @@ export async function processInboundTicket(
     prependInboundDerivedTicketNote(partial, derivedFromProtocolo);
   }
 
-  await applyAssignmentIfNeeded(partial, {
-    source: 'inbound-ticket',
-    canal: config.canal,
+  // Canal liberado + tabulação enviada pela origem dentro do escopo ⇒ o ticket nasce na fila do agente autônomo
+  // (sem roleta, sem passar pela fila convencional). Caso contrário segue o fluxo normal.
+  const escopo = await resolveEscopoAutonomo(origin, {
+    produto: payload.produto,
+    motivo: payload.motivo,
+    detalhe: payload.detalhe,
   });
+  if (escopo) {
+    enterAutonomousQueue(partial, escopo.ruleId);
+  } else {
+    await applyAssignmentIfNeeded(partial, {
+      source: 'inbound-ticket',
+      canal: config.canal,
+    });
+  }
 
   const chamado = await ChamadoN1.create(partial);
 

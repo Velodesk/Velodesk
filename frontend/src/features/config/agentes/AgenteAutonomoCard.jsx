@@ -5,6 +5,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { autonomyApi, tabulationApi } from '../../../api/client';
 import { useNotifications } from '../../../context/NotificationContext';
 
+const CANAIS = [
+  { value: 'app', label: 'Aplicativo' },
+  { value: 'chat', label: 'Chat (Velobot)' },
+  { value: 'agente-ia', label: 'Agente de IA' },
+];
+
 const MODOS = [
   { value: 'fila_aprovacao', label: 'Fila de aprovação humana' },
   { value: 'envio_direto', label: 'Envio direto ao cliente' },
@@ -144,7 +150,7 @@ export default function AgenteAutonomoCard() {
         </label>
 
         <label className="config-ai-field">
-          <span>Nota mínima do auditor para resposta autônoma (50–100)</span>
+          <span>Nota mínima do auditor (50–100): abaixo dela a IA refaz a resposta; só acima chega à fila de aprovação</span>
           <input
             key={config.minAuditScoreEstrito}
             type="number"
@@ -161,10 +167,26 @@ export default function AgenteAutonomoCard() {
       </section>
 
       <section className="config-agente-box">
+        <h4>Canais de entrada atendidos pelo agente</h4>
+        <p>Só tickets abertos por canais ligados (e com a tabulação dentro do escopo abaixo) vão direto para a fila do agente.</p>
+        {CANAIS.map((canal) => (
+          <label key={canal.value} className="config-agente-row">
+            <input
+              type="checkbox"
+              checked={config.canaisHabilitados?.[canal.value] === true}
+              disabled={busy}
+              onChange={(e) => patchConfig({ canaisHabilitados: { [canal.value]: e.target.checked } })}
+            />
+            <span>{canal.label}</span>
+          </label>
+        ))}
+      </section>
+
+      <section className="config-agente-box">
         <h4>Escopo — onde o agente pode responder sozinho</h4>
         <p>
-          Escolha só o produto para liberar todos os chamados dele, ou desça na árvore (motivo e
-          detalhe) para restringir. Nada fora destes escopos é respondido automaticamente.
+          Tabulação enviada pelo canal de abertura. Escolha só o produto para liberar todos os chamados dele, ou
+          desça na árvore (motivo e detalhe) para restringir. Nada fora destes escopos vai para o agente.
         </p>
 
         <div className="config-agente-selects">

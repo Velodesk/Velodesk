@@ -21,6 +21,7 @@ const router = Router();
 router.use(authMiddleware, permissionMiddleware('acesso', 'ia'));
 
 const STATUSES: AiAutomationStatus[] = [
+  'processando',
   'aguardando_aprovacao',
   'em_revisao',
   'aprovada',

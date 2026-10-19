@@ -1,14 +1,14 @@
 /**
- * agentOrchestrator.service v1.3.0 — cache de sugestão pré-gerada (aiSuggestionCache): grava
- * ao final de todo pipeline bem-sucedido em modo desk (cobre pré-geração na criação do ticket
- * e geração normal ao abrir); limpa no envio autônomo
- * VERSION: v1.3.0 | DATE: 2026-09-02
+ * agentOrchestrator.service v2.0.0 — pipeline Agente 1 → Auditor. Modo desk: sugestão ao atendente (com cache de
+ * sugestão pré-gerada). Modo autônomo: ticket já na fila do agente; resposta com nota ≥ mínimo vai à aprovação humana.
+ * VERSION: v2.0.0 | DATE: 2026-10-19
  */
 import { ChamadoN1 } from '../../models/ChamadoN1';
 import type { IChamadoN1 } from '../../models/ChamadoN1';
 import { env } from '../../config/env';
 import { currentStatus } from '../chamado.mapper';
-import { enqueueForApproval, canAttemptAutonomous, recordDirectSend } from './aiAutomation.service';
+import { enqueueForApproval, recordDirectSend } from './aiAutomation.service';
+import { retryTecnico } from './retryTecnico.util';
 import { sendAutonomousReply, validateTabulacaoForAutonomy } from './autonomousSend.service';
 import { evaluateStrictGate } from './autonomyGate.util';
 import { wrapComposerOpening } from '../clientMessageEnvelope.service';
@@ -28,7 +28,7 @@ import { buildTabulationDisplay, tabulationCompletenessScore } from './agentTabu
 import { classifyAtendimento, composeAtendimento, reviseAtendimento } from './atendimentoAgent.service';
 import { validateAuditoria } from './auditoriaAgent.service';
 import { saveAgentFeedback } from './agentFeedback.service';
-import { evaluateAutonomy, isHidratacaoEnabled } from './autonomyRules.service';
+import { getAgentesConfig, isHidratacaoEnabled } from './autonomyRules.service';
 import {
   hydrateForRevision,
   hydrateProductForTicket,
@@ -97,6 +97,7 @@ async function persistAgentSuggestion(
           tabulacao: result.tabulacao,
           auditScore: result.auditScore,
           auditDecisao: result.auditDecisao,
+          ...(result.autonomiaMotivo ? { autonomiaMotivo: result.autonomiaMotivo } : {}),
           at: new Date().toISOString(),
         },
       },
@@ -105,9 +106,14 @@ async function persistAgentSuggestion(
 }
 
 export async function runAgentPipeline(input: PipelineInput): Promise<PipelineResult> {
+  const autonomo = input.pipelineModo === 'autonomo';
   const auditModo = auditModoFromPipeline(input.pipelineModo);
   const maxRevisions = env.agentRevisionMaxAttempts;
   let revisoesRealizadas = 0;
+  // Ticket do agente autônomo: falha técnica de uma etapa da IA é repetida antes de desistir.
+  const tentar = <T extends { success: boolean }>(fn: () => Promise<T>) => (autonomo ? retryTecnico(fn) : fn());
+  const cfg = autonomo ? await getAgentesConfig() : null;
+  const auditExtra = autonomo ? { autonomo: true, minScore: cfg!.minAuditScoreEstrito } : {};
 
   let chamado: IChamadoN1 | null = null;
   if (isPersistedMongoTicketId(input.ticketId)) {
@@ -116,28 +122,35 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
 
   input.onStage?.('gerando');
 
-  // Hidratação em 2 etapas, com o próprio agente decidindo o produto: (1) classificação curta →
-  // (2) consulta só desse produto na conta do cliente → (3) redação já com os dados reais.
+  // Hidratação: o produto vem da origem do ticket (produtoFixo); só sem ele o agente classifica. Consulta SÓ esse
+  // produto na conta do cliente e a redação já recebe os dados reais.
   const hidEnabled = Boolean(chamado) && await isHidratacaoEnabled();
   let hid: HidratacaoResult | null = null;
   if (hidEnabled) {
-    const classe = await classifyAtendimento(input);
-    const slug = classe.success ? slugFromTabulacaoProduto(classe.tabulacao?.produto) : null;
+    let slug = slugFromTabulacaoProduto(input.produtoFixo);
+    let motivoClassificado: string | undefined;
+    if (!slug && !input.produtoFixo) {
+      const classe = await classifyAtendimento(input);
+      slug = classe.success ? slugFromTabulacaoProduto(classe.tabulacao?.produto) : null;
+      motivoClassificado = classe.tabulacao?.motivo;
+    }
     if (slug) {
       const contextText = [input.titulo, ...(input.messages || []).map((m) => m.text), input.internalNote]
         .filter(Boolean).join(' ');
-      hid = await hydrateProductForTicket({
+      const consultar = () => hydrateProductForTicket({
         ticketId: input.ticketId,
         protocolo: input.protocolo,
-        slug,
-        motivo: classe.tabulacao?.motivo,
+        slug: slug!,
+        motivo: motivoClassificado,
         contextText,
       });
+      hid = await consultar();
+      for (let i = 0; autonomo && i < 2 && hid.status === 'indisponivel'; i += 1) hid = await consultar();
       if (hid.bloco) input = { ...input, dadosConta: hid.bloco };
     }
   }
 
-  let atendimento: AtendimentoResult = await composeAtendimento(input);
+  let atendimento: AtendimentoResult = await tentar(() => composeAtendimento(input));
   if (!atendimento.success || !atendimento.respostaSugerida || !atendimento.tabulacao) {
     return {
       success: false,
@@ -146,15 +159,25 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     };
   }
 
-  if (!atendimento.respostaSugerida || !atendimento.tabulacao) {
-    return { success: false, error: `Falha no ${getAgentNomeOficial(1)}`, source: 'agent_pipeline' };
+  // O agente só termina o serviço com a tabulação completa. Se a redação veio sem motivo (classificação dentro do
+  // produto da origem não bateu com a árvore), refaz a classificação, que usa só a árvore do produto.
+  if (!atendimento.tabulacao.motivo && autonomo) {
+    const reclass = await classifyAtendimento(input);
+    if (reclass.success && reclass.tabulacao?.motivo) {
+      atendimento = {
+        ...atendimento,
+        tabulacao: { ...reclass.tabulacao, tipo: reclass.tabulacao.tipo || atendimento.tabulacao.tipo },
+        tabulacaoDisplay: buildTabulationDisplay(reclass.tabulacao),
+      };
+    }
   }
-  let respostaAtual = atendimento.respostaSugerida;
-  let tabulacaoAtual = atendimento.tabulacao;
+  let respostaAtual = atendimento.respostaSugerida!;
+  let tabulacaoAtual = atendimento.tabulacao!;
 
   input.onStage?.('auditando');
-  let audit = await validateAuditoria({
+  let audit = await tentar(() => validateAuditoria({
     modo: auditModo,
+    ...auditExtra,
     protocolo: input.protocolo,
     canal: input.canal,
     status: input.status || (chamado ? currentStatus(chamado) : 'novo'),
@@ -166,7 +189,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     userId: input.userId,
     dadosConta: input.dadosConta,
     produtoFixo: input.produtoFixo,
-  });
+  }));
 
   if (!audit.success) {
     return { success: false, error: audit.error, source: 'agent_pipeline' };
@@ -177,7 +200,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     const origem: RevisaoOrigem = 'automatica_baixo_compliance';
 
     input.onStage?.('revisando');
-    const revised = await reviseAtendimento({
+    const revised = await tentar(() => reviseAtendimento({
       ...input,
       respostaAnterior: respostaAtual,
       tabulacaoAnterior: tabulacaoAtual,
@@ -185,7 +208,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
       recomendacoes: audit.recomendacoes,
       origemRevisao: origem,
       auditScore: audit.score,
-    });
+    }));
 
     await saveAgentFeedback({
       ticketId: input.ticketId,
@@ -207,8 +230,9 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     respostaAtual = revised.respostaSugerida;
     tabulacaoAtual = revised.tabulacao;
     input.onStage?.('auditando');
-    audit = await validateAuditoria({
+    audit = await tentar(() => validateAuditoria({
       modo: auditModo,
+      ...auditExtra,
       protocolo: input.protocolo,
       canal: input.canal,
       status: input.status,
@@ -220,7 +244,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
       userId: input.userId,
       dadosConta: input.dadosConta,
       produtoFixo: input.produtoFixo,
-    });
+    }));
 
     if (!audit.success) break;
   }
@@ -243,7 +267,7 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     }
   }
 
-  const deskTab = input.pipelineModo === 'desk'
+  const deskTab = !autonomo
     ? {
       tabulacao: tabulacaoAtual,
       tabulacaoDisplay: atendimento.tabulacaoDisplay || buildTabulationDisplay(tabulacaoAtual),
@@ -270,13 +294,12 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
   };
 
   /**
-   * Só em modo desk (nunca em auto_envio/inbound, onde o envio autônomo já pode acontecer
-   * mais abaixo): grava a sugestão como rascunho pronto pra exibir na próxima vez que o
+   * Só em modo desk (nunca no autônomo): grava a sugestão como rascunho pronto pra exibir na próxima vez que o
    * ticket for aberto com a MESMA thread (fingerprint) — nunca em registro[], nunca enviada.
    * Cobre tanto a pré-geração automática na criação do ticket/1ª nota interna
    * (runInboundAgentPipeline) quanto a geração normal quando o operador abre o ticket.
    */
-  if (chamado && input.pipelineModo === 'desk') {
+  if (chamado && !autonomo) {
     const ticketId = chamado._id.toString();
     void ChamadoN1.findById(ticketId).then((fresh) => {
       if (!fresh) return undefined;
@@ -287,64 +310,40 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
     });
   }
 
-  const canTryAutonomous = input.pipelineModo !== 'desk'
-    && audit.decisao === 'aprovar_auto'
-    && audit.aprovado
-    && atendimento.confidence !== 'baixa';
-
-  if (input.pipelineModo !== 'desk' && !(canTryAutonomous && chamado && canAttemptAutonomous(chamado))) {
-    console.info('[agent-autonomo] não tentou resposta autônoma', {
-      protocolo: input.protocolo,
-      decisao: audit.decisao,
-      aprovado: audit.aprovado,
-      confidence: atendimento.confidence,
-      emAndamentoOuBloqueado: chamado ? !canAttemptAutonomous(chamado) : null,
-    });
-  }
-
-  if (canTryAutonomous && chamado && canAttemptAutonomous(chamado)) {
-    const autonomy = await evaluateAutonomy({
-      tabulacao: tabulacaoAtual,
-      canal: input.canal,
-      threadMessageCount: countThreadMessages(chamado),
-      auditScore: audit.score || 0,
-      clientContext: buildClientContext(input),
-      responseText: respostaAtual,
-    });
-
-    // Régua estrita + tabulação real da árvore: qualquer falha deixa o chamado com o humano.
-    // Com hidratação ligada, produto com consulta disponível só vai a autônomo se os dados reais
-    // daquele mesmo produto vieram (tabulação final diferente da consultada também barra).
+  if (autonomo && chamado) {
+    // Critério único: nota do auditor ≥ mínimo (abaixo disso a resposta já foi refeita no laço acima). Com
+    // hidratação ligada, produto com consulta disponível exige os dados reais daquele produto. A tabulação precisa
+    // existir na árvore e estar completa, como a de um atendente.
+    const minScore = cfg!.minAuditScoreEstrito;
     const slugFinal = slugFromTabulacaoProduto(tabulacaoAtual.produto);
-    const exigeDados = hidEnabled && slugFinal !== null;
-    const gate = !autonomy.allowed
-      ? { ok: false, reason: autonomy.reason }
-      : exigeDados && !(hid?.status === 'ok' && hid.slug === slugFinal)
-        ? { ok: false, reason: 'Dados da conta do cliente indisponíveis para este produto' }
-        : evaluateStrictGate({
-          audit,
-          confidence: atendimento.confidence,
-          tabulacao: tabulacaoAtual,
-          minAuditScoreEstrito: autonomy.minAuditScoreEstrito ?? 95,
-        });
-    const tabCheck = gate.ok ? await validateTabulacaoForAutonomy(chamado, tabulacaoAtual) : { ok: false, reason: gate.reason };
+    const envioDireto = cfg!.modoEnvio === 'envio_direto';
+    let motivo: string | undefined;
+    if ((audit.score ?? 0) < minScore) {
+      motivo = `Nota do auditor ${audit.score ?? 0} abaixo de ${minScore}`;
+    } else if (hidEnabled && slugFinal !== null && !(hid?.status === 'ok' && hid.slug === slugFinal)) {
+      motivo = 'Dados da conta do cliente indisponíveis para este produto';
+    } else if (envioDireto) {
+      motivo = evaluateStrictGate({ audit, confidence: atendimento.confidence, tabulacao: tabulacaoAtual, minAuditScore: minScore }).reason;
+    }
+    if (!motivo) motivo = (await validateTabulacaoForAutonomy(chamado, tabulacaoAtual)).reason;
 
-    if (autonomy.allowed && gate.ok && tabCheck.ok) {
+    if (!motivo) {
       const attempt = {
         resposta: respostaAtual,
         tabulacao: tabulacaoAtual,
         audit,
         confidence: atendimento.confidence,
         model: atendimento.model,
-        ruleId: autonomy.matchedRuleId,
+        ruleId: chamado.aiAutomation?.ruleId,
       };
 
-      if (autonomy.modoEnvio !== 'envio_direto') {
+      if (!envioDireto) {
         await enqueueForApproval(input.ticketId!, attempt);
         pipelineResult.aguardandoAprovacao = true;
         return pipelineResult;
       }
 
+      // Envio direto: congelado nesta fase (a UI aceita a opção, mas o fluxo em produção é a fila de aprovação).
       const composerText = wrapComposerOpening({
         nucleo: respostaAtual,
         clientName: input.clientName,
@@ -366,15 +365,15 @@ export async function runAgentPipeline(input: PipelineInput): Promise<PipelineRe
       return pipelineResult;
     }
 
-    if (autonomy.allowed) {
-      console.info('[agent-autonomo] caso liberado pela regra mas barrado — segue com o humano', {
-        protocolo: input.protocolo,
-        motivo: tabCheck.reason,
-      });
-    }
+    // Fica registrado POR QUE não foi encaminhado (nota, dados da conta ou tabulação).
+    pipelineResult.autonomiaMotivo = motivo;
+    console.info('[agent-autonomo] não encaminhado à fila de aprovação — segue com o humano', {
+      protocolo: input.protocolo,
+      motivo,
+    });
   }
 
-  if (chamado && input.pipelineModo !== 'desk') {
+  if (chamado && autonomo) {
     await persistAgentSuggestion(chamado, pipelineResult);
   }
 

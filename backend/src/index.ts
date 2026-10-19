@@ -83,6 +83,7 @@ import { startGestaoChamadosJob } from './jobs/gestaoChamados.job';
 import { startCloseResolvedTicketsJob } from './jobs/closeResolvedTickets.job';
 import { startAgentSessionCleanupJob } from './jobs/agentSessionCleanup.job';
 import { startRoletaSweepJob } from './jobs/roletaSweep.job';
+import { startAiAutomationSweepJob } from './jobs/aiAutomationSweep.job';
 import { startCsatRepescagemJob } from './jobs/csatRepescagem.job';
 import { startCsatInicialJob } from './jobs/csatInicial.job';
 import { startEmailSlaTriggerJob } from './jobs/emailSlaTrigger.job';
@@ -393,6 +394,7 @@ async function start() {
       startCloseResolvedTicketsJob();
       startAgentSessionCleanupJob();
       startRoletaSweepJob();
+      startAiAutomationSweepJob();
       startCsatRepescagemJob();
       startCsatInicialJob();
       startEmailSlaTriggerJob();

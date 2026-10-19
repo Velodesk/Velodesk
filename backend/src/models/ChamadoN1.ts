@@ -95,6 +95,8 @@ export interface IChamadoCsat {
 }
 
 export type AiAutomationStatus =
+  /** Direcionado ao agente autônomo pelo escopo; resposta e tabulação ainda sendo preparadas. */
+  | 'processando'
   | 'aguardando_aprovacao'
   | 'em_revisao'
   | 'aprovada'
@@ -347,7 +349,7 @@ const AiAutomationSchema = new Schema<IAiAutomation>(
   {
     status: {
       type: String,
-      enum: ['aguardando_aprovacao', 'em_revisao', 'aprovada', 'enviada_direto', 'encerrada_humano', 'cancelada'],
+      enum: ['processando', 'aguardando_aprovacao', 'em_revisao', 'aprovada', 'enviada_direto', 'encerrada_humano', 'cancelada'],
       required: true,
     },
     tentativas: { type: Number, default: 0 },

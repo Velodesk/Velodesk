@@ -81,9 +81,9 @@ function applyPostAuditRules(
   ameacaConfirmada: boolean,
 ): AuditoriaResult {
   const modo = params.modo;
-  const threshold = modo === 'auto_envio'
+  const threshold = params.minScore ?? (modo === 'auto_envio'
     ? env.agentAuditThresholdAuto
-    : env.agentAuditThresholdDesk;
+    : env.agentAuditThresholdDesk);
 
   let score = typeof parsed.score === 'number' ? Math.round(parsed.score) : 0;
   score = Math.max(0, Math.min(100, score));
@@ -123,7 +123,7 @@ function applyPostAuditRules(
   } else if (modo === 'auto_envio') {
     const categoria = trimStr(parsed.categoriaAtendimento || tabTipo, 64);
     const impacto = parsed.impactoGravidade || 'medio';
-    if (categoria === 'Reclamação' || impacto === 'alto') {
+    if (!params.autonomo && (categoria === 'Reclamação' || impacto === 'alto')) {
       decisao = 'encaminhar_humano';
       aprovado = false;
     } else {
@@ -179,10 +179,10 @@ export async function validateAuditoria(params: AuditoriaInput): Promise<Auditor
     params.mensagemOperador,
   ].filter(Boolean).join('\n');
 
-  const precheckKeywords = detectCriticalKeywords(
-    contextText,
-    ...(params.palavrasCriticasPrecheck || []),
-  );
+  // Ticket do agente autônomo não passa pela varredura de palavras críticas: quem decide é o auditor humano.
+  const precheckKeywords = params.autonomo
+    ? []
+    : detectCriticalKeywords(contextText, ...(params.palavrasCriticasPrecheck || []));
 
   try {
     const { config, produtoFixo } = await loadTabulationScope(params.produtoFixo);
@@ -250,7 +250,7 @@ export async function validateAuditoria(params: AuditoriaInput): Promise<Auditor
     // o gatilho — a decisão de escalonar de fato fica com avaliarAmeacaCritica, que lê a
     // conversa inteira (ver criticidadeTriagem.service). Sem isso, um "notificarAgente3=true"
     // autodeclarado pelo Auditor bypassaria a triagem inteira.
-    const triagemAcionada = candidateKeywords.length > 0 || Boolean(parsed.notificarAgente3);
+    const triagemAcionada = !params.autonomo && (candidateKeywords.length > 0 || Boolean(parsed.notificarAgente3));
     const triagemKeywords = candidateKeywords.length > 0
       ? candidateKeywords
       : ['contexto crítico sinalizado pelo Auditor (sem palavra específica)'];

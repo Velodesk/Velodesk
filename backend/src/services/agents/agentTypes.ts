@@ -18,7 +18,8 @@ export type NivelCriticidade = 'critica' | 'alta' | 'media' | 'baixa' | 'nenhuma
 
 export type ConfidenceLevel = 'alta' | 'media' | 'baixa';
 
-export type PipelineModo = 'desk' | 'auto_envio' | 'inbound';
+/** desk = sugestão ao atendente; autonomo = ticket na fila do agente autônomo. */
+export type PipelineModo = 'desk' | 'autonomo';
 
 export type RevisaoOrigem = 'automatica_baixo_compliance' | 'solicitada_operador' | 'reprovada_humano';
 
@@ -109,6 +110,9 @@ export interface AuditoriaInput {
   dadosConta?: string;
   /** Produto definido pela origem do ticket (a árvore do auditor também fica restrita a ele). */
   produtoFixo?: string;
+  /** Ticket do agente autônomo: sem varredura de palavras críticas; a nota mínima é `minScore`. */
+  autonomo?: boolean;
+  minScore?: number;
   /** Id do colaborador (req.user.userId) que acionou o agente — usado no relatório de custo de IA por colaborador. */
   userId?: string;
 }
@@ -157,6 +161,8 @@ export interface PipelineResult {
   auditComplete?: boolean;
   nivelCriticidade?: NivelCriticidade;
   envioAutonomo?: boolean;
+  /** Por que a resposta NÃO foi encaminhada ao agente autônomo (fica gravado junto da sugestão para diagnóstico). */
+  autonomiaMotivo?: string;
   /** Resultado da consulta de dados da conta usada na resposta (quando habilitada). */
   hidratacao?: { slug: string; status: 'ok' | 'sem_dados' | 'indisponivel' };
   /** Resposta gravada na fila de aprovação humana (não enviada ao cliente). */

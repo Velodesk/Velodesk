@@ -1,18 +1,15 @@
 /**
- * autonomyRules.service v1.1.0 — allowlist de envio autônomo pela árvore de tabulação
- * VERSION: v1.1.0 | DATE: 2026-10-07
+ * autonomyRules.service v2.0.0 — configuração e escopo do agente autônomo
+ * VERSION: v2.0.0 | DATE: 2026-10-19
  *
- * - Escopo: produto (obrigatório) > motivo > detalhe; campo vazio = curinga para baixo.
- * - Escrita validada contra a árvore ativa (getActiveTabulation).
- * - Regra mais específica vence; prioridade só desempata.
- * - Sem fallback de regras padrão: nenhuma regra cadastrada = nada é autônomo.
+ * Um ticket entra na fila do agente autônomo quando (1) o agente está ligado, (2) o canal de origem tem o switch
+ * ligado e (3) a tabulação enviada pelo canal está coberta por uma regra: produto (obrigatório) > motivo > detalhe,
+ * campo vazio = curinga para baixo. Nenhuma regra cadastrada = nada é autônomo. Decisão única, tomada na criação.
  */
 import { AgentAutonomyRule, type IAgentAutonomyRule } from '../../models/AgentAutonomyRule';
 import { getAgentesConfigModel, type AgentesModoEnvio, type IAgentesConfig } from '../../models/AgentesConfig';
-import { env } from '../../config/env';
+import { CANAIS_AUTONOMOS } from '../../config/agenteAutonomo';
 import { getActiveTabulation, type TabulationActiveDto } from '../tabulation.service';
-import type { TicketAiTabulationResult } from './agentTypes';
-import { hasCriticalKeywords } from './criticalKeywords.service';
 
 export class AutonomyRuleValidationError extends Error {
   constructor(message: string) {
@@ -21,28 +18,12 @@ export class AutonomyRuleValidationError extends Error {
   }
 }
 
-export interface AutonomyEvaluateInput {
-  tabulacao: TicketAiTabulationResult;
-  canal?: string;
-  threadMessageCount: number;
-  auditScore: number;
-  clientContext?: string;
-  responseText?: string;
-}
-
-export interface AutonomyEvaluateResult {
-  allowed: boolean;
-  matchedRuleId?: string;
-  modoEnvio?: AgentesModoEnvio;
-  minAuditScoreEstrito?: number;
-  reason?: string;
-}
-
 export interface AgentesConfigDto {
   autonomiaHabilitada: boolean;
   modoEnvio: AgentesModoEnvio;
   minAuditScoreEstrito: number;
   hidratacaoConsulta: boolean;
+  canaisHabilitados: Record<string, boolean>;
   updatedAt?: Date;
   updatedBy?: string;
 }
@@ -53,12 +34,13 @@ const CACHE_TTL_MS = 10_000;
 let configCache: { at: number; value: AgentesConfigDto } | null = null;
 const MODOS_ENVIO: AgentesModoEnvio[] = ['fila_aprovacao', 'envio_direto'];
 
-function toConfigDto(doc: Pick<IAgentesConfig, 'autonomiaHabilitada' | 'modoEnvio' | 'minAuditScoreEstrito' | 'hidratacaoConsulta' | 'updatedAt' | 'updatedBy'> | null): AgentesConfigDto {
+function toConfigDto(doc: Pick<IAgentesConfig, 'autonomiaHabilitada' | 'modoEnvio' | 'minAuditScoreEstrito' | 'hidratacaoConsulta' | 'canaisHabilitados' | 'updatedAt' | 'updatedBy'> | null): AgentesConfigDto {
   return {
     autonomiaHabilitada: doc?.autonomiaHabilitada === true,
     modoEnvio: doc?.modoEnvio === 'envio_direto' ? 'envio_direto' : 'fila_aprovacao',
-    minAuditScoreEstrito: typeof doc?.minAuditScoreEstrito === 'number' ? doc.minAuditScoreEstrito : 95,
+    minAuditScoreEstrito: typeof doc?.minAuditScoreEstrito === 'number' ? doc.minAuditScoreEstrito : 85,
     hidratacaoConsulta: doc?.hidratacaoConsulta === true,
+    canaisHabilitados: Object.fromEntries(CANAIS_AUTONOMOS.map((c) => [c, doc?.canaisHabilitados?.[c] === true])),
     updatedAt: doc?.updatedAt,
     updatedBy: doc?.updatedBy,
   };
@@ -73,7 +55,7 @@ export async function getAgentesConfig(opts: { fresh?: boolean } = {}): Promise<
 }
 
 export async function updateAgentesConfig(
-  patch: { autonomiaHabilitada?: unknown; modoEnvio?: unknown; minAuditScoreEstrito?: unknown; hidratacaoConsulta?: unknown },
+  patch: { autonomiaHabilitada?: unknown; modoEnvio?: unknown; minAuditScoreEstrito?: unknown; hidratacaoConsulta?: unknown; canaisHabilitados?: unknown },
   updatedBy: string,
 ): Promise<AgentesConfigDto> {
   const $set: Record<string, unknown> = { updatedBy };
@@ -95,6 +77,16 @@ export async function updateAgentesConfig(
     }
     $set.hidratacaoConsulta = patch.hidratacaoConsulta;
   }
+  if (patch.canaisHabilitados !== undefined) {
+    const canais = patch.canaisHabilitados as Record<string, unknown> | null;
+    if (!canais || typeof canais !== 'object') throw new AutonomyRuleValidationError('canaisHabilitados inválido');
+    for (const [canal, ligado] of Object.entries(canais)) {
+      if (!(CANAIS_AUTONOMOS as readonly string[]).includes(canal) || typeof ligado !== 'boolean') {
+        throw new AutonomyRuleValidationError(`Canal inválido: ${canal}`);
+      }
+      $set[`canaisHabilitados.${canal}`] = ligado;
+    }
+  }
   if (patch.minAuditScoreEstrito !== undefined) {
     $set.minAuditScoreEstrito = finiteNumber(patch.minAuditScoreEstrito, 'minAuditScoreEstrito', 50, 100);
   }
@@ -106,17 +98,16 @@ export async function updateAgentesConfig(
 }
 
 export async function listAutonomyRules(): Promise<IAgentAutonomyRule[]> {
-  const rules = await AgentAutonomyRule.find().sort({ prioridade: -1, createdAt: -1 }).lean();
+  const rules = await AgentAutonomyRule.find().sort({ createdAt: -1 }).lean();
   return rules as unknown as IAgentAutonomyRule[];
+}
+
+function normalizeText(value: unknown): string {
+  return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 }
 
 function clean(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function cleanList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => clean(item)).filter(Boolean);
 }
 
 function finiteNumber(value: unknown, label: string, min: number, max: number): number | undefined {
@@ -150,11 +141,6 @@ interface NormalizedRule {
   produto: string;
   motivo: string;
   detalhe: string;
-  minAuditScore?: number;
-  maxMessagesInThread?: number;
-  canais?: string[];
-  bloqueios?: string[];
-  prioridade?: number;
 }
 
 async function normalizeRuleInput(
@@ -170,14 +156,6 @@ async function normalizeRuleInput(
 
   const out: NormalizedRule = { produto, motivo, detalhe };
   if (has('enabled')) out.enabled = body.enabled !== false;
-  const minAuditScore = finiteNumber(body.minAuditScore, 'minAuditScore', 0, 100);
-  if (minAuditScore !== undefined) out.minAuditScore = minAuditScore;
-  const maxMessages = finiteNumber(body.maxMessagesInThread, 'maxMessagesInThread', 1, 50);
-  if (maxMessages !== undefined) out.maxMessagesInThread = maxMessages;
-  const prioridade = finiteNumber(body.prioridade, 'prioridade', -1000, 1000);
-  if (prioridade !== undefined) out.prioridade = prioridade;
-  if (has('canais')) out.canais = cleanList(body.canais);
-  if (has('bloqueios')) out.bloqueios = cleanList(body.bloqueios);
   return out;
 }
 
@@ -222,65 +200,37 @@ function specificity(rule: Partial<IAgentAutonomyRule>): number {
   return 0;
 }
 
-function ruleMatches(
+/** A regra cobre a tabulação: produto igual e, se a regra definir motivo/detalhe, também iguais (textos da árvore). */
+function ruleCoversTabulacao(
   rule: Partial<IAgentAutonomyRule>,
-  input: AutonomyEvaluateInput,
+  tab: { produto?: string; motivo?: string; detalhe?: string },
 ): boolean {
-  if (rule.enabled === false) return false;
-  // Allowlist: sem produto não há escopo válido.
-  if (!clean(rule.produto)) return false;
-  if (input.auditScore < (rule.minAuditScore ?? env.agentAuditThresholdAuto)) return false;
-  if (input.threadMessageCount > (rule.maxMessagesInThread ?? 2)) return false;
-
-  if (clean(rule.produto) !== input.tabulacao.produto) return false;
-  if (clean(rule.motivo) && clean(rule.motivo) !== input.tabulacao.motivo) return false;
-  if (clean(rule.detalhe) && clean(rule.detalhe) !== input.tabulacao.detalhe) return false;
-
-  if (rule.canais?.length) {
-    const canal = String(input.canal || '').trim().toLowerCase();
-    const allowed = rule.canais.map((c) => String(c).trim().toLowerCase());
-    if (canal && !allowed.some((c) => canal.includes(c) || c.includes(canal))) return false;
-  }
-
-  const bloqueios = rule.bloqueios || [];
-  if (bloqueios.length && hasCriticalKeywords(input.clientContext, input.responseText, bloqueios.join(' '))) {
-    return false;
-  }
-
+  if (!normalizeText(rule.produto) || normalizeText(rule.produto) !== normalizeText(tab.produto)) return false;
+  if (normalizeText(rule.motivo) && normalizeText(rule.motivo) !== normalizeText(tab.motivo)) return false;
+  if (normalizeText(rule.detalhe) && normalizeText(rule.detalhe) !== normalizeText(tab.detalhe)) return false;
   return true;
 }
 
-export async function evaluateAutonomy(input: AutonomyEvaluateInput): Promise<AutonomyEvaluateResult> {
-
-  const config = await getAgentesConfig();
-  if (!config.autonomiaHabilitada) {
-    return { allowed: false, reason: 'Agente autônomo desligado na configuração' };
+/**
+ * Decisão única de escopo, tomada na criação do ticket: agente ligado + canal liberado + tabulação de origem coberta
+ * por uma regra ativa. Retorna a regra mais específica que cobre o caso, ou null (ticket segue a fila convencional).
+ */
+export async function resolveEscopoAutonomo(
+  canal: string,
+  tab: { produto?: string; motivo?: string; detalhe?: string },
+): Promise<{ ruleId?: string } | null> {
+  try {
+    const config = await getAgentesConfig();
+    if (!config.autonomiaHabilitada || config.canaisHabilitados[canal] !== true) return null;
+    const regras = (await listAutonomyRules())
+      .filter((r) => r.enabled !== false)
+      .sort((a, b) => specificity(b) - specificity(a));
+    const rule = regras.find((r) => ruleCoversTabulacao(r, tab));
+    return rule ? { ruleId: rule._id?.toString?.() } : null;
+  } catch (err) {
+    console.warn('[agent-autonomo] escopo indisponível — ticket segue a fila convencional:', (err as Error)?.message);
+    return null;
   }
-
-  if (hasCriticalKeywords(input.clientContext, input.responseText)) {
-    return { allowed: false, reason: 'Palavras críticas detectadas no contexto' };
-  }
-
-  const enabledRules = (await listAutonomyRules()).filter((r) => r.enabled !== false);
-  if (enabledRules.length === 0) {
-    return { allowed: false, reason: 'Nenhuma regra de autonomia cadastrada' };
-  }
-
-  const ordered = [...enabledRules].sort(
-    (a, b) => specificity(b) - specificity(a) || (b.prioridade ?? 0) - (a.prioridade ?? 0),
-  );
-  for (const rule of ordered) {
-    if (ruleMatches(rule, input)) {
-      return {
-        allowed: true,
-        matchedRuleId: rule._id?.toString?.(),
-        modoEnvio: config.modoEnvio,
-        minAuditScoreEstrito: config.minAuditScoreEstrito,
-      };
-    }
-  }
-
-  return { allowed: false, reason: 'Nenhuma regra compatível com o caso' };
 }
 
 /** Interruptor do agente autônomo (lido do banco, cache de 10 s). Falha ao ler ⇒ desligado. */
