@@ -895,7 +895,13 @@ export function buildBoxListFindOptions(
  * `$nin` também casa chamados sem o campo aiAutomation.
  */
 export function excludeAiAutomationFlowFilter(): Record<string, unknown> {
-  return { 'aiAutomation.status': { $nin: ['aguardando_aprovacao', 'em_revisao'] } };
+  // Só conta como "no fluxo do agente" se o chamado ainda está aberto: cancelado/resolvido/fechado volta às listas normais.
+  return {
+    $nor: [{
+      'aiAutomation.status': { $in: ['aguardando_aprovacao', 'em_revisao'] },
+      statusAtual: { $nin: ['resolvido', 'cancelado', 'fechado'] },
+    }],
+  };
 }
 
 export function buildBoxCountFilter(
