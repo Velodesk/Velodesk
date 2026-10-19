@@ -4,7 +4,7 @@
 import type { Contexto } from '../contexto';
 import { buscarTicketsEmNovo, colChamados, filtroExcluirEspeciais, filtroQa, filtroSemResponsavel, filtroStatusAtual } from '../db';
 import { estaEmHorarioComercial, eraDaMadrugada, formatarHoraBrt, tempoParadoMs } from '../horarioComercial';
-import { ok, falha, parcial, bloqueado, type Ocorrencia } from '../resultado';
+import { ok, falha, parcial, bloqueado, pareceOperacaoEmLote, type Ocorrencia } from '../resultado';
 
 const VINTE_QUATRO_H = 24 * 60 * 60 * 1000;
 const DUAS_H = 2 * 60 * 60 * 1000;
@@ -61,17 +61,30 @@ export async function checarErros(ctx: Contexto): Promise<void> {
     // Exclui Procon/Consumidor.Gov/Reclame Aqui/Bacen: tickets de Reclame Aqui importados do
     // CRM antigo (Octadesk) chegaram com status "novo" e nunca entram na fila de tratamento —
     // contá-los aqui é falso alarme, não fila parada de verdade.
-    const travados = await col.countDocuments({
-      ...filtroStatusAtual('novo'),
-      ...filtroExcluirEspeciais(),
-      createdAt: { $lt: new Date(Date.now() - VINTE_QUATRO_H) },
-    });
+    const docs = await col
+      .find({
+        ...filtroStatusAtual('novo'),
+        ...filtroExcluirEspeciais(),
+        createdAt: { $lt: new Date(Date.now() - VINTE_QUATRO_H) },
+      })
+      .project({ chamadoProtocolo: 1, createdAt: 1 })
+      .toArray();
+    const travados = docs.length;
+    // Muitos tickets com o MESMO horário de criação não é fila parada orgânica — é sinal de dado
+    // de teste/seed carregado de uma vez. Nesse caso vira Atenção, não Crítico.
+    const lote = pareceOperacaoEmLote(docs.map((d: any) => new Date(d.createdAt)));
     coletor.metrica({
       nome: 'Tickets em "novo" há mais de 24h',
       valor: travados,
-      situacao: travados > 50 ? 'Alerta' : travados > 0 ? 'Atenção' : 'Normal',
+      situacao: lote ? (travados > 0 ? 'Atenção' : 'Normal') : travados > 50 ? 'Alerta' : travados > 0 ? 'Atenção' : 'Normal',
     });
     if (travados === 0) return ok('Nenhum ticket parado em "novo" por mais de 24h.');
+    if (lote) {
+      return parcial(
+        `${travados} ticket(s) em "novo" há mais de 24h — mas o horário de criação está concentrado num ` +
+          'intervalo muito curto, sugerindo dado de teste/importação em lote, não fila parada de verdade.',
+      );
+    }
     if (travados <= 50) return parcial(`${travados} ticket(s) ainda em "novo" com mais de 24h de aberto.`);
     return falha(`${travados} tickets parados em "novo" há mais de 24h — fila sem tratamento ou roleta parada.`);
   });
@@ -145,7 +158,12 @@ export async function checarErros(ctx: Contexto): Promise<void> {
     const parados3h = comTempo.filter((t) => t.paradoMs > TRES_H);
     const parados5h = comTempo.filter((t) => t.paradoMs > CINCO_H);
 
-    const critico = parados5h.length > 0 || parados3h.length >= VOLUME_CRITICO;
+    // Muitos tickets com o MESMO horário de criação não é fila parada orgânica — é sinal de dado
+    // de teste/seed carregado de uma vez (ex.: lote de clientes/tickets criados juntos num teste
+    // de carga). Nesse caso o crítico fica travado em Atenção — pode ser falta de contexto
+    // nosso, não motivo pra acionar ninguém como urgente.
+    const lote = pareceOperacaoEmLote(parados2h.map((t) => t.createdAt));
+    const critico = !lote && (parados5h.length > 0 || parados3h.length >= VOLUME_CRITICO);
     const atencao = parados2h.length > 0;
     const situacao = critico ? 'Alerta' : atencao ? 'Atenção' : 'Normal';
 
@@ -168,7 +186,10 @@ export async function checarErros(ctx: Contexto): Promise<void> {
     const resumoGeral =
       `${semResponsavel.length} sem responsável, ${comResponsavel.length} com responsável` +
       (nomes.length ? ` (${nomes.join(', ')})` : '') +
-      `. ${madrugada.length} da madrugada (contando desde a abertura às 8h), ${hoje.length} aberto(s) hoje durante o expediente.`;
+      `. ${madrugada.length} da madrugada (contando desde a abertura às 8h), ${hoje.length} aberto(s) hoje durante o expediente.` +
+      (lote
+        ? ' Horário de criação concentrado num intervalo muito curto — parece dado de teste/lote, não fila parada de verdade.'
+        : '');
 
     // Uma ocorrência por ticket parado — a mensagem do Telegram já sabe truncar/"+N outras" se
     // passar do tamanho (ver montarBlocoPorArea em telegram.ts), então não precisa resumir aqui.

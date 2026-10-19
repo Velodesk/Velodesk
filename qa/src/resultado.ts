@@ -21,6 +21,38 @@ export function situacaoPorLatencia(ms: number): 'Normal' | 'Atenção' | 'Alert
 }
 
 /**
+ * Detecta se um conjunto de datas "parece" o resultado de uma operação em lote (importação,
+ * migração, dado de teste/seed) em vez de ocorrências orgânicas e independentes — quando uma
+ * fração grande delas cai dentro de uma janela de tempo muito curta (ex.: todas no mesmo
+ * minuto), é sinal de que foram escritas de uma vez só por um script, não uma a uma ao longo do
+ * tempo por uso real do sistema.
+ *
+ * Usado pelos casos de "ticket parado"/"ticket atrasado" (F04, F05, X04, X07) pra rebaixar a
+ * severidade pra Atenção em vez de Crítico/Alerta nesse cenário: o volume pode ser real dado de
+ * teste ou uma carga em massa, não necessariamente um problema de produção — falta de contexto
+ * nosso, não motivo pra acionar ninguém como se fosse urgente.
+ */
+export function pareceOperacaoEmLote(
+  datas: Date[],
+  opts: { janelaMs?: number; fracaoMinima?: number; minimoItens?: number } = {},
+): boolean {
+  const janelaMs = opts.janelaMs ?? 60_000; // 1 minuto
+  const fracaoMinima = opts.fracaoMinima ?? 0.5;
+  const minimoItens = opts.minimoItens ?? 5; // poucos itens não dá pra inferir padrão com confiança
+  if (datas.length < minimoItens) return false;
+
+  const ms = datas.map((d) => d.getTime()).sort((a, b) => a - b);
+  // Janela deslizante: maior quantidade de pontos que cabem dentro de `janelaMs` seguidos.
+  let melhor = 1;
+  let i = 0;
+  for (let j = 0; j < ms.length; j++) {
+    while (ms[j] - ms[i] > janelaMs) i++;
+    melhor = Math.max(melhor, j - i + 1);
+  }
+  return melhor / ms.length >= fracaoMinima;
+}
+
+/**
  * Lista numerada, uma linha por item — o dashboard (Sentinela) preserva quebra de linha na
  * observação (ver .obs-note em sentinela/index.html). Junta com " | " quando tem só 1 item,
  * pra não numerar à toa uma frase única.

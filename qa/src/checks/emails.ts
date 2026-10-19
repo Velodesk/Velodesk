@@ -199,6 +199,14 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
     return ok(`${ativos} modelo(s) de e-mail ativo(s) com gatilho, de ${total} cadastrado(s).`);
   });
 
+  // Canais que, de propósito, não recebem esse e-mail — confirmado com a gestão em 19/10/2026:
+  // "Chat" não existe/não se aplica nesse fluxo; "App"/"Agente IA" não dependem desse e-mail
+  // específico. Sem isso, o E09 notificava como falha algo que é desenho, não bug.
+  const GAPS_CANAL_CONHECIDOS: Record<string, string[]> = {
+    'Encerramento s/CSAT': ['Chat'],
+    'Abertura de protocolo de atendimento - e-mail': ['App', 'Agente IA'],
+  };
+
   // Mantém em sincronia com EMAIL_SLA_LIMIT_HOURS em
   // backend/src/services/emailOutbound.constants.ts — se um status novo ganhar prazo lá (ou
   // um existente mudar de valor) e esta lista não acompanhar, o E09 passa a reportar "sem prazo
@@ -302,15 +310,18 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
 
       if (!candidatos.length) continue; // sem volume nesta janela pra avaliar o modelo
 
-      const elegiveis: Array<{ _id: any; chamadoProtocolo: string; eventKey: string }> = [];
+      const elegiveis: Array<{ _id: any; chamadoProtocolo: string; eventKey: string; enviadoNoRegistro: boolean }> = [];
       const canaisNaoCobertos = new Map<string, number>();
+      const gapsConhecidos = GAPS_CANAL_CONHECIDOS[tpl.nome] ?? [];
 
       for (const doc of candidatos) {
         const tabs = doc.tabulacao ?? [];
         const canal = String(tabs[tabs.length - 1]?.canal ?? '').trim();
         if (canaisTemplate && !canaisTemplate.includes(canal)) {
-          const chave = canal || '(vazio)';
-          canaisNaoCobertos.set(chave, (canaisNaoCobertos.get(chave) ?? 0) + 1);
+          if (!gapsConhecidos.includes(canal)) {
+            const chave = canal || '(vazio)';
+            canaisNaoCobertos.set(chave, (canaisNaoCobertos.get(chave) ?? 0) + 1);
+          }
           continue;
         }
         // eventKey por ticket (não pelo template) — correto mesmo quando o gatilho lista mais
@@ -323,7 +334,13 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
           : statusCrit.prazoTipo === 'horas'
             ? `status:${statusDoTicket}:prazo`
             : `status:${statusDoTicket}`;
-        elegiveis.push({ _id: doc._id, chamadoProtocolo: doc.chamadoProtocolo, eventKey });
+        // Marca direto no ticket, igual o E04 já faz — mais confiável que o log de disparos
+        // (email_disparos_log só é escrito por emailTrigger.service; confirmado em 19/10 que um
+        // ticket pode ter a mensagem no próprio histórico sem nenhuma linha no log separado).
+        const enviadoNoRegistro = (doc.registro ?? []).some(
+          (r: any) => r?.metadados?.emailPadraoId === String(tpl._id) || r?.metadados?.emailPadraoNome === tpl.nome,
+        );
+        elegiveis.push({ _id: doc._id, chamadoProtocolo: doc.chamadoProtocolo, eventKey, enviadoNoRegistro });
       }
 
       if (canaisNaoCobertos.size) {
@@ -348,7 +365,7 @@ export async function checarEmails(ctx: Contexto): Promise<void> {
         .project({ chamadoId: 1, eventKey: 1 })
         .toArray();
       const enviadosSet = new Set(enviados.map((e: any) => `${e.chamadoId}|${e.eventKey}`));
-      const faltando = elegiveis.filter((d) => !enviadosSet.has(`${d._id}|${d.eventKey}`));
+      const faltando = elegiveis.filter((d) => !d.enviadoNoRegistro && !enviadosSet.has(`${d._id}|${d.eventKey}`));
 
       if (faltando.length) {
         problemas.push(

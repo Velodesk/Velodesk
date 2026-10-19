@@ -8,7 +8,7 @@
 import { cfg } from '../config';
 import type { Contexto } from '../contexto';
 import { colChamados, filtroStatusAtual, filtroStatusAtualEm, buscarComRetry } from '../db';
-import { ok, falha, parcial, bloqueado, comTicket } from '../resultado';
+import { ok, falha, parcial, bloqueado, comTicket, pareceOperacaoEmLote } from '../resultado';
 
 const TRES_DIAS = 3 * 24 * 60 * 60 * 1000;
 const QUATRO_DIAS = 4 * 24 * 60 * 60 * 1000;
@@ -129,16 +129,30 @@ export async function checarFinalizacao(ctx: Contexto): Promise<void> {
   await coletor.checar('F04', async () => {
     if (!ctx.temBanco) return bloqueado('Sem acesso ao banco para conferir a rotina de fechamento.');
     const col = await colChamados();
-    const atrasados = await col.countDocuments({
-      ...filtroStatusAtual('resolvido'),
-      updatedAt: { $lt: new Date(Date.now() - TRES_DIAS) },
-    });
+    const docs = await col
+      .find({ ...filtroStatusAtual('resolvido'), updatedAt: { $lt: new Date(Date.now() - TRES_DIAS) } })
+      .project({ chamadoProtocolo: 1, updatedAt: 1 })
+      .toArray();
+    const atrasados = docs.length;
+    // Muitos tickets com o MESMO horário de atualização (ou bem próximo) não é fila parada
+    // orgânica — é sinal de uma escrita em lote (migração/importação/dado de teste). Nesse caso
+    // vira Atenção, não Crítico: pode ser falta de contexto nosso, não motivo pra acionar ninguém
+    // como urgente (confirmado em 19/10: os 159 "atrasados" daquele dia eram tudo dado incluído
+    // de uma vez, não backlog real).
+    const lote = pareceOperacaoEmLote(docs.map((d: any) => new Date(d.updatedAt)));
     coletor.metrica({
       nome: 'Resolvidos há mais de 3 dias sem fechar',
       valor: atrasados,
-      situacao: atrasados > 20 ? 'Alerta' : atrasados > 0 ? 'Atenção' : 'Normal',
+      situacao: lote ? (atrasados > 0 ? 'Atenção' : 'Normal') : atrasados > 20 ? 'Alerta' : atrasados > 0 ? 'Atenção' : 'Normal',
     });
     if (atrasados === 0) return ok('Nenhum ticket resolvido parado — a rotina de fechamento está rodando.');
+    if (lote) {
+      return parcial(
+        `${atrasados} ticket(s) resolvido(s) há mais de 3 dias sem fechar — mas o horário de atualização ` +
+          'deles está concentrado num intervalo muito curto, o que sugere uma carga em lote (importação/teste), ' +
+          'não necessariamente a rotina de fechamento parada. Vale confirmar antes de tratar como crítico.',
+      );
+    }
     if (atrasados <= 20) {
       return parcial(`${atrasados} ticket(s) resolvido(s) há mais de 3 dias ainda sem fechamento automático.`);
     }
@@ -152,16 +166,25 @@ export async function checarFinalizacao(ctx: Contexto): Promise<void> {
   await coletor.checar('F05', async () => {
     if (!ctx.temBanco) return bloqueado('Sem acesso ao banco para conferir a rotina de pendentes.');
     const col = await colChamados();
-    const atrasados = await col.countDocuments({
-      ...filtroStatusAtualEm(['pendente', 'em-espera']),
-      updatedAt: { $lt: new Date(Date.now() - TRES_DIAS) },
-    });
+    const docs = await col
+      .find({ ...filtroStatusAtualEm(['pendente', 'em-espera']), updatedAt: { $lt: new Date(Date.now() - TRES_DIAS) } })
+      .project({ chamadoProtocolo: 1, updatedAt: 1 })
+      .toArray();
+    const atrasados = docs.length;
+    const lote = pareceOperacaoEmLote(docs.map((d: any) => new Date(d.updatedAt)));
     coletor.metrica({
       nome: 'Pendentes há mais de 3 dias sem resolver',
       valor: atrasados,
-      situacao: atrasados > 20 ? 'Alerta' : atrasados > 0 ? 'Atenção' : 'Normal',
+      situacao: lote ? (atrasados > 0 ? 'Atenção' : 'Normal') : atrasados > 20 ? 'Alerta' : atrasados > 0 ? 'Atenção' : 'Normal',
     });
     if (atrasados === 0) return ok('Nenhum pendente antigo acumulado — a rotina está rodando.');
+    if (lote) {
+      return parcial(
+        `${atrasados} ticket(s) pendente(s) há mais de 3 dias — mas o horário de atualização deles está ` +
+          'concentrado num intervalo muito curto, o que sugere uma carga em lote (importação/teste), não ' +
+          'necessariamente a rotina parada. Vale confirmar antes de tratar como crítico.',
+      );
+    }
     if (atrasados <= 20) return parcial(`${atrasados} ticket(s) pendente(s) há mais de 3 dias.`);
     return falha(`${atrasados} tickets pendentes há mais de 3 dias. A rotina de resolução automática parece parada.`);
   });
