@@ -889,6 +889,15 @@ export function buildBoxListFindOptions(
  * Contagem tem que sempre refletir o total real (respeitando ver_todos vs
  * meus-chamados, igual buildChamadoQueryFilter já faz).
  */
+/**
+ * Chamado que o agente autônomo está tratando (aguardando aprovação ou sendo reescrito) NÃO pertence
+ * às filas dos agentes humanos: só aparece na Área de IA até ser aprovado ou devolvido ao humano.
+ * `$nin` também casa chamados sem o campo aiAutomation.
+ */
+export function excludeAiAutomationFlowFilter(): Record<string, unknown> {
+  return { 'aiAutomation.status': { $nin: ['aguardando_aprovacao', 'em_revisao'] } };
+}
+
 export function buildBoxCountFilter(
   status: string,
   queue?: string,
@@ -897,7 +906,7 @@ export function buildBoxCountFilter(
 ): Record<string, unknown> {
   const baseFilter = buildChamadoQueryFilter(status, queue, responsavelCandidates, extraFilter);
   const excludeAbsorvidos = excludeFusaoAbsorvidosFilter();
-  return { $and: [baseFilter, excludeAbsorvidos] };
+  return { $and: [baseFilter, excludeAbsorvidos, excludeAiAutomationFlowFilter()] };
 }
 
 export async function chamadosToTickets(

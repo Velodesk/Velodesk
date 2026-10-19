@@ -3,7 +3,7 @@ import { env } from '../../config/env';
 import { isDeskConfigConnected } from '../../config/database';
 import { getGmailWatchStateModel, findGmailWatchSingleton } from '../../models/GmailWatchState';
 import { createGmailClient, getGmailTopicName, GMAIL_SCOPE_READONLY } from './gmailAuth';
-import { getDelegatedUserEmail, isEmailTransportReady } from '../emailTransport.service';
+import { getDelegatedUserEmail, isGmailCredentialsReady } from '../emailTransport.service';
 
 const RENEWAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const RENEW_BEFORE_MS = 24 * 60 * 60 * 1000;
@@ -70,7 +70,7 @@ async function persistWatchState(mailbox: string, historyId: string, expiration:
 }
 
 export async function setupGmailWatch(): Promise<{ historyId: string; expiration: number } | null> {
-  if (!env.gmailInboundEnabled || !isEmailTransportReady()) {
+  if (!env.gmailInboundEnabled || !isGmailCredentialsReady()) {
     return null;
   }
 
@@ -144,7 +144,7 @@ export async function getGmailWatchHealth(): Promise<GmailWatchHealth> {
   }
 
   const expiration = state?.expiration ?? null;
-  const transportReady = isEmailTransportReady();
+  const transportReady = isGmailCredentialsReady();
   const watchActive = !!(state?.historyId && state?.expiration);
 
   return {

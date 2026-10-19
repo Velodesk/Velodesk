@@ -153,17 +153,49 @@ function MessageAttachments({ attachments, scanStatuses, messageOrigin, messageT
   );
 }
 
+/** Imagens do corpo (/api/uploads/inbound) exigem auth — carrega via fetch autenticado e troca o src por blob. */
+function useAuthenticatedInlineImages(containerRef, html) {
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return undefined;
+    const created = [];
+    let cancelled = false;
+    root.querySelectorAll('img[src^="/api/uploads/inbound/"]').forEach((img) => {
+      const url = img.getAttribute('src');
+      loadAttachmentForPreview(url)
+        .then((loaded) => {
+          if (cancelled) {
+            URL.revokeObjectURL(loaded.objectUrl);
+            return;
+          }
+          created.push(loaded.objectUrl);
+          img.setAttribute('src', loaded.objectUrl);
+        })
+        .catch((err) => console.warn('[DeskConversation] imagem inline:', err?.message || err));
+    });
+    return () => {
+      cancelled = true;
+      created.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+    };
+  }, [containerRef, html]);
+}
+
 export function MessageBubbleText({ text, attachments, scanStatuses, messageOrigin, messageType }) {
   const raw = normalizeMessageDisplayText(text);
   const hasText = Boolean(String(raw || '').trim());
+  const htmlRef = useRef(null);
+  const isHtml = hasText && /<[a-z][\s\S]*>/i.test(raw);
+  const displayHtml = isHtml ? normalizeMessageHtmlForDisplay(raw) : '';
+  useAuthenticatedInlineImages(htmlRef, displayHtml);
 
   return (
     <>
       {hasText ? (
-        /<[a-z][\s\S]*>/i.test(raw) ? (
+        isHtml ? (
           <span
+            ref={htmlRef}
             className="msg-bubble__formatted msg-bubble__formatted--html"
-            dangerouslySetInnerHTML={{ __html: normalizeMessageHtmlForDisplay(raw) }}
+            dangerouslySetInnerHTML={{ __html: displayHtml }}
           />
         ) : !composeTextHasFormatting(raw) ? (
           <span className="msg-bubble__formatted msg-bubble__formatted--plain">{raw}</span>

@@ -18687,8 +18687,22 @@ body.velodesk-dark .sidebar {
 }
 
 .client360-fusao-confirm .modal-content {
+    width: min(1100px, 94vw);
     min-width: min(720px, 94vw);
-    max-width: 860px;
+    max-width: 1100px;
+}
+
+.client360-fusao-confirm .client360-fusao-pick-table td {
+    max-width: 380px;
+}
+
+.client360-fusao-pick-table td:nth-child(2) {
+    max-width: none;
+    overflow: visible;
+}
+
+.client360-fusao-pick-hint--info {
+    color: #0b5cad;
 }
 
 .client360-fusao-pick-table-wrap {
