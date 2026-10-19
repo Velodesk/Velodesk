@@ -79,6 +79,8 @@ export async function enqueueForApproval(chamadoId: string, params: EnqueueParam
   if (!doc) return;
   // Quem trata o chamado é o agente autônomo: ele passa a ser o responsável (sobrepõe a roleta).
   setResponsavel(doc, AGENTE_AUTONOMO_RESPONSAVEL);
+  // O serviço do agente só termina com a tabulação preenchida no próprio chamado (não só guardada na proposta).
+  setTabulacaoAgente(doc, tabOf(params.tabulacao));
   doc.aiAutomation = {
     status: 'aguardando_aprovacao' as AiAutomationStatus,
     tentativas: 1,
@@ -89,6 +91,21 @@ export async function enqueueForApproval(chamadoId: string, params: EnqueueParam
     updatedAt: new Date(),
   };
   await doc.save();
+}
+
+/** Grava a tabulação do agente (tipo/produto/motivo/detalhe) no chamado, preservando canal, responsável e atribuído. */
+function setTabulacaoAgente(doc: IChamadoN1, tab: IAiAutomationTabulacao): void {
+  if (!doc.tabulacao?.length) {
+    doc.tabulacao = [{
+      tipoChamado: '', produto: '', motivo: '', detalhe: '', canal: '', responsavel: '', atribuido: '',
+    }];
+  }
+  const atual = doc.tabulacao[doc.tabulacao.length - 1];
+  atual.tipoChamado = tab.tipo;
+  atual.produto = tab.produto;
+  atual.motivo = tab.motivo;
+  atual.detalhe = tab.detalhe;
+  doc.markModified('tabulacao');
 }
 
 function setResponsavel(doc: IChamadoN1, responsavel: string): void {
@@ -234,26 +251,15 @@ export async function approve(
   const custom = typeof textoFinal === 'string' ? textoFinal.trim().slice(0, 32_000) : '';
   let enviado = '';
   let editado = false;
-  const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/s+/g, ' ').trim().toLowerCase();
+  const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
   const sameTab = (a: IAiAutomationTabulacao, b: IAiAutomationTabulacao) =>
     norm(a.tipo) === norm(b.tipo) && norm(a.produto) === norm(b.produto)
     && norm(a.motivo) === norm(b.motivo) && norm(a.detalhe) === norm(b.detalhe);
-  // A tela do auditor pode mandar a tabulação incompleta (ex.: só o produto vindo da origem). Os níveis que
-  // ele deixou vazios são completados com a proposta da IA, até onde ele não divergiu dela; divergiu, vale o que ele escolheu.
+  // A tabulação já foi gravada no chamado pelo agente (ao entrar na fila). O auditor pode ajustá-la na tela; o que
+  // vier incompleto NÃO é completado aqui: o envio exige a tabulação inteira (erro 422), como qualquer atendente.
   const proposta = pendente.tabulacao;
-  let merged: IAiAutomationTabulacao | null = null;
   const override = cleanTab(tabulacaoOverride);
-  if (override) {
-    merged = { tipo: override.tipo || proposta.tipo, produto: '', motivo: '', detalhe: '' };
-    let diverged = false;
-    for (const nivel of ['produto', 'motivo', 'detalhe'] as const) {
-      if (diverged) { merged[nivel] = override[nivel]; continue; }
-      if (!norm(override[nivel])) { merged[nivel] = proposta[nivel]; continue; }
-      merged[nivel] = override[nivel];
-      if (norm(override[nivel]) !== norm(proposta[nivel])) diverged = true;
-    }
-  }
-  const tabFinal = merged && !sameTab(merged, proposta) ? merged : null;
+  const tabFinal = override && !sameTab(override, proposta) ? override : null;
   try {
     const messages = buildTicketIaMessagesFromChamado(chamado).map((m) => ({ role: m.role, text: m.text }));
     const padrao = wrapComposerOpening({
@@ -407,6 +413,9 @@ export async function reject(id: string, by: string, feedback?: string) {
       confidence: revised.confidence,
       model: revised.model,
     });
+    // A nova tentativa também termina com a tabulação preenchida no chamado.
+    setTabulacaoAgente(chamado, tabOf(revised.tabulacao));
+    await chamado.save();
     await ChamadoN1.updateOne(
       { _id: id },
       {
