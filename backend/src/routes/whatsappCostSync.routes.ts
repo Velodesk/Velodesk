@@ -10,6 +10,11 @@ import {
   syncWhatsappCostDaily,
   syncWhatsappCostRange,
 } from '../services/twilio/whatsappCostSync.service';
+import {
+  getWhatsappCostDailyStatus,
+  rollupWhatsappCostDaily,
+  rollupWhatsappCostRange,
+} from '../services/twilio/whatsappCostDaily.service';
 
 const router = Router();
 
@@ -40,10 +45,15 @@ router.post('/sync/scheduled', async (req: Request, res: Response) => {
       }
       const clamped = Math.max(1, Math.min(90, Math.trunc(n)));
       const result = await syncWhatsappCostBackfill(clamped);
-      return res.json({ mode: 'backfill', days: clamped, ...result });
+      // Depois do sync do cru, roda rollup diário cobrindo a mesma janela —
+      // repricing tardio da Twilio e crons perdidos entram no mesmo passe.
+      const rollup = await rollupWhatsappCostDaily(Math.max(15, clamped));
+      return res.json({ mode: 'backfill', days: clamped, sync: result, rollup });
     }
     const result = await syncWhatsappCostDaily();
-    return res.json({ mode: 'daily', ...result });
+    // Default: janela de 15 dias cobre o repricing tardio sem gastar à toa.
+    const rollup = await rollupWhatsappCostDaily();
+    return res.json({ mode: 'daily', sync: result, rollup });
   } catch (err) {
     console.error('[whatsapp-cost] POST /sync/scheduled falhou:', err);
     return res.status(500).json({ message: (err as Error).message || 'Erro no sync' });
@@ -110,6 +120,48 @@ router.post('/purge-foreign', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[whatsapp-cost] POST /purge-foreign falhou:', err);
     return res.status(500).json({ message: (err as Error).message || 'Erro na limpeza' });
+  }
+});
+
+/**
+ * Relatório diário — 1 doc por dia BRT, pronto pro frontend consumir sem reagregar.
+ * `?limit=N` opcional (1..365, default 30).
+ */
+router.get('/daily', async (req: Request, res: Response) => {
+  if (!isMongoConnected()) return res.status(503).json({ message: 'Banco indisponível' });
+  try {
+    const rawLimit = req.query?.limit;
+    const limit = rawLimit !== undefined ? Number(rawLimit) : 30;
+    const result = await getWhatsappCostDailyStatus(Number.isFinite(limit) ? limit : 30);
+    return res.json(result);
+  } catch (err) {
+    console.error('[whatsapp-cost] GET /daily falhou:', err);
+    return res.status(500).json({ message: 'Erro ao carregar relatório diário' });
+  }
+});
+
+/**
+ * Reagregação manual de um período histórico — fora da janela de 15 dias do cron.
+ * Útil quando o financeiro pede pra bater com fatura de meses passados.
+ * Body: `{ fromDate: "YYYY-MM-DD", toDate: "YYYY-MM-DD" }` (BRT).
+ */
+router.post('/rollup', async (req: Request, res: Response) => {
+  if (!isMongoConnected()) return res.status(503).json({ message: 'Banco indisponível' });
+  const fromDate = String(req.body?.fromDate ?? '').trim();
+  const toDate = String(req.body?.toDate ?? '').trim();
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRe.test(fromDate) || !dateRe.test(toDate)) {
+    return res.status(400).json({ message: 'Body precisa de `fromDate` e `toDate` no formato YYYY-MM-DD' });
+  }
+  if (fromDate > toDate) {
+    return res.status(400).json({ message: '`fromDate` deve ser anterior ou igual a `toDate`' });
+  }
+  try {
+    const result = await rollupWhatsappCostRange(fromDate, toDate);
+    return res.json(result);
+  } catch (err) {
+    console.error('[whatsapp-cost] POST /rollup falhou:', err);
+    return res.status(500).json({ message: (err as Error).message || 'Erro no rollup' });
   }
 });
 
