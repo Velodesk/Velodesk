@@ -10782,6 +10782,36 @@ body.desk-v2-mode #cockpitFocusContext {
     white-space: nowrap;
 }
 
+#velodeskDeskV2Root .ia-review__stage-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+#velodeskDeskV2Root .ia-review__consulta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid #E4E6EA;
+    border-radius: 8px;
+    background: #fff;
+    color: #374151;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#velodeskDeskV2Root .ia-review__consulta-btn:hover { background: #F9FAFB; }
+#velodeskDeskV2Root .ia-review__consulta-btn.is-active {
+    background: #EEF2FF;
+    border-color: #1634FF;
+    color: #1634FF;
+}
+#velodeskDeskV2Root .ia-review__consulta-btn:focus-visible { outline: 2px solid #1634FF; outline-offset: 2px; }
+
 #velodeskDeskV2Root .ia-review__history-btn {
     display: inline-flex;
     align-items: center;
@@ -10870,6 +10900,28 @@ body.desk-v2-mode #cockpitFocusContext {
     margin: 0;
     font-size: 0.85rem;
     color: #9ca3af;
+}
+
+/* Área da resposta: 1 coluna; com a consulta aberta, divide em 2 (resposta | consulta). */
+#velodeskDeskV2Root .ia-review__answer-area { display: block; }
+
+#velodeskDeskV2Root .ia-review__answer-area.is-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+#velodeskDeskV2Root .ia-review__consulta {
+    display: flex;
+    flex-direction: column;
+    min-height: 320px;
+    max-height: 78vh;
+    overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+    #velodeskDeskV2Root .ia-review__answer-area.is-split { grid-template-columns: minmax(0, 1fr); }
 }
 
 #velodeskDeskV2Root .ia-review__suggestion {

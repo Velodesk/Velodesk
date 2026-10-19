@@ -2,9 +2,12 @@
  * IaTicketReview v1.0.0 — ticket na Área de IA: cabeçalho, última mensagem do cliente e
  * sugestão de resposta da IA com Editar / Reprovar / Aprovar e enviar (envia como Resolvido).
  * Substitui, só na Área de IA, a barra de abas, o perfil do cliente, as abas Conversa/Notas e a conversa do Desk.
+ * Botão "Consultas" (abaixo do badge de etapa) divide a área da resposta em 2: resposta à esquerda, consulta do cliente
+ * (mesmo painel da aba Consultas dos tickets normais) à direita.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { MessageBubbleText } from '../../desk/components/DeskConversation';
+import DeskConsultasPanel from '../../desk/components/DeskConsultasPanel';
 import {
   getClientContactFields,
   getTicketProtocolLabel,
@@ -81,6 +84,7 @@ export default function IaTicketReview({
     [conversation],
   );
   const [showFullConversation, setShowFullConversation] = useState(false);
+  const [consultaOpen, setConsultaOpen] = useState(false);
 
   const suggestedText = useMemo(() => {
     const nucleo = String(ai?.respostaSugerida || '').trim();
@@ -126,7 +130,18 @@ export default function IaTicketReview({
           <p className="ia-review__opened">Aberto em {formatDateBr(ticket?.createdAt)}</p>
         </div>
         <div className="ia-review__header-actions">
-          <span className="ia-review__stage">Etapa · Revisão da IA</span>
+          <div className="ia-review__stage-col">
+            <span className="ia-review__stage">Etapa · Revisão da IA</span>
+            <button
+              type="button"
+              className={'ia-review__consulta-btn' + (consultaOpen ? ' is-active' : '')}
+              onClick={() => setConsultaOpen((open) => !open)}
+              aria-pressed={consultaOpen}
+            >
+              <i className="ti ti-search" aria-hidden="true" />
+              Consultas
+            </button>
+          </div>
           <button
             type="button"
             className="ia-review__history-btn"
@@ -171,6 +186,7 @@ export default function IaTicketReview({
           </div>
         </section>
 
+        <div className={'ia-review__answer-area' + (consultaOpen ? ' is-split' : '')}>
         <section className="ia-review__card ia-review__suggestion" aria-label="Resposta">
           <div className="ia-review__suggestion-head">
             <span className="ia-review__suggestion-icon" aria-hidden="true"><i className="ti ti-sparkles" /></span>
@@ -249,6 +265,13 @@ export default function IaTicketReview({
             </div>
           </footer>
         </section>
+
+        {consultaOpen ? (
+          <aside className="ia-review__card ia-review__consulta" aria-label="Consultas do cliente">
+            <DeskConsultasPanel ticket={ticket} client={client} active={consultaOpen} />
+          </aside>
+        ) : null}
+        </div>
       </div>
     </div>
   );
