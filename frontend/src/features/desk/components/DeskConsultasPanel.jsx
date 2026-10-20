@@ -16,6 +16,8 @@ export default function DeskConsultasPanel({ ticket, client, active = false }) {
     error,
     refreshing,
     reload,
+    loadProduct,
+    productLoading,
   } = useCustomerConsulta({ ticket, client, active });
 
   // Clicar num produto do resumo (topo) seleciona esse mesmo produto no workspace (abaixo) —
@@ -114,6 +116,8 @@ export default function DeskConsultasPanel({ ticket, client, active = false }) {
             key={ticketKey}
             data={data}
             flagSelection={flagSelection}
+            onLoadProduct={loadProduct}
+            productLoading={productLoading}
           />
 
           {data.errors?.length ? (

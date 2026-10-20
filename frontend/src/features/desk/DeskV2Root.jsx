@@ -2896,17 +2896,19 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
 
   return (
     <div className={'app-shell' + (isTableQueueView ? ' app-shell--table-queue' : '')} id="deskAppShell">
-      <DeskQueuePanel
-        queueStatuses={queueIds ? queueStatuses.filter((s) => queueIds.includes(s.id)) : queueStatuses}
-        countOverrides={hideComposer ? { novos: entries.length } : null}
-        activeQueue={activeQueue}
-        collapsed={queueCollapsed}
-        onSelectQueue={selectQueue}
-        onCollapse={() => handleQueueCollapse(true)}
-        onExpand={() => handleQueueCollapse(false)}
-        onCreateTicket={() => setCreateOpen(true)}
-        refreshKey={refreshKey}
-      />
+      {/* Área de IA tem uma única lista (pendentes de aprovação): sem a barra de listas. */}
+      {!hideComposer ? (
+        <DeskQueuePanel
+          queueStatuses={queueIds ? queueStatuses.filter((s) => queueIds.includes(s.id)) : queueStatuses}
+          activeQueue={activeQueue}
+          collapsed={queueCollapsed}
+          onSelectQueue={selectQueue}
+          onCollapse={() => handleQueueCollapse(true)}
+          onExpand={() => handleQueueCollapse(false)}
+          onCreateTicket={() => setCreateOpen(true)}
+          refreshKey={refreshKey}
+        />
+      ) : null}
 
       {!isTableQueueView ? (
       <DeskTicketList

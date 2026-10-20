@@ -10782,14 +10782,8 @@ body.desk-v2-mode #cockpitFocusContext {
     white-space: nowrap;
 }
 
-#velodeskDeskV2Root .ia-review__stage-col {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-}
-
 #velodeskDeskV2Root .ia-review__consulta-btn {
+    align-self: flex-start;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -10902,14 +10896,11 @@ body.desk-v2-mode #cockpitFocusContext {
     color: #9ca3af;
 }
 
-/* Área da resposta: 1 coluna; com a consulta aberta, divide em 2 (resposta | consulta). */
-#velodeskDeskV2Root .ia-review__answer-area { display: block; }
-
-#velodeskDeskV2Root .ia-review__answer-area.is-split {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+/* Área da resposta: a resposta (com Aprovar/Reprovar) e, abaixo dela, a consulta do cliente quando aberta. */
+#velodeskDeskV2Root .ia-review__answer-area {
+    display: flex;
+    flex-direction: column;
     gap: 16px;
-    align-items: start;
 }
 
 #velodeskDeskV2Root .ia-review__consulta {
@@ -10918,10 +10909,6 @@ body.desk-v2-mode #cockpitFocusContext {
     min-height: 320px;
     max-height: 78vh;
     overflow: hidden;
-}
-
-@media (max-width: 1100px) {
-    #velodeskDeskV2Root .ia-review__answer-area.is-split { grid-template-columns: minmax(0, 1fr); }
 }
 
 #velodeskDeskV2Root .ia-review__suggestion {
@@ -11591,4 +11578,16 @@ body.desk-v2-mode #cockpitFocusContext {
     border-top: 1px solid #E5E7EB;
     font-size: 0.72rem;
     color: #9ca3af;
+}
+
+/* Card "Cliente não possui X": linha de elegibilidade com badge (verde = disponível, vermelho = indisponível). */
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-consultas__eligibility-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 8px 0 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #374151;
 }

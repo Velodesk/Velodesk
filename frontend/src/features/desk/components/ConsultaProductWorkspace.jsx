@@ -797,7 +797,12 @@ const FLAG_KEY_TO_SLUG = {
   clubeVelotax: 'clube-velotax',
 };
 
-export default function ConsultaProductWorkspace({ data, flagSelection = null }) {
+export default function ConsultaProductWorkspace({
+  data,
+  flagSelection = null,
+  onLoadProduct = null,
+  productLoading = null,
+}) {
   const [manualSlug, setManualSlug] = useState(null);
   const [manualInfoFlag, setManualInfoFlag] = useState(null);
   const [semRelacaoOpen, setSemRelacaoOpen] = useState(false);
@@ -839,6 +844,22 @@ export default function ConsultaProductWorkspace({ data, flagSelection = null })
   );
 
   const selectedInactive = manualInfoFlag;
+
+  // Produto sem relação: o card "não possui" também mostra a elegibilidade (vem no snapshot do produto; se ainda não
+  // foi carregado, carrega sob demanda ao selecionar).
+  const inactiveSlug = selectedInactive ? FLAG_KEY_TO_SLUG[selectedInactive.key] : null;
+  const inactiveEligSlug = isContractSlug(inactiveSlug) ? inactiveSlug : null;
+  const inactiveEligLoaded = Boolean(inactiveEligSlug && data?.products?.[inactiveEligSlug]?.loaded);
+  const inactiveElegibilidade = inactiveEligLoaded
+    ? buildEligibilidade(data.products[inactiveEligSlug].data?.eligibility, inactiveEligSlug)
+    : null;
+  const inactiveEligLoading = Boolean(inactiveEligSlug && !inactiveEligLoaded && productLoading?.[inactiveEligSlug]);
+
+  useEffect(() => {
+    if (!inactiveEligSlug || inactiveEligLoaded) return;
+    Promise.resolve(onLoadProduct?.(inactiveEligSlug)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inactiveEligSlug, inactiveEligLoaded]);
 
   const defaultSlug = activeEntries.find((item) => item.slug === data?.ticketProductSlug)?.slug
     || activeEntries[0]?.slug
@@ -958,6 +979,16 @@ export default function ConsultaProductWorkspace({ data, flagSelection = null })
               Cliente {selectedInactive.active ? 'possui' : 'não possui'} <strong>{selectedInactive.label}</strong>
               {selectedInactive.active ? ', mas não há detalhamento disponível para este produto.' : '.'}
             </p>
+            {inactiveElegibilidade ? (
+              <p className="crm-consultas__eligibility-row">
+                <span>Elegibilidade</span>
+                <span className={`crm-consultas-product__status-pill crm-consultas-product__status-pill--${inactiveElegibilidade.disponivel ? 'green' : 'red'}`}>
+                  {inactiveElegibilidade.badgeLabel}
+                </span>
+              </p>
+            ) : inactiveEligLoading ? (
+              <p className="crm-consultas__eligibility-row"><span>Consultando elegibilidade…</span></p>
+            ) : null}
           </div>
         ) : selected && isContractSlug(selected.slug) ? (
           <ContractProductDetail
