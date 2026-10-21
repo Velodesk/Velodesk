@@ -89,7 +89,7 @@ export default function IaTicketReview({
   const suggestedText = useMemo(() => {
     const nucleo = String(ai?.respostaSugerida || '').trim();
     if (!nucleo) return '';
-    // Tudo que chega aqui é resposta do agente autônomo: o envelope é sempre da CláudIA, nunca de quem está logado.
+    // Tudo que chega aqui é resposta do agente autônomo: o envelope é sempre da Cláudia, nunca de quem está logado.
     return wrapComposerOpeningForTicket({ nucleo, ticket, agentName: AGENTE_AUTONOMO_ENVELOPE_NOME });
   }, [ai?.respostaSugerida, ticket]);
 

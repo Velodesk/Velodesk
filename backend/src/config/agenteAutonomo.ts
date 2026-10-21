@@ -7,7 +7,7 @@
 export const AGENTE_AUTONOMO_RESPONSAVEL = 'Agente Autônomo';
 
 /** Nome com que o agente autônomo se apresenta ao cliente no envelope da mensagem. */
-export const AGENTE_AUTONOMO_ENVELOPE_NOME = 'CláudIA';
+export const AGENTE_AUTONOMO_ENVELOPE_NOME = 'Cláudia';
 
 /** Origens de POST /api/inbound/tickets que podem ser atendidas pelo agente autônomo (cada uma tem um switch na config). */
 export const CANAIS_AUTONOMOS = ['app', 'chat', 'agente-ia'] as const;
