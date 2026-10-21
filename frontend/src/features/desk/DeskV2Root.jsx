@@ -475,16 +475,23 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     }
   }, [syncTicketViews, showNotification]);
 
+  // Área de IA: quais tickets aguardam aprovação vem do SERVIDOR (/ai-approvals, atualizado a cada 15 s e após cada
+  // decisão), nunca do cache local, que pode guardar um estado velho do ticket. Até a 1ª resposta, usa o cache.
+  const [iaServerIds, setIaServerIds] = useState(null);
+  const isIaPending = useCallback(
+    (t) => (iaServerIds ? iaServerIds.has(String(t?.id || t?._id)) : isPendingAiApproval(t)),
+    [iaServerIds],
+  );
   // Filas dos agentes humanos nunca mostram o que está no fluxo do agente autônomo; a Área de IA mostra só isso.
   const allWorkingEntries = resolveDeskWorkingEntries(
     activeQueue,
     appliedSearch,
     activeSort,
     false,
-    { aiFlow: hideComposer ? 'only' : 'exclude' },
+    { aiFlow: hideComposer ? (iaServerIds ? 'any' : 'only') : 'exclude' },
   );
   // Área de IA: só os tickets que o agente autônomo já respondeu e aguardam a aprovação humana.
-  const entries = hideComposer ? allWorkingEntries.filter((e) => isPendingAiApproval(e.ticket)) : allWorkingEntries;
+  const entries = hideComposer ? allWorkingEntries.filter((e) => isIaPending(e.ticket)) : allWorkingEntries;
   const isTableQueueView = isDeskTableQueue(activeQueue);
   const isResolvedQueue = activeQueue === 'resolvidos';
   const isMyTicketsQueue = isMeusTicketsQueue(activeQueue);
@@ -1125,8 +1132,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
 
     let nextId = plannedNextId;
     if (!nextId) {
-      const workingList = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort, false, { aiFlow: hideComposer ? 'only' : 'exclude' });
-      const freshList = hideComposer ? workingList.filter((e) => isPendingAiApproval(e.ticket)) : workingList;
+      const workingList = resolveDeskWorkingEntries(activeQueue, appliedSearch, activeSort, false, { aiFlow: hideComposer ? (iaServerIds ? 'any' : 'only') : 'exclude' });
+      const freshList = hideComposer ? workingList.filter((e) => isIaPending(e.ticket)) : workingList;
       nextId = pickNextTicketFromEntries(listAnchorId, freshList);
     }
 
@@ -2756,14 +2763,16 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   // Área de IA: itens que entram/saem da fila aparecem sozinhos — poll leve (só ids) a cada 15 s; quando muda, dispara a
   // atualização silenciosa das listas (sem F5, sem botão de atualizar, sem recarregar a tela).
   const iaPollSigRef = useRef(null);
+  const iaCheckRef = useRef(null);
   useEffect(() => {
     if (!hideComposer) return undefined;
     let cancelled = false;
-    const check = async () => {
-      if (typeof document !== 'undefined' && document.hidden) return;
+    const check = async (force = false) => {
+      if (!force && typeof document !== 'undefined' && document.hidden) return;
       try {
         const data = await aiApprovalsApi.list({ status: 'aguardando_aprovacao', limit: 100 });
         if (cancelled) return;
+        setIaServerIds(new Set((data.items || []).map((i) => String(i.id))));
         const sig = (data.items || []).map((i) => `${i.id}:${i.tentativa}`).sort().join(',');
         if (iaPollSigRef.current !== null && iaPollSigRef.current !== sig) {
           window.dispatchEvent(new CustomEvent('velodesk:queue-counts-changed'));
@@ -2773,10 +2782,12 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         /* poll silencioso */
       }
     };
+    iaCheckRef.current = check;
     void check();
-    const timer = window.setInterval(check, 15000);
+    const timer = window.setInterval(() => { void check(); }, 15000);
     return () => {
       cancelled = true;
+      iaCheckRef.current = null;
       window.clearInterval(timer);
     };
   }, [hideComposer]);
@@ -2807,7 +2818,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   // Área de IA: só existe ticket aberto aqui se estiver aguardando aprovação. Aba/URL restaurada de um ticket que não é
   // (ou deixou de ser) pendente — resolvido, nunca enfileirado, já aprovado — é fechada, sem reter pergunta antiga na tela.
   const iaTicketId = String(ticket?.id || ticket?._id || '');
-  const iaTicketStale = hideComposer && Boolean(iaTicketId) && !isPendingAiApproval(ticket);
+  const iaTicketStale = hideComposer && Boolean(iaTicketId) && !isIaPending(ticket);
   useEffect(() => {
     if (!iaTicketStale) return;
     delete tabSessionsRef.current[iaTicketId];
@@ -2837,9 +2848,11 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
             showNotification('Feedback enviado. A IA gerou uma nova resposta.', 'success');
             await loadTicketDetailFromApi(id);
             await syncTicketViews();
+            void iaCheckRef.current?.(true);
           } else {
             showNotification('Reprovado. O ticket voltou para o atendimento humano.', 'success');
             await syncTicketViews();
+            await iaCheckRef.current?.(true);
             advanceAfterSaveIfEnabled(id, null, id, true);
           }
           return { success: true };
@@ -2914,6 +2927,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         await aiApprovalsApi.approve(ticketId, String(text || ''), tab);
         showNotification('Resposta enviada ao cliente e ticket resolvido.', 'success');
         await syncTicketViews();
+        await iaCheckRef.current?.(true);
         advanceAfterSaveIfEnabled(ticketId, null, ticketId, true);
         return;
       }

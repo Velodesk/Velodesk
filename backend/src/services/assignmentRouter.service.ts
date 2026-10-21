@@ -28,6 +28,8 @@ type RoletaPoolAgent = {
 export interface AssignmentContext {
   source: 'email-inbound' | 'app-integrado' | 'api-tickets' | 'backfill' | 'manual-retry' | 'casos-especiais' | 'inbound-ticket';
   canal?: string;
+  /** Ignora a regra "telefone / agente ia nunca entram na roleta" (ex.: devolução de ticket do agente autônomo a um humano). */
+  ignoreCanal?: boolean;
 }
 
 export interface AssignmentResult {
@@ -151,7 +153,7 @@ export function isChamadoAtribuicaoRoleta(chamado: IChamadoN1): boolean {
   return (chamado.registro ?? []).some((reg) => reg.metadados?.atribuicaoRoleta === true);
 }
 
-export function shouldAutoAssign(partial: Partial<IChamadoN1>): boolean {
+export function shouldAutoAssign(partial: Partial<IChamadoN1>, opts: { ignoreCanal?: boolean } = {}): boolean {
   if (!env.assignmentRouterEnabled) return false;
   const chamado = partial as IChamadoN1;
   // Casos especiais (Procon, Consumidor.gov, BACEN, Reclame Aqui) nunca entram na roleta.
@@ -160,7 +162,7 @@ export function shouldAutoAssign(partial: Partial<IChamadoN1>): boolean {
   // próprio atendimento (ramal/operador humano por trás da IA) — não podem cair na roleta
   // genérica; se o responsável não veio preenchido, o chamado fica sem dono de propósito.
   const canal = String(partial.tabulacao?.[0]?.canal ?? '').trim().toLowerCase();
-  if (canal === 'telefone' || canal === 'agente ia') return false;
+  if (!opts.ignoreCanal && (canal === 'telefone' || canal === 'agente ia')) return false;
   return !isRealResponsavel(partial.tabulacao?.[0]?.responsavel);
 }
 
@@ -629,7 +631,7 @@ export async function applyAssignmentToChamado(
   // dono de propósito; Procon/Consumidor.gov também ficam de fora, igual lá). Sem isso, os
   // dois chamadores deste caminho (POST /app-notify e o handoff crítico do Agente de Gestão)
   // atribuíam por essa porta mesmo em canais que deveriam ficar sem responsável.
-  if (!shouldAutoAssign(chamado)) return false;
+  if (!shouldAutoAssign(chamado, { ignoreCanal: context.ignoreCanal })) return false;
 
   const assignment = await resolveLeastLoadedAgent();
   if (!assignment) {

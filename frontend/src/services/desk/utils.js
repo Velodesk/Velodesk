@@ -1308,11 +1308,13 @@ export function isInAiAutonomousFlow(ticket) {
   return !TERMINAL_TICKET_STATUSES.has(String(ticket?.status || '').trim().toLowerCase());
 }
 
-/** options.aiFlow: 'exclude' (padrão — filas dos agentes humanos) | 'only' (Área de IA). */
+/** options.aiFlow: 'exclude' (padrão — filas dos agentes humanos) | 'only' (Área de IA, pelo cache) | 'any' (sem filtro: quem chama filtra, ex.: Área de IA pelos ids do servidor). */
 export function filterTickets(activeQueue, searchQuery, activeSort, entrySortOldestFirst = false, options = {}) {
   const q = String(searchQuery || '').trim();
   const onlyAiFlow = options.aiFlow === 'only';
-  const keepByAiFlow = (entry) => (onlyAiFlow ? isInAiAutonomousFlow(entry.ticket) : !isInAiAutonomousFlow(entry.ticket));
+  const keepByAiFlow = options.aiFlow === 'any'
+    ? () => true
+    : (entry) => (onlyAiFlow ? isInAiAutonomousFlow(entry.ticket) : !isInAiAutonomousFlow(entry.ticket));
   if (isMeusTicketsQueue(activeQueue)) {
     return sortTicketEntries(filterMyTicketsEntries(q).filter(keepByAiFlow), 'data', 'asc');
   }
