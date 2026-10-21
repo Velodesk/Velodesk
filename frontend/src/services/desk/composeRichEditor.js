@@ -1,6 +1,6 @@
 /**
- * composeRichEditor v1.0.5 — preserva data-gcs-key e desk-sig nas imagens
- * VERSION: v1.0.5 | DATE: 2026-08-20
+ * composeRichEditor v1.0.6 — sanitizeComposeHtml remove por inteiro o span provisório do ditado
+ * VERSION: v1.0.6 | DATE: 2026-10-20
  */
 
 const ALLOWED_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'BR', 'DIV', 'P', 'UL', 'OL', 'LI', 'IMG', 'A']);
@@ -74,16 +74,34 @@ export function normalizePlainToHtml(text) {
     .replace(/\n/g, '<br />');
 }
 
+// Teto de segurança: HTML colado de Word/Outlook pode trazer milhares de <span> aninhados com
+// estilo inline — cada um exige remover atributos e promover filhos, e isso bloqueia a aba
+// inteira (trava o main thread) se não houver um limite. Acima disso, descarta tudo (mesmo
+// fallback de erro já usado abaixo) em vez de devolver HTML parcialmente sanitizado.
+const SANITIZE_NODE_BUDGET = 4000;
+
 export function sanitizeComposeHtml(html) {
   try {
     const template = document.createElement('template');
     template.innerHTML = String(html || '');
 
+    let nodeBudget = SANITIZE_NODE_BUDGET;
+
     const walk = (node, depth = 0) => {
       if (!node || depth > 48) return;
       [...node.childNodes].forEach((child) => {
+        nodeBudget -= 1;
+        if (nodeBudget <= 0) {
+          throw new Error('sanitizeComposeHtml: HTML excede o limite de nós, descartado por segurança');
+        }
         if (child.nodeType === Node.ELEMENT_NODE) {
           const el = child;
+          if (el.hasAttribute('data-dictation-interim')) {
+            // Trecho ainda não confirmado do ditado por voz — remove por inteiro (tag +
+            // conteúdo), nunca só desembrulha, senão o texto provisório vazaria pro rascunho.
+            el.remove();
+            return;
+          }
           if (el.tagName === 'A') {
             const href = String(el.getAttribute('href') || '').trim();
             if (!SAFE_LINK_PROTOCOL_RE.test(href)) {

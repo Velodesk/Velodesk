@@ -1,6 +1,6 @@
 /**
- * ComposeRichEditor v1.4.0 — editor expansível abre no tamanho grande; o botão diminui
- * VERSION: v1.4.0 | DATE: 2026-10-09
+ * ComposeRichEditor v1.6.1 — expõe onFocusChange (foco/desfoco do campo)
+ * VERSION: v1.6.1 | DATE: 2026-10-21
  */
 import React, {
   forwardRef,
@@ -25,6 +25,28 @@ import {
   setEditorHtml,
 } from '../../../services/desk/composeRichEditor';
 
+function wordsOf(text) {
+  return String(text || '').trim().split(/\s+/).filter(Boolean);
+}
+
+/** Caractere logo antes do cursor — usado só pra decidir se falta um espaço antes de inserir. */
+function getCaretPrecedingChar(root) {
+  const selection = window.getSelection();
+  if (!root || !selection || selection.rangeCount === 0) return '';
+  const range = selection.getRangeAt(0);
+  if (!root.contains(range.startContainer)) return '';
+  const probe = range.cloneRange();
+  probe.selectNodeContents(root);
+  probe.setEnd(range.startContainer, range.startOffset);
+  return probe.toString().slice(-1);
+}
+
+function withLeadingSpaceIfNeeded(root, text) {
+  const prevChar = getCaretPrecedingChar(root);
+  const needsSpace = prevChar !== '' && !/\s/.test(prevChar);
+  return (needsSpace ? ' ' : '') + text;
+}
+
 const ComposeRichEditor = forwardRef(function ComposeRichEditor({
   id,
   className = '',
@@ -33,11 +55,13 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
   onChange,
   onKeyDown,
   onFormatStateChange,
+  onFocusChange,
   expandable = false,
   readOnly = false,
 }, ref) {
   const editorRef = useRef(null);
   const lastHtmlRef = useRef('');
+  const dictationSpanRef = useRef(null);
   // Editor expansível abre grande (220px); o botão diminui para o tamanho compacto.
   const [expanded, setExpanded] = useState(expandable);
 
@@ -73,6 +97,116 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
     insertPlainText: (text) => {
       insertPlainTextInEditor(editorRef.current, text);
       emitChange();
+    },
+    beginDictation: () => {
+      // Início de uma nova sessão de ditado — garante que não sobrou nenhum span de uma vez
+      // anterior que por algum motivo não foi limpo.
+      const root = editorRef.current;
+      const stale = dictationSpanRef.current;
+      if (stale && root?.contains(stale)) stale.remove();
+      dictationSpanRef.current = null;
+    },
+    endDictation: () => {
+      // Fim definitivo do ditado (erro, desmontagem, ou onend depois do stop manual): qualquer
+      // parcial que não virou final é descartado, nunca vira texto de verdade.
+      const root = editorRef.current;
+      const span = dictationSpanRef.current;
+      if (span && root?.contains(span)) span.remove();
+      dictationSpanRef.current = null;
+    },
+    dictateText: (finalTextRaw, interimTextRaw) => {
+      const root = editorRef.current;
+      if (!root) return;
+      const finalText = String(finalTextRaw || '').trim();
+      const interimText = String(interimTextRaw || '').trim();
+      const spanBeforeFinal = dictationSpanRef.current && root.contains(dictationSpanRef.current)
+        ? dictationSpanRef.current
+        : null;
+
+      if (finalText) {
+        if (spanBeforeFinal) {
+          // Remove o span provisório e recoloca o cursor exatamente onde ele estava, senão o
+          // texto final entraria no lugar errado.
+          const parent = spanBeforeFinal.parentNode;
+          const nextSibling = spanBeforeFinal.nextSibling;
+          spanBeforeFinal.remove();
+          dictationSpanRef.current = null;
+          if (parent) {
+            const range = document.createRange();
+            if (nextSibling) {
+              range.setStartBefore(nextSibling);
+            } else {
+              range.selectNodeContents(parent);
+              range.collapse(false);
+            }
+            range.collapse(true);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+          }
+        }
+        root.focus();
+        const textToInsert = `${withLeadingSpaceIfNeeded(root, finalText)} `;
+        try {
+          document.execCommand('insertText', false, textToInsert);
+        } catch {
+          /* execCommand indisponível */
+        }
+        emitChange();
+      }
+
+      if (interimText) {
+        // Se acabamos de confirmar um trecho final agora mesmo, o span antigo já foi removido
+        // acima — o parcial desta rodada (se vier junto no mesmo evento) começa um span novo.
+        const currentSpan = finalText ? null : spanBeforeFinal;
+        const currentWords = currentSpan ? wordsOf(currentSpan.textContent) : [];
+        const newWords = wordsOf(interimText);
+        const isContinuation = Boolean(currentSpan)
+          && interimText.toLowerCase().startsWith((currentSpan.textContent || '').trim().toLowerCase());
+        // O Chrome às vezes manda um parcial mais curto no meio da frase (se corrigindo) — só
+        // ignora quando não é claramente uma continuação do que já estava na tela, pra não
+        // "piscar"/encolher o texto à toa.
+        const shouldSkip = Boolean(currentSpan) && newWords.length < currentWords.length && !isContinuation;
+
+        if (!shouldSkip) {
+          if (currentSpan) {
+            // O espaço inicial (se precisou) foi decidido só na criação do span — reaplica
+            // aqui, senão some nas atualizações seguintes (o textContent é todo substituído).
+            const leadingSpace = currentSpan.dataset.leadingSpace === '1' ? ' ' : '';
+            currentSpan.textContent = leadingSpace + interimText;
+            const range = document.createRange();
+            range.selectNodeContents(currentSpan);
+            range.collapse(false);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+          } else {
+            root.focus();
+            const span = document.createElement('span');
+            span.setAttribute('data-dictation-interim', 'true');
+            const prefixed = withLeadingSpaceIfNeeded(root, interimText);
+            span.dataset.leadingSpace = prefixed.length > interimText.length ? '1' : '0';
+            span.textContent = prefixed;
+            const selection = window.getSelection();
+            if (selection?.rangeCount) {
+              const range = selection.getRangeAt(0);
+              if (root.contains(range.commonAncestorContainer)) {
+                range.deleteContents();
+                range.insertNode(span);
+                range.setStartAfter(span);
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+              } else {
+                root.appendChild(span);
+              }
+            } else {
+              root.appendChild(span);
+            }
+            dictationSpanRef.current = span;
+          }
+        }
+      }
     },
     insertImage: (src, alt, attrs) => {
       const ok = insertImageInEditor(editorRef.current, src, alt, attrs);
@@ -154,7 +288,10 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
           }}
           onKeyUp={readOnly ? undefined : notifyFormatState}
           onMouseUp={readOnly ? undefined : notifyFormatState}
-          onFocus={readOnly ? undefined : notifyFormatState}
+          onFocus={readOnly ? undefined : (() => {
+            notifyFormatState();
+            onFocusChange?.(true);
+          })}
           onKeyDown={readOnly ? undefined : onKeyDown}
           onBlur={readOnly ? undefined : (() => {
             emitChange();
@@ -165,6 +302,7 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
               bulletList: false,
               numberedList: false,
             });
+            onFocusChange?.(false);
           })}
           onSelect={readOnly ? undefined : (() => {
             notifyFormatState();

@@ -1,6 +1,6 @@
 /**
- * MacroEditor v1.0.0 — criar/editar macro de resposta rápida (compose completo, com link)
- * VERSION: v1.0.0 | DATE: 2026-09-03
+ * MacroEditor v1.1.1 — microfone de ditado só aparece com o editor em foco
+ * VERSION: v1.1.1 | DATE: 2026-10-21
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { macrosApi } from '../../../api/client';
@@ -20,6 +20,7 @@ export default function MacroEditor({ macroId, onClose, onSaved }) {
   const [texto, setTexto] = useState('');
   const [loading, setLoading] = useState(Boolean(macroId));
   const [saving, setSaving] = useState(false);
+  const [editorFocused, setEditorFocused] = useState(false);
 
   const format = useComposeFormat({ richEditorRef: editorRef, mode: 'rich' });
 
@@ -140,6 +141,7 @@ export default function MacroEditor({ macroId, onClose, onSaved }) {
             placeholder="Digite o texto da macro…"
             value={texto}
             onFormatStateChange={format.handleFormatStateChange}
+            onFocusChange={setEditorFocused}
             onChange={handleEditorChange}
             onKeyDown={format.handleKeyDown}
           />
@@ -150,6 +152,8 @@ export default function MacroEditor({ macroId, onClose, onSaved }) {
             beginLink={format.beginLink}
             applyLink={format.applyLink}
             removeLink={format.removeLink}
+            dictationTarget={format.dictationTarget}
+            dictationVisible={editorFocused}
           />
         </div>
       </div>

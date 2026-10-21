@@ -5381,6 +5381,15 @@
     color: #008069;
 }
 
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .wa-chat__input-icon--recording {
+    color: #dc2626;
+    animation: crmComposeMicPulse 1.4s ease-in-out infinite;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .wa-chat__input-icon--mic-error {
+    color: #dc2626;
+}
+
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .wa-chat__input-wrap {
     flex: 1;
     display: flex;
@@ -6386,6 +6395,30 @@
     border-color: #78350f;
 }
 
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-toolbar__btn--recording {
+    background: #dc2626;
+    color: #fff;
+    border-color: #dc2626;
+    animation: crmComposeMicPulse 1.4s ease-in-out infinite;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-toolbar__btn--recording:hover {
+    background: #b91c1c;
+    color: #fff;
+    border-color: #b91c1c;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-toolbar__btn--mic-error {
+    background: #fef2f2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+@keyframes crmComposeMicPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+    50% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
+}
+
 :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-toolbar__link-wrap {
     position: relative;
 }
@@ -6605,6 +6638,10 @@
     content: attr(data-placeholder);
     color: #94a3b8;
     pointer-events: none;
+}
+
+:is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .compose-rich-editor [data-dictation-interim] {
+    color: #94a3b8;
 }
 
 #velodeskDeskV2Root .compose-rich-editor ul,

@@ -1,6 +1,6 @@
 /**
- * DeskWhatsAppChat v1.14.0 — Verificando… só em mídia inbound (outbound = skipped)
- * VERSION: v1.14.0 | DATE: 2026-08-21
+ * DeskWhatsAppChat v1.15.1 — microfone de ditado só aparece com o campo em foco
+ * VERSION: v1.15.1 | DATE: 2026-10-21
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { uploadsApi } from '../../../api/client';
@@ -21,6 +21,8 @@ import {
 } from '../../../services/desk/attachmentPreview';
 import DeskAttachmentPreviewModal from './DeskAttachmentPreviewModal';
 import { compressImageFilesIfNeeded } from '../../../utils/imageCompression.util';
+import VoiceDictationButton from './VoiceDictationButton';
+import { useTextFieldDictationTarget } from '../../../hooks/useTextFieldDictationTarget';
 
 /** Limite de caracteres por mensagem de texto livre do WhatsApp (Twilio/Meta). */
 export const WA_TEXT_MAX_LENGTH = 1600;
@@ -384,9 +386,17 @@ export default function DeskWhatsAppChat({
   const [transcriptionBusyId, setTranscriptionBusyId] = useState('');
   const [attachUploading, setAttachUploading] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  // O microfone só aparece com o campo em foco — não pode ser confundido com um ícone de
+  // enviar áudio, que o Velodesk não usa mais.
+  const [inputFocused, setInputFocused] = useState(false);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const emojiAnchorRef = useRef(null);
+  const dictationTarget = useTextFieldDictationTarget({
+    fieldRef: inputRef,
+    value: composeText,
+    onValueChange: onComposeTextChange,
+  });
   const lastIaReplyRef = useRef('');
   const prevSendBusyRef = useRef(false);
   const chatMessages = messages || [];
@@ -786,6 +796,8 @@ export default function DeskWhatsAppChat({
               value={composeText}
               disabled={!composeEnabled || sendBusy}
               onChange={(e) => onComposeTextChange(e.target.value)}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -801,6 +813,13 @@ export default function DeskWhatsAppChat({
               </span>
             ) : null}
           </div>
+          <VoiceDictationButton
+            variant="whatsapp"
+            target={dictationTarget}
+            disabled={!composeEnabled || sendBusy}
+            sessionKey={ticket?.id || ticket?._id}
+            visible={inputFocused}
+          />
           <button
             type="button"
             className="wa-chat__input-icon"

@@ -1,6 +1,6 @@
 /**
- * DeskComposePanel v1.18.0 — remove integração legada de correção ortográfica
- * VERSION: v1.18.0 | DATE: 2026-08-21
+ * DeskComposePanel v1.19.2 — microfone de ditado só aparece com o campo de texto em foco
+ * VERSION: v1.19.2 | DATE: 2026-10-21
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { uploadsApi } from '../../../api/client';
@@ -466,9 +466,13 @@ function InternalNoteFields({
   });
   const internalFormatRef = useRef(internalFormat);
   internalFormatRef.current = internalFormat;
+  // O microfone só aparece com o campo em foco (pra não ser confundido com um ícone de enviar
+  // áudio) — guardado num ref pra poder repassar junto do resto do estado sem esperar re-render.
+  const [internalEditorFocused, setInternalEditorFocused] = useState(false);
+  const internalFocusedRef = useRef(false);
 
   const notifyInternalFormat = useCallback(() => {
-    onFormatStateChange?.(internalFormatRef.current);
+    onFormatStateChange?.({ ...internalFormatRef.current, focused: internalFocusedRef.current });
   }, [onFormatStateChange]);
 
   useEffect(() => {
@@ -477,6 +481,12 @@ function InternalNoteFields({
 
   const handleInternalFormatStateChange = useCallback((state) => {
     internalFormatRef.current?.handleFormatStateChange?.(state);
+    notifyInternalFormat();
+  }, [notifyInternalFormat]);
+
+  const handleInternalFocusChange = useCallback((focused) => {
+    internalFocusedRef.current = focused;
+    setInternalEditorFocused(focused);
     notifyInternalFormat();
   }, [notifyInternalFormat]);
 
@@ -505,6 +515,7 @@ function InternalNoteFields({
         value={internalText}
         readOnly={readOnly}
         onFormatStateChange={handleInternalFormatStateChange}
+        onFocusChange={handleInternalFocusChange}
         onChange={handleInternalChange}
         onKeyDown={handleInternalKeyDown}
       />
@@ -533,6 +544,9 @@ function InternalNoteFields({
             beginLink={internalFormat.beginLink}
             applyLink={internalFormat.applyLink}
             removeLink={internalFormat.removeLink}
+            dictationTarget={internalFormat.dictationTarget}
+            dictationSessionKey={ticketId}
+            dictationVisible={internalEditorFocused}
           />
         )}
       />
@@ -575,6 +589,10 @@ export default function DeskComposePanel({
   const clienteEditorRef = useRef(null);
   const [internalFormatState, setInternalFormatState] = useState(null);
   const [clienteFormatState, setClienteFormatState] = useState(null);
+  // Controla quando o microfone de ditado aparece em cada campo — só com o campo em foco, pra
+  // não ser confundido com um ícone de mandar áudio (o Velodesk não usa mais isso).
+  const [publicFocused, setPublicFocused] = useState(false);
+  const [clienteFocused, setClienteFocused] = useState(false);
   const useSharedBottomBar = variant === 'full';
   const composePlainText = useMemo(() => htmlToPlainText(composeText), [composeText]);
   const { user, colaborador } = useAuth();
@@ -794,6 +812,9 @@ export default function DeskComposePanel({
           beginLink={publicFormat.beginLink}
           applyLink={publicFormat.applyLink}
           removeLink={publicFormat.removeLink}
+          dictationTarget={publicFormat.dictationTarget}
+          dictationSessionKey={ticketId}
+          dictationVisible={publicFocused}
         />
       ) : composeMode === 'cliente' ? (
         <ComposeFormatToolbar
@@ -805,6 +826,9 @@ export default function DeskComposePanel({
           beginLink={clienteFormat.beginLink}
           applyLink={clienteFormat.applyLink}
           removeLink={clienteFormat.removeLink}
+          dictationTarget={clienteFormat.dictationTarget}
+          dictationSessionKey={ticketId}
+          dictationVisible={clienteFocused}
         />
       ) : (
         <ComposeFormatToolbar
@@ -816,6 +840,9 @@ export default function DeskComposePanel({
           beginLink={internalFormatState?.beginLink}
           applyLink={internalFormatState?.applyLink}
           removeLink={internalFormatState?.removeLink}
+          dictationTarget={internalFormatState?.dictationTarget}
+          dictationSessionKey={ticketId}
+          dictationVisible={internalFormatState?.focused}
         />
       )}
     />
@@ -894,6 +921,7 @@ export default function DeskComposePanel({
                     expandable
                     readOnly={ticketReadOnly || publicLocked}
                     onFormatStateChange={publicFormat.handleFormatStateChange}
+                    onFocusChange={setPublicFocused}
                     onChange={handlePublicChange}
                     onKeyDown={handlePublicKeyDown}
                   />
@@ -921,6 +949,9 @@ export default function DeskComposePanel({
                         beginLink={publicFormat.beginLink}
                         applyLink={publicFormat.applyLink}
                         removeLink={publicFormat.removeLink}
+                        dictationTarget={publicFormat.dictationTarget}
+                        dictationSessionKey={ticketId}
+                        dictationVisible={publicFocused}
                       />
                     )}
                   />
@@ -948,6 +979,7 @@ export default function DeskComposePanel({
                     expandable
                     readOnly={ticketReadOnly}
                     onFormatStateChange={handleClienteFormatStateChange}
+                    onFocusChange={setClienteFocused}
                     onChange={handleClienteChange}
                   />
                 </div>

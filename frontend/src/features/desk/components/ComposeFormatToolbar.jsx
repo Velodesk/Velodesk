@@ -1,10 +1,12 @@
 /**
- * ComposeFormatToolbar v1.3.0 — remove o botão "Anexar imagem" (imagem inline no editor)
- * VERSION: v1.3.0 | DATE: 2026-10-09
+ * ComposeFormatToolbar v1.4.2 — repassa dictationVisible pro botão de ditado só aparecer com foco
+ * VERSION: v1.4.2 | DATE: 2026-10-21
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { applyFormatAction, resolveFormatShortcut } from '../../../services/desk/composeTextFormat';
+import { useTextFieldDictationTarget } from '../../../hooks/useTextFieldDictationTarget';
+import VoiceDictationButton from './VoiceDictationButton';
 
 const EMPTY_FORMAT_STATE = {
   bold: false,
@@ -38,6 +40,16 @@ export function useComposeFormat({
   onValueChange,
 }) {
   const [activeFormats, setActiveFormats] = useState(EMPTY_FORMAT_STATE);
+
+  const plainDictationTarget = useTextFieldDictationTarget({
+    fieldRef: textareaRef,
+    value,
+    onValueChange,
+  });
+  const dictationTarget = useMemo(
+    () => (mode === 'rich' ? richEditorRef : plainDictationTarget),
+    [mode, richEditorRef, plainDictationTarget],
+  );
 
   const handleFormatStateChange = useCallback((nextState) => {
     setActiveFormats({ ...EMPTY_FORMAT_STATE, ...nextState });
@@ -103,6 +115,7 @@ export function useComposeFormat({
     beginLink,
     applyLink,
     removeLink,
+    dictationTarget,
   };
 }
 
@@ -288,6 +301,9 @@ export default function ComposeFormatToolbar({
   beginLink,
   applyLink,
   removeLink,
+  dictationTarget,
+  dictationSessionKey,
+  dictationVisible = true,
 }) {
 
   return (
@@ -325,6 +341,14 @@ export default function ComposeFormatToolbar({
         removeLink={removeLink}
         disabled={attachDisabled}
       />
+      {dictationTarget ? (
+        <VoiceDictationButton
+          target={dictationTarget}
+          disabled={attachDisabled}
+          sessionKey={dictationSessionKey}
+          visible={dictationVisible}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,10 @@
 /**
  * Desk CRM — raiz 5 colunas (layout referência)
- * VERSION: v3.47.0 | DATE: 2026-10-07
+ * VERSION: v3.48.0 | DATE: 2026-10-20
+ * — Chat do WhatsApp ganha rascunho próprio (waComposeText/waComposeAttachments), separado
+ *   do composeText/composeAttachments da resposta pública: antes os dois compartilhavam o
+ *   mesmo estado (texto digitado num aparecia no outro, e enviar WhatsApp apagava o rascunho
+ *   da resposta pública também) — agora são independentes.
  * — Coluna de caixas recolhe sozinha em telas até 1100px (notebook), sem gravar a preferência.
  * — Área de IA (hideComposer): ticket aberto no IaTicketReview (sem abas de tickets, perfil e abas Conversa/Notas)
  *   e DeskRightPanel com iaLayout; "Aprovar e enviar" faz commit como Resolvido com aprovacaoIa.
@@ -262,6 +266,8 @@ function buildDefaultSessionFromTicket(ticket, config) {
     composeAttachments: [],
     internalAttachments: [],
     composeReviewedPlain: '',
+    waComposeText: '',
+    waComposeAttachments: [],
     sendStatus: 'em-andamento',
     rightFields: buildDefaultRightFields(config, ticket, getAgentName),
     waChatOpen: false,
@@ -316,6 +322,11 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   const [composeAttachments, setComposeAttachments] = useState([]);
   const [internalAttachments, setInternalAttachments] = useState([]);
   const [composeReviewedPlain, setComposeReviewedPlain] = useState('');
+  // Rascunho do chat do WhatsApp — separado do composeText/composeAttachments (resposta
+  // pública/e-mail) de propósito: são duas mensagens diferentes, não a mesma coisa em duas
+  // telas, então um não pode sumir nem se misturar com o outro.
+  const [waComposeText, setWaComposeText] = useState('');
+  const [waComposeAttachments, setWaComposeAttachments] = useState([]);
   const [sendStatus, setSendStatus] = useState('em-andamento');
   const [rightFields, setRightFields] = useState({});
   const [waChatOpen, setWaChatOpen] = useState(false);
@@ -505,11 +516,13 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       composeAttachments,
       internalAttachments,
       composeReviewedPlain,
+      waComposeText,
+      waComposeAttachments,
       sendStatus,
       rightFields,
       waChatOpen,
     };
-  }, [mainTab, composeMode, composeText, internalText, composeAttachments, internalAttachments, composeReviewedPlain, sendStatus, rightFields, waChatOpen]);
+  }, [mainTab, composeMode, composeText, internalText, composeAttachments, internalAttachments, composeReviewedPlain, waComposeText, waComposeAttachments, sendStatus, rightFields, waChatOpen]);
 
   const persistComposeDraft = useCallback((patch) => {
     if (!activeTabId) return;
@@ -538,6 +551,17 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     const items = Array.isArray(next) ? next : [];
     setComposeAttachments(items);
     persistComposeDraft({ composeAttachments: items });
+  }, [persistComposeDraft]);
+
+  const handleWaComposeTextChange = useCallback((text) => {
+    setWaComposeText(text);
+    persistComposeDraft({ waComposeText: text });
+  }, [persistComposeDraft]);
+
+  const handleWaComposeAttachmentsChange = useCallback((next) => {
+    const items = Array.isArray(next) ? next : [];
+    setWaComposeAttachments(items);
+    persistComposeDraft({ waComposeAttachments: items });
   }, [persistComposeDraft]);
 
   const handleInternalAttachmentsChange = useCallback((next) => {
@@ -582,6 +606,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     setComposeAttachments(Array.isArray(session.composeAttachments) ? session.composeAttachments : defaults.composeAttachments);
     setInternalAttachments(Array.isArray(session.internalAttachments) ? session.internalAttachments : defaults.internalAttachments);
     setComposeReviewedPlain(session.composeReviewedPlain ?? defaults.composeReviewedPlain ?? '');
+    setWaComposeText(session.waComposeText ?? defaults.waComposeText);
+    setWaComposeAttachments(Array.isArray(session.waComposeAttachments) ? session.waComposeAttachments : defaults.waComposeAttachments);
     setSendStatus(session.sendStatus ?? defaults.sendStatus);
     setRightFields(nextRightFields);
     setWaChatOpen(session.waChatOpen ?? defaults.waChatOpen);
@@ -1750,7 +1776,7 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       return;
     }
 
-    const attachmentUrls = (composeAttachments || [])
+    const attachmentUrls = (waComposeAttachments || [])
       .map((item) => String(item?.url || '').trim())
       .filter(Boolean);
 
@@ -1784,8 +1810,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       }
 
       if (!initialTemplate) {
-        setComposeText('');
-        setComposeAttachments([]);
+        setWaComposeText('');
+        setWaComposeAttachments([]);
       }
       setWaChatOpen(true);
       if (activeTabId) {
@@ -1794,8 +1820,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
         if (session) {
           tabSessionsRef.current[sessionKey] = {
             ...session,
-            composeText: initialTemplate ? session.composeText : '',
-            composeAttachments: initialTemplate ? session.composeAttachments : [],
+            waComposeText: initialTemplate ? session.waComposeText : '',
+            waComposeAttachments: initialTemplate ? session.waComposeAttachments : [],
             waChatOpen: true,
           };
         }
@@ -1829,8 +1855,8 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
       return;
     }
 
-    const messageText = String(composeText || '').trim();
-    const hasAttachments = (composeAttachments || []).length > 0;
+    const messageText = String(waComposeText || '').trim();
+    const hasAttachments = (waComposeAttachments || []).length > 0;
     if (!messageText && !hasAttachments) return;
     if (messageText.length > WA_TEXT_MAX_LENGTH) {
       showNotification(`Mensagem acima de ${WA_TEXT_MAX_LENGTH} caracteres — reduza o texto para enviar.`, 'warning');
@@ -2857,6 +2883,18 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
     persistComposeDraft({ composeText: wrapped, composeReviewedPlain: reviewed });
   }, [ticket, persistComposeDraft]);
 
+  // Versão do "usar sugestão IA" específica pro chat do WhatsApp — grava no rascunho do
+  // WhatsApp (waComposeText), não no da resposta pública, já que agora são independentes.
+  const handleUseIaReplyWhatsApp = useCallback((nucleo) => {
+    const wrapped = wrapComposerOpeningForTicket({
+      nucleo,
+      ticket,
+      agentName: getAgentName(),
+    });
+    setWaComposeText(wrapped);
+    persistComposeDraft({ waComposeText: wrapped });
+  }, [ticket, persistComposeDraft]);
+
   const showTableQueueMain = isTableQueueView && tableQueueBrowsing && !createOpen;
   const showTicketMain = Boolean(ticket) && !showTableQueueMain;
   const showOpenTabsBar = openTabs.length > 0 && !createOpen && !showTableQueueMain && !hideComposer;
@@ -3080,11 +3118,11 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
                     ticket={ticket}
                     client={client}
                     messages={waConvMsgs}
-                    composeText={composeText}
-                    onComposeTextChange={handleComposeTextChange}
-                    composeAttachments={composeAttachments}
-                    onComposeAttachmentsChange={handleComposeAttachmentsChange}
-                    onUseIaReply={handleUseIaReply}
+                    composeText={waComposeText}
+                    onComposeTextChange={handleWaComposeTextChange}
+                    composeAttachments={waComposeAttachments}
+                    onComposeAttachmentsChange={handleWaComposeAttachmentsChange}
+                    onUseIaReply={handleUseIaReplyWhatsApp}
                     onSend={handleSendWhatsAppMessage}
                     onSendInitial={handleSendWhatsAppInitial}
                     onRequestAudioTranscription={handleRequestWhatsAppAudioTranscription}

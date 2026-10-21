@@ -890,6 +890,10 @@ body.velodesk-dark #velodeskDeskV2Root .compose-rich-editor:empty::before {
     color: var(--velo-dark-muted, #64748b);
 }
 
+body.velodesk-dark :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .compose-rich-editor [data-dictation-interim] {
+    color: var(--velo-dark-muted, #64748b);
+}
+
 body.velodesk-dark #velodeskDeskV2Root .compose-rich-editor-wrap--has-errors .compose-rich-editor {
     border-color: rgba(248, 113, 113, 0.55);
     box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.18);
@@ -933,6 +937,23 @@ body.velodesk-dark #velodeskDeskV2Root .crm-compose-bottom-bar .crm-compose-tool
 body.velodesk-dark #velodeskDeskV2Root .crm-compose-bottom-bar .crm-compose-toolbar--internal .crm-compose-toolbar__btn--active:hover {
     background: #2563eb;
     border-color: #2563eb;
+}
+
+body.velodesk-dark :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-toolbar__btn--recording {
+    background: #ef4444;
+    color: #fff;
+    border-color: #ef4444;
+}
+
+body.velodesk-dark :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-toolbar__btn--recording:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+}
+
+body.velodesk-dark :is(#velodeskDeskV2Root, .desk-crm-ticket-scope) .crm-compose-toolbar__btn--mic-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    border-color: rgba(239, 68, 68, 0.45);
 }
 
 body.velodesk-dark #velodeskDeskV2Root .compose-rich-editor .compose-inline-link,
