@@ -1,6 +1,6 @@
 /**
- * ComposeRichEditor v1.6.1 — expõe onFocusChange (foco/desfoco do campo)
- * VERSION: v1.6.1 | DATE: 2026-10-21
+ * ComposeRichEditor v1.6.2 — remove onFocusChange (o esconder-sem-foco era só pro WhatsApp)
+ * VERSION: v1.6.2 | DATE: 2026-10-21
  */
 import React, {
   forwardRef,
@@ -55,7 +55,6 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
   onChange,
   onKeyDown,
   onFormatStateChange,
-  onFocusChange,
   expandable = false,
   readOnly = false,
 }, ref) {
@@ -288,10 +287,7 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
           }}
           onKeyUp={readOnly ? undefined : notifyFormatState}
           onMouseUp={readOnly ? undefined : notifyFormatState}
-          onFocus={readOnly ? undefined : (() => {
-            notifyFormatState();
-            onFocusChange?.(true);
-          })}
+          onFocus={readOnly ? undefined : notifyFormatState}
           onKeyDown={readOnly ? undefined : onKeyDown}
           onBlur={readOnly ? undefined : (() => {
             emitChange();
@@ -302,7 +298,6 @@ const ComposeRichEditor = forwardRef(function ComposeRichEditor({
               bulletList: false,
               numberedList: false,
             });
-            onFocusChange?.(false);
           })}
           onSelect={readOnly ? undefined : (() => {
             notifyFormatState();

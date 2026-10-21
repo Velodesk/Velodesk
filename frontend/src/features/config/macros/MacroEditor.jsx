@@ -1,6 +1,6 @@
 /**
- * MacroEditor v1.1.1 — microfone de ditado só aparece com o editor em foco
- * VERSION: v1.1.1 | DATE: 2026-10-21
+ * MacroEditor v1.1.2 — reverte "mic só com foco" (era só pra ser no WhatsApp)
+ * VERSION: v1.1.2 | DATE: 2026-10-21
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { macrosApi } from '../../../api/client';
@@ -20,7 +20,6 @@ export default function MacroEditor({ macroId, onClose, onSaved }) {
   const [texto, setTexto] = useState('');
   const [loading, setLoading] = useState(Boolean(macroId));
   const [saving, setSaving] = useState(false);
-  const [editorFocused, setEditorFocused] = useState(false);
 
   const format = useComposeFormat({ richEditorRef: editorRef, mode: 'rich' });
 
@@ -141,7 +140,6 @@ export default function MacroEditor({ macroId, onClose, onSaved }) {
             placeholder="Digite o texto da macro…"
             value={texto}
             onFormatStateChange={format.handleFormatStateChange}
-            onFocusChange={setEditorFocused}
             onChange={handleEditorChange}
             onKeyDown={format.handleKeyDown}
           />
@@ -153,7 +151,6 @@ export default function MacroEditor({ macroId, onClose, onSaved }) {
             applyLink={format.applyLink}
             removeLink={format.removeLink}
             dictationTarget={format.dictationTarget}
-            dictationVisible={editorFocused}
           />
         </div>
       </div>

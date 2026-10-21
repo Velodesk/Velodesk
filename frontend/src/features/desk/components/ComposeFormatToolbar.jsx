@@ -1,6 +1,6 @@
 /**
- * ComposeFormatToolbar v1.4.2 — repassa dictationVisible pro botão de ditado só aparecer com foco
- * VERSION: v1.4.2 | DATE: 2026-10-21
+ * ComposeFormatToolbar v1.4.3 — remove dictationVisible (esconder sem foco era só pro WhatsApp)
+ * VERSION: v1.4.3 | DATE: 2026-10-21
  */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -303,7 +303,6 @@ export default function ComposeFormatToolbar({
   removeLink,
   dictationTarget,
   dictationSessionKey,
-  dictationVisible = true,
 }) {
 
   return (
@@ -346,7 +345,6 @@ export default function ComposeFormatToolbar({
           target={dictationTarget}
           disabled={attachDisabled}
           sessionKey={dictationSessionKey}
-          visible={dictationVisible}
         />
       ) : null}
     </div>
