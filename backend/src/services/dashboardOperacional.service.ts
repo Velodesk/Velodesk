@@ -21,9 +21,13 @@
 import type { AuthPayload } from '../middleware/auth';
 import { ChamadoN1, type IChamadoN1 } from '../models/ChamadoN1';
 import { getWorkflowDefinicaoModel, type IWorkflowPassoConfig } from '../models/WorkflowDefinicao';
-import { excludeEspeciaisChannelsMongoFilter } from './chamado.mapper';
+import { currentStatus, excludeEspeciaisChannelsMongoFilter } from './chamado.mapper';
 import { excludeFusaoAbsorvidosFilter } from './ticketFusao.helpers';
-import { buildSupervisor360Payload } from './workspace360.service';
+import {
+  buildSupervisor360Payload,
+  buildUserByKeyMap,
+  canonicalAgentKey,
+} from './workspace360.service';
 import {
   getCsatSummary,
   resolvePeriodRange,
@@ -593,6 +597,264 @@ async function loadWorkflowPendencies(): Promise<WorkflowPendenciesPayload> {
   return { ...totals, porArea };
 }
 
+// ─── Agent queues (novos / em andamento / pendentes / resolvidos / sem resposta >2h) ──
+/**
+ * Faixa logo abaixo do KPI strip: 3 cards (Novos / Em Andamento / Pendentes) no mesmo
+ * formato — contador, "mais antigo", "sem responsável" e tabela de tickets — + uma linha
+ * extra com Resolvidos (no período, por responsável) e Sem Resposta >2h.
+ *
+ * Snapshots são "agora": não respeitam o filtro de período. Só Resolvidos respeita.
+ * Sem resposta usa o mesmo relógio do SLA do Desk (tempo de parede).
+ */
+const SEM_RESPOSTA_THRESHOLD_MIN = 120;
+const SEM_RESPOSTA_MAX_TICKETS = 50;
+const QUEUE_MAX_TICKETS = 200;
+const QUEUE_AGENT_SELECT = 'chamadoProtocolo chamadoTitulo tabulacao registro createdAt';
+
+export interface AgentCount {
+  key: string;
+  name: string;
+  count: number;
+}
+
+export interface QueueTicket {
+  id: string;
+  protocolo: string;
+  createdAtIso: string;
+  canal: string;
+  responsavel: string;
+}
+
+export interface QueueOldest {
+  id: string;
+  protocolo: string;
+  createdAtIso: string;
+}
+
+export interface StatusQueue {
+  total: number;
+  semResponsavel: number;
+  oldest: QueueOldest | null;
+  tickets: QueueTicket[];
+}
+
+export interface SemRespostaTicket {
+  id: string;
+  protocolo: string;
+  subject: string;
+  status: string;
+  responsavel: string;
+  canal: string;
+  waitingSinceIso: string;
+  waitingMinutes: number;
+}
+
+export interface AgentQueuesPayload {
+  novos: StatusQueue;
+  andamento: StatusQueue;
+  pendentes: StatusQueue;
+  resolvidos: { total: number; periodoLabel: string; byAgent: AgentCount[] };
+  semResposta2h: {
+    total: number;
+    limitMinutes: number;
+    tickets: SemRespostaTicket[];
+  };
+}
+
+async function loadResolvedByAgent(
+  start: Date,
+  end: Date,
+  userByKey: Map<string, string>,
+): Promise<{ total: number; byAgent: AgentCount[] }> {
+  const rows = await ChamadoN1.aggregate<{ _id: string; count: number }>([
+    { $match: { registro: { $elemMatch: { status: RESOLVED_STATUS_ONLY } } } },
+    {
+      $addFields: {
+        __resolvedAt: {
+          $reduce: {
+            input: { $ifNull: ['$registro', []] },
+            initialValue: null,
+            in: {
+              $cond: [
+                { $eq: ['$$this.status', RESOLVED_STATUS_ONLY] },
+                '$$this.data',
+                '$$value',
+              ],
+            },
+          },
+        },
+        __lastResp: {
+          $ifNull: [{ $arrayElemAt: ['$tabulacao.responsavel', -1] }, ''],
+        },
+      },
+    },
+    { $match: { __resolvedAt: { $gte: start, $lte: end } } },
+    { $group: { _id: '$__lastResp', count: { $sum: 1 } } },
+  ]);
+
+  const byAgentMap = new Map<string, number>();
+  let total = 0;
+  for (const row of rows) {
+    const raw = String(row._id ?? '').trim();
+    total += row.count;
+    if (!raw) continue;
+    const key = canonicalAgentKey(raw, userByKey);
+    if (!key) continue;
+    byAgentMap.set(key, (byAgentMap.get(key) ?? 0) + row.count);
+  }
+  const byAgent = [...byAgentMap.entries()]
+    .map(([key, count]) => ({ key, name: userByKey.get(key) ?? key, count }))
+    .sort((a, b) => b.count - a.count);
+  return { total, byAgent };
+}
+
+async function loadAgentQueues(
+  resolvedStart: Date,
+  resolvedEnd: Date,
+  resolvedPeriodLabel: string,
+): Promise<AgentQueuesPayload> {
+  const now = Date.now();
+  const thresholdMs = SEM_RESPOSTA_THRESHOLD_MIN * 60_000;
+
+  const [tickets, userByKey] = await Promise.all([
+    ChamadoN1.find({
+      $and: [
+        excludeEspeciaisChannelsMongoFilter(),
+        excludeFusaoAbsorvidosFilter(),
+        {
+          $expr: {
+            $in: [
+              { $ifNull: [{ $arrayElemAt: ['$registro.status', -1] }, 'novo'] },
+              [...NOVO_VARIANTS, ...EM_ANDAMENTO_VARIANTS, ...PENDENTE_VARIANTS],
+            ],
+          },
+        },
+      ],
+    })
+      .select(QUEUE_AGENT_SELECT)
+      .lean<IChamadoN1[]>(),
+    buildUserByKeyMap(),
+  ]);
+
+  const resolved = await loadResolvedByAgent(resolvedStart, resolvedEnd, userByKey);
+
+  const novosList: QueueTicket[] = [];
+  const andamentoList: QueueTicket[] = [];
+  const pendentesList: QueueTicket[] = [];
+  let novosSemResp = 0;
+  let andamentoSemResp = 0;
+  let pendentesSemResp = 0;
+  const semResposta: SemRespostaTicket[] = [];
+
+  for (const c of tickets) {
+    const status = currentStatus(c);
+    const isNovo = NOVO_VARIANTS.includes(status);
+    const isAndamento = EM_ANDAMENTO_VARIANTS.includes(status);
+    const isPendente = PENDENTE_VARIANTS.includes(status);
+    if (!isNovo && !isAndamento && !isPendente) continue;
+
+    const lastTab = c.tabulacao?.[c.tabulacao.length - 1];
+    const rawResp = String(lastTab?.responsavel ?? '').trim();
+    const canonKey = rawResp ? canonicalAgentKey(rawResp, userByKey) : '';
+    const displayName = canonKey ? (userByKey.get(canonKey) ?? canonKey) : '';
+
+    const createdAt = c.createdAt ? new Date(c.createdAt) : null;
+    const row: QueueTicket = {
+      id: String((c as unknown as { _id: unknown })._id),
+      protocolo: c.chamadoProtocolo ?? '',
+      createdAtIso: (createdAt ?? new Date(0)).toISOString(),
+      canal: String(lastTab?.canal ?? ''),
+      responsavel: displayName,
+    };
+
+    if (isNovo) {
+      if (!canonKey) novosSemResp += 1;
+      novosList.push(row);
+    } else if (isAndamento) {
+      if (!canonKey) andamentoSemResp += 1;
+      andamentoList.push(row);
+    } else {
+      if (!canonKey) pendentesSemResp += 1;
+      pendentesList.push(row);
+    }
+
+    // Sem resposta >2h — somente para ativos (novo/em-andamento), não pendente (aguardando cliente).
+    if (!isPendente) {
+      let lastAgentAt: number | null = null;
+      let lastClientAt: number | null = null;
+      for (const r of c.registro ?? []) {
+        const msg = String(r?.mensagemPublica ?? '').trim();
+        if (!msg) continue;
+        const t = r.data ? new Date(r.data).getTime() : NaN;
+        if (!Number.isFinite(t)) continue;
+        if (r.origin === 'agente') lastAgentAt = Math.max(lastAgentAt ?? 0, t);
+        else if (r.origin === 'cliente') lastClientAt = Math.max(lastClientAt ?? 0, t);
+      }
+      const waiting =
+        lastAgentAt == null || (lastClientAt != null && lastClientAt > lastAgentAt);
+      if (waiting) {
+        const waitingSince = lastClientAt
+          ?? (c.createdAt ? new Date(c.createdAt).getTime() : null);
+        if (waitingSince != null) {
+          const waitingMs = now - waitingSince;
+          if (waitingMs >= thresholdMs) {
+            semResposta.push({
+              id: row.id,
+              protocolo: row.protocolo,
+              subject: c.chamadoTitulo ?? '',
+              status,
+              responsavel: displayName,
+              canal: row.canal,
+              waitingSinceIso: new Date(waitingSince).toISOString(),
+              waitingMinutes: Math.round(waitingMs / 60_000),
+            });
+          }
+        }
+      }
+    }
+  }
+
+  semResposta.sort((a, b) => b.waitingMinutes - a.waitingMinutes);
+  // Mais antigo primeiro em cada fila.
+  const byCreatedAsc = (a: QueueTicket, b: QueueTicket) =>
+    a.createdAtIso.localeCompare(b.createdAtIso);
+  novosList.sort(byCreatedAsc);
+  andamentoList.sort(byCreatedAsc);
+  pendentesList.sort(byCreatedAsc);
+
+  const buildGroup = (list: QueueTicket[], semResp: number): StatusQueue => {
+    const oldest = list[0]
+      ? {
+          id: list[0].id,
+          protocolo: list[0].protocolo,
+          createdAtIso: list[0].createdAtIso,
+        }
+      : null;
+    return {
+      total: list.length,
+      semResponsavel: semResp,
+      oldest,
+      tickets: list.slice(0, QUEUE_MAX_TICKETS),
+    };
+  };
+
+  return {
+    novos: buildGroup(novosList, novosSemResp),
+    andamento: buildGroup(andamentoList, andamentoSemResp),
+    pendentes: buildGroup(pendentesList, pendentesSemResp),
+    resolvidos: {
+      total: resolved.total,
+      periodoLabel: resolvedPeriodLabel,
+      byAgent: resolved.byAgent,
+    },
+    semResposta2h: {
+      total: semResposta.length,
+      limitMinutes: SEM_RESPOSTA_THRESHOLD_MIN,
+      tickets: semResposta.slice(0, SEM_RESPOSTA_MAX_TICKETS),
+    },
+  };
+}
+
 export interface DashboardOperacionalPayload {
   updatedAt: string;
   periodo: { label: string; startIso: string; endIso: string };
@@ -621,6 +883,7 @@ export interface DashboardOperacionalPayload {
   breachTickets: unknown[];
   agentsOnline: string[];
   workflow: WorkflowPendenciesPayload;
+  agentQueues: AgentQueuesPayload;
 }
 
 /** Traduz `period` do frontend (hoje/ontem/mes/personalizado) → vocabulário do
@@ -646,6 +909,7 @@ async function computeDashboardOperacional(
   const supervisor360Period = toSupervisor360Period(query.period);
   const range = resolvePeriodRange(query);
 
+  const periodoLabel = labelForPeriod(query.period, query.from, query.to);
   const [
     supervisor360,
     csatSummary,
@@ -655,6 +919,7 @@ async function computeDashboardOperacional(
     resolvidos,
     tempos,
     workflow,
+    agentQueues,
   ] = await Promise.all([
     buildSupervisor360Payload(authUser, {
       period: supervisor360Period,
@@ -669,6 +934,7 @@ async function computeDashboardOperacional(
     countResolvidosNoPeriodo(range.start, range.end),
     computeTmaTmeSemCancelados(range.start, range.end),
     loadWorkflowPendencies(),
+    loadAgentQueues(range.start, range.end, periodoLabel),
   ]);
 
   const breachTickets =
@@ -681,7 +947,7 @@ async function computeDashboardOperacional(
   return {
     updatedAt: new Date().toISOString(),
     periodo: {
-      label: labelForPeriod(query.period, query.from, query.to),
+      label: periodoLabel,
       startIso: range.start.toISOString(),
       endIso: range.end.toISOString(),
     },
@@ -708,6 +974,7 @@ async function computeDashboardOperacional(
     breachTickets,
     agentsOnline: onlineKeys,
     workflow,
+    agentQueues,
   };
 }
 

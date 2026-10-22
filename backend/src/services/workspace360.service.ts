@@ -777,7 +777,7 @@ interface LeaderboardEntry {
  * todos em lowercase). Usado para agrupar um mesmo colaborador mesmo quando o campo
  * `tabulacao.responsavel` foi salvo de formas diferentes (ex.: "victor.silva" vs "victor silva").
  */
-async function buildUserByKeyMap(): Promise<Map<string, string>> {
+export async function buildUserByKeyMap(): Promise<Map<string, string>> {
   const users = await User.find({ role: { $in: ['agent', 'supervisor'] } }).select('name email').lean();
   const map = new Map<string, string>();
   users.forEach((u) => {
@@ -790,7 +790,7 @@ async function buildUserByKeyMap(): Promise<Map<string, string>> {
 }
 
 /** Resolve a chave de agrupamento canônica (nome do usuário se conhecido, senão a própria string). */
-function canonicalAgentKey(rawResponsavel: string, userByKey: Map<string, string>): string {
+export function canonicalAgentKey(rawResponsavel: string, userByKey: Map<string, string>): string {
   const raw = rawResponsavel.trim().toLowerCase();
   if (!raw) return '';
   return (userByKey.get(raw) ?? raw).toLowerCase();

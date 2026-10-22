@@ -24,6 +24,7 @@ import { useDashboardOperacional } from '../../../../hooks/useDashboardOperacion
 import { useDashboardTrend } from '../../../../hooks/useDashboardTrend';
 import GestaoPeriodFilter from '../gestaoInsights/GestaoPeriodFilter';
 import DashboardKpiStrip from './DashboardKpiStrip';
+import DashboardAgentQueues from './DashboardAgentQueues';
 import DashboardChannelBars from './DashboardChannelBars';
 import DashboardEtapasTable from './DashboardEtapasTable';
 import DashboardBreachTable from './DashboardBreachTable';
@@ -139,6 +140,11 @@ export default function DashboardOperacionalPanel() {
             noPeriodo={data.noPeriodo}
             periodoLabel={data.periodo?.label}
             loading={loading}
+          />
+
+          <DashboardAgentQueues
+            data={data.agentQueues}
+            onOpenTicket={handleOpenTicket}
           />
 
           <div className="dashop-row dashop-row--trend">
