@@ -124,6 +124,9 @@ export interface IReclamacaoReclameAqui extends Document {
   dataReclamacao?: Date;
   dataResposta?: Date;
   respostaPublica?: string;
+  /** Coluna "Consideração Consumidor" — réplica do cliente à resposta pública; aplicada uma
+   * única vez no chat do ticket, como continuação dela (ver reclameAquiTicketCreate.service). */
+  consideracaoConsumidor?: string;
 
   // Classificação CRM (Desk) — distinta da taxonomia bruta da plataforma RA abaixo
   produto?: string;
@@ -137,6 +140,10 @@ export interface IReclamacaoReclameAqui extends Document {
   produtoRa?: string;
   sentimentoRa?: string;
   nota?: string;
+  /** Coluna "Seu problema foi resolvido?" da planilha HugMe — avaliação do consumidor. */
+  raResolvido?: string;
+  /** Coluna "Voltaria a fazer negócio?" da planilha HugMe — avaliação do consumidor. */
+  raVoltariaNegocio?: string;
 
   // Status / moderação
   statusRa: string;
@@ -295,6 +302,7 @@ export const ReclamacaoReclameAquiSchema = new Schema<IReclamacaoReclameAqui>(
     dataReclamacao: { type: Date, default: undefined },
     dataResposta: { type: Date, default: undefined },
     respostaPublica: { type: String, default: '' },
+    consideracaoConsumidor: { type: String, default: '' },
 
     produto: { type: String, default: '' },
     tipo: { type: String, default: '' },
@@ -306,6 +314,8 @@ export const ReclamacaoReclameAquiSchema = new Schema<IReclamacaoReclameAqui>(
     produtoRa: { type: String, default: '' },
     sentimentoRa: { type: String, default: '' },
     nota: { type: String, default: '' },
+    raResolvido: { type: String, default: '' },
+    raVoltariaNegocio: { type: String, default: '' },
 
     statusRa: { type: String, default: 'nao-respondida' },
     statusRaLabel: { type: String, default: '' },

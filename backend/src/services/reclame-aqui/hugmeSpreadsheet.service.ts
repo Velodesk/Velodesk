@@ -21,6 +21,12 @@ export const HUGME_COLUMN_MAP: Record<string, string[]> = {
   ],
   dataReclamacao: ['data reclamacao', 'data reclamação', 'data da reclamacao', 'data da reclamação'],
   dataResposta: ['data de resposta', 'data da resposta'],
+  dataConsideracaoConsumidor: [
+    'data consideracao consumidor',
+    'data consideração consumidor',
+    'data da consideracao consumidor',
+    'data da consideração consumidor',
+  ],
   // "Produto"/"Motivo" (sem sufixo "RA") são colunas exclusivas da base histórica — já vêm no
   // formato da tabulação própria do Desk (produto da árvore comum + motivo da lista do RA), pra
   // reidratar a classificação sem perder o histórico. "Produto RA"/"Motivo da Reclamação RA" são
@@ -37,6 +43,10 @@ export const HUGME_COLUMN_MAP: Record<string, string[]> = {
   origem: ['origem'],
   respostaPublica: ['resposta da empresa', 'resposta publica', 'resposta pública'],
   nota: ['nota'],
+  raResolvido: ['seu problema foi resolvido?', 'seu problema foi resolvido'],
+  raVoltariaNegocio: ['voltaria a fazer negocio?', 'voltaria a fazer negócio?', 'voltaria a fazer negocio', 'voltaria a fazer negócio'],
+  moderacaoStatus: ['moderacao status', 'moderação status'],
+  moderacaoQtd: ['moderacoes neste ticket', 'moderações neste ticket'],
   cidade: ['cidade'],
   estado: ['estado'],
 };
@@ -69,6 +79,9 @@ export interface ParsedHugmeRow {
   hugmeSentimentoRa?: string;
   dataReclamacao?: string;
   dataResposta?: string;
+  /** Coluna "Data Consideração Consumidor" — data/hora real da réplica do cliente, usada como
+   * `data` da mensagem no chat (não o momento da importação). */
+  dataConsideracaoConsumidor?: string;
   /** Produto/motivo já na formatação da tabulação própria do Desk (colunas "Produto"/"Motivo" —
    * só presentes na base histórica; a taxonomia bruta do RA fica em produtoRa/hugmeMotivoRa). */
   produto?: string;
@@ -76,10 +89,23 @@ export interface ParsedHugmeRow {
   motivo?: string;
   produtoRa?: string;
   nota?: string;
+  /** Coluna "Seu problema foi resolvido?" — avaliação do consumidor, independente do status do ticket. */
+  raResolvido?: string;
+  /** Coluna "Voltaria a fazer negócio?" — avaliação do consumidor. */
+  raVoltariaNegocio?: string;
   statusRa?: string;
   statusRaLabel?: string;
   statusHugme?: string;
   respostaPublica?: string;
+  /** Coluna "Consideração Consumidor" — réplica do cliente à resposta pública da empresa. Não
+   * entra mais na descrição (ver buildDescricao); sobe no chat do ticket como continuação da
+   * resposta pública (ver reclameAquiTicketCreate.service). */
+  consideracaoConsumidor?: string;
+  /** Coluna "Moderação status" — vazio = sem solicitação; preenchido = solicitada, e o texto
+   * ("Aceita"/"Recusada") diz o desfecho. */
+  moderacaoStatus?: string;
+  /** Coluna "Moderações neste ticket" — quantidade de solicitações de moderação feitas. */
+  moderacaoQtd?: string;
   cidade?: string;
   uf?: string;
 }
@@ -239,11 +265,9 @@ function buildHugmeTaxonomia(row: unknown[], headerIndex: Record<string, number>
 }
 
 function buildDescricao(row: unknown[], headerIndex: Record<string, number>): string {
-  const texto = getFieldFromRow(row, headerIndex, 'descricao');
-  const consideracao = getFieldFromRow(row, headerIndex, 'consideracaoConsumidor');
-  if (!consideracao) return texto;
-  if (!texto) return consideracao;
-  return `${texto}\n\nConsideração do consumidor:\n${consideracao}`;
+  // "Consideração Consumidor" não entra mais na descrição — vira mensagem própria no chat do
+  // ticket, como continuação da resposta pública (ver reclameAquiTicketCreate.service).
+  return getFieldFromRow(row, headerIndex, 'descricao');
 }
 
 function mapStatusRaFromHugme(label: string): string | undefined {
@@ -310,11 +334,19 @@ function mapRowToParsed(
     dataResposta: parseExcelDate(
       headerIndex.dataResposta != null ? row[headerIndex.dataResposta] : '',
     ),
+    dataConsideracaoConsumidor: parseExcelDate(
+      headerIndex.dataConsideracaoConsumidor != null ? row[headerIndex.dataConsideracaoConsumidor] : '',
+    ),
     produto: getFieldFromRow(row, headerIndex, 'produto') || undefined,
     tipo: undefined,
     motivo: getFieldFromRow(row, headerIndex, 'motivo') || undefined,
     produtoRa: getFieldFromRow(row, headerIndex, 'produtoRa') || undefined,
     nota: getFieldFromRow(row, headerIndex, 'nota') || undefined,
+    raResolvido: getFieldFromRow(row, headerIndex, 'raResolvido') || undefined,
+    raVoltariaNegocio: getFieldFromRow(row, headerIndex, 'raVoltariaNegocio') || undefined,
+    consideracaoConsumidor: getFieldFromRow(row, headerIndex, 'consideracaoConsumidor') || undefined,
+    moderacaoStatus: getFieldFromRow(row, headerIndex, 'moderacaoStatus') || undefined,
+    moderacaoQtd: getFieldFromRow(row, headerIndex, 'moderacaoQtd') || undefined,
     statusRa: mapStatusRaFromHugme(statusRaLabel),
     statusRaLabel: statusRaLabel || undefined,
     statusHugme: getFieldFromRow(row, headerIndex, 'statusHugme') || undefined,
@@ -322,6 +354,23 @@ function mapRowToParsed(
     cidade: getFieldFromRow(row, headerIndex, 'cidade') || undefined,
     uf: getFieldFromRow(row, headerIndex, 'estado') || undefined,
   };
+}
+
+/**
+ * Reconstrói um ParsedHugmeRow a partir de `dadosPlanilha` (captura literal de todas as colunas
+ * da planilha, já salva no doc de reclamacoes_reclameAqui desde a importação original) — reusa
+ * 100% da mesma lógica de alias/parse de `mapRowToParsed` (as chaves de dadosPlanilha SÃO os
+ * cabeçalhos originais, então vira um "row" de uma linha só). Usado por backfills que corrigem
+ * dado já importado sem precisar reler o arquivo .xlsx (handoff RA-datas).
+ */
+export function buildParsedRowFromDadosPlanilha(
+  dadosPlanilha: Record<string, string>,
+  rowIndex = 0,
+): ParsedHugmeRow {
+  const cabecalhos = Object.keys(dadosPlanilha);
+  const row = cabecalhos.map((h) => dadosPlanilha[h]);
+  const headerIndex = buildHeaderIndex(cabecalhos);
+  return mapRowToParsed(row, headerIndex, cabecalhos, rowIndex);
 }
 
 function validateParsedRow(row: ParsedHugmeRow, seenIdOrigem: Set<string>): ParsedHugmeRow {

@@ -7,6 +7,7 @@ import RaDadosEditableFields from './RaDadosEditableFields';
 import { formatComplaintDate } from './raTicketFormatters';
 import RaClassificacaoFields from './RaClassificacaoFields';
 import RaNotaContatoCard from './RaNotaContatoCard';
+import RaClienteAvaliacaoCard from './RaClienteAvaliacaoCard';
 import RaResponsavelCard from './RaResponsavelCard';
 import RaRelatedTicketsCard from './RaRelatedTicketsCard';
 import EspeciaisTicketSideFooter from '../shared/EspeciaisTicketSideFooter';
@@ -65,6 +66,8 @@ export default function RaTicketSide({
           raItem={raItem}
           onSaved={onRaItemUpdated}
         />
+
+        <RaClienteAvaliacaoCard raItem={raItem} />
 
         <RaResponsavelCard
           raItem={raItem}

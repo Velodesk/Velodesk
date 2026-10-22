@@ -43,10 +43,25 @@ export interface RaTicketSource {
   dataReclamacao?: string | Date;
   dataResposta?: string | Date;
   respostaPublica?: string;
+  /** Coluna "Consideração Consumidor" — réplica do cliente à resposta pública; sobe no chat
+   * como continuação dela (ver appendRaMensagem/upsertRaTicketFromSource). */
+  consideracaoConsumidor?: string;
+  /** Coluna "Data Consideração Consumidor" — data/hora real da réplica, usada como `data` da
+   * mensagem no chat em vez do momento da importação. */
+  dataConsideracaoConsumidor?: string | Date;
+  /** Coluna "Moderação status" — vazio = sem solicitação; texto preenchido ("Aceita"/"Recusada")
+   * diz o desfecho da solicitação. */
+  moderacaoStatus?: string;
+  /** Coluna "Moderações neste ticket" — quantidade de solicitações feitas. */
+  moderacaoQtd?: string;
   cidade?: string;
   uf?: string;
   nomeSocial?: string;
   nota?: string;
+  /** Coluna "Seu problema foi resolvido?" da planilha HugMe — avaliação do consumidor. */
+  raResolvido?: string;
+  /** Coluna "Voltaria a fazer negócio?" da planilha HugMe — avaliação do consumidor. */
+  raVoltariaNegocio?: string;
   /** Captura literal de todas as colunas da planilha (nome da coluna = chave) — só presente
    * quando a origem é a planilha HugMe; cadastro manual no CRM não tem isso. */
   dadosPlanilha?: Record<string, string>;
@@ -59,7 +74,7 @@ function asIso(value: string | Date | undefined): string | undefined {
   return raw || undefined;
 }
 
-function parseReclamacaoDate(value: string | Date | undefined): Date | null {
+export function parseReclamacaoDate(value: string | Date | undefined): Date | null {
   const iso = asIso(value);
   if (!iso) return null;
   const parsed = new Date(iso);
@@ -73,6 +88,17 @@ function normalizeProdutoLabel(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ');
+}
+
+/**
+ * Deriva solicitada/aceita a partir da coluna "Moderação status": vazio = nunca solicitada;
+ * preenchido = solicitada, e o próprio texto ("Aceita"/"Recusada") diz o desfecho — confirmado
+ * com o negócio que são só esses 3 estados possíveis na planilha.
+ */
+function deriveModeracaoFlags(raw?: string): { solicitada: boolean; aceita: boolean } {
+  const value = normalizeProdutoLabel(raw || '');
+  if (!value) return { solicitada: false, aceita: false };
+  return { solicitada: true, aceita: value.includes('aceit') };
 }
 
 async function resolveTabulacaoProduto(raw?: string): Promise<string> {
@@ -116,9 +142,15 @@ export function parsedRowToRaTicketSource(row: ParsedHugmeRow): RaTicketSource {
     dataReclamacao: row.dataReclamacao,
     dataResposta: row.dataResposta,
     respostaPublica: String(row.respostaPublica || '').trim(),
+    consideracaoConsumidor: String(row.consideracaoConsumidor || '').trim(),
+    dataConsideracaoConsumidor: row.dataConsideracaoConsumidor,
+    moderacaoStatus: String(row.moderacaoStatus || '').trim(),
+    moderacaoQtd: String(row.moderacaoQtd || '').trim(),
     cidade: String(row.cidade || '').trim(),
     uf: String(row.uf || '').trim(),
     nota: String(row.nota || '').trim(),
+    raResolvido: String(row.raResolvido || '').trim(),
+    raVoltariaNegocio: String(row.raVoltariaNegocio || '').trim(),
     dadosPlanilha: row.colunasOriginais,
   };
 }
@@ -206,10 +238,16 @@ function buildPersistedTriagem(idOrigem: string, origemEntrada: string) {
  * upsertFromChamado/routeCasoEspecialFormal (compartilhados com Procon/Bacen/Consumidor.gov)
  * conseguem preencher. Roda depois do fluxo padrão, sem alterar nada desse fluxo.
  */
-async function enrichRaReclamacaoFirstClassFields(
-  reclamacaoId: Types.ObjectId,
+/**
+ * Monta o `$set` dos campos de primeira classe do RA a partir de um RaTicketSource — função pura,
+ * sem I/O, reusada tanto no fluxo de import (ao vivo) quanto em backfills que reconstroem o
+ * source a partir de `dadosPlanilha` já salvo (handoff RA-datas), sem precisar reler o .xlsx.
+ */
+export function buildRaFirstClassSet(
   source: RaTicketSource,
-): Promise<void> {
+  options: { respostaPublicaToApply?: string; consideracaoConsumidorToApply?: string } = {},
+): Record<string, unknown> {
+  const { solicitada, aceita } = deriveModeracaoFlags(source.moderacaoStatus);
   const set: Record<string, unknown> = {
     idOrigem: source.idOrigem,
     canal: source.canal || '',
@@ -220,15 +258,44 @@ async function enrichRaReclamacaoFirstClassFields(
     problemaRa: source.hugmeProblemaRa || '',
     sentimentoRa: source.hugmeSentimentoRa || '',
     nota: source.nota || '',
+    raResolvido: source.raResolvido || '',
+    raVoltariaNegocio: source.raVoltariaNegocio || '',
     statusRaLabel: source.statusRaLabel || '',
     statusHugme: source.statusHugme || '',
+    // Moderação (solicitada/aceita/quantidade) vem da base e é sobrescrita a cada reimport —
+    // diferente de respostaPublica/consideracaoConsumidor, que são fatos imutáveis uma vez
+    // aplicados. Fica dentro de `meta` (Mixed) porque o painel de moderação já lia/gravava ali.
+    'meta.moderacaoSolicitada': solicitada,
+    'meta.moderacaoAceita': aceita,
+    'meta.moderacaoQtd': source.moderacaoQtd || '',
+    'meta.moderacaoStatusBase': source.moderacaoStatus || '',
   };
   const dataResposta = asIso(source.dataResposta);
   if (dataResposta) set.dataResposta = new Date(dataResposta);
+  // Bug conhecido (handoff RA-datas): dataReclamacao nunca era gravada aqui, mesmo com o dado
+  // disponível em source — ficava sempre null em reclamacoes_reclameAqui, obrigando quem
+  // precisava da data real da reclamação a ler dadosPlanilha.
+  const dataReclamacao = asIso(source.dataReclamacao);
+  if (dataReclamacao) set.dataReclamacao = new Date(dataReclamacao);
+  // Resposta pública e consideração do consumidor são imutáveis depois de aplicadas uma vez (ver
+  // upsertRaTicketFromSource) — só gravam aqui quando o chamador decidiu explicitamente que ainda
+  // não havia nenhuma registrada.
+  if (options.respostaPublicaToApply) set.respostaPublica = options.respostaPublicaToApply;
+  if (options.consideracaoConsumidorToApply) {
+    set.consideracaoConsumidor = options.consideracaoConsumidorToApply;
+  }
   if (source.dadosPlanilha && Object.keys(source.dadosPlanilha).length) {
     set.dadosPlanilha = source.dadosPlanilha;
   }
+  return set;
+}
 
+async function enrichRaReclamacaoFirstClassFields(
+  reclamacaoId: Types.ObjectId,
+  source: RaTicketSource,
+  options: { respostaPublicaToApply?: string; consideracaoConsumidorToApply?: string } = {},
+): Promise<void> {
+  const set = buildRaFirstClassSet(source, options);
   await getReclamacaoReclameAquiModel().updateOne(
     { _id: reclamacaoId },
     { $set: set },
@@ -239,7 +306,7 @@ async function persistRaReclamacao(
   chamado: IChamadoN1,
   source: RaTicketSource,
   origemEntrada: string,
-  options: { route?: boolean } = {},
+  options: { route?: boolean; respostaPublicaToApply?: string; consideracaoConsumidorToApply?: string } = {},
 ) {
   const persisted = buildPersistedTriagem(source.idOrigem, origemEntrada);
   if (options.route !== false) {
@@ -257,23 +324,38 @@ async function persistRaReclamacao(
     throw new Error('Falha ao persistir reclamacao em reclamacoes_reclameAqui');
   }
 
-  await enrichRaReclamacaoFirstClassFields(reclamacao._id as Types.ObjectId, source);
+  await enrichRaReclamacaoFirstClassFields(reclamacao._id as Types.ObjectId, source, {
+    respostaPublicaToApply: options.respostaPublicaToApply,
+    consideracaoConsumidorToApply: options.consideracaoConsumidorToApply,
+  });
 
   return reclamacao;
 }
 
-async function appendRespostaPublica(chamado: IChamadoN1, text: string, author: string) {
+/** Empurra uma mensagem direto no registro do chamado, fora de pushRegistroEntry (caso especial
+ * é vetado do outbound, então não dispara webhook de saída). `origin: 'agente'` pra resposta
+ * pública da empresa; `origin: 'cliente'` pra consideração do consumidor (réplica à resposta).
+ * `date` é a data/hora REAL do evento na planilha ("Data de Resposta"/"Data Consideração
+ * Consumidor") — sem isso a mensagem ficava datada do momento da importação, não do fato real. */
+async function appendRaMensagem(
+  chamado: IChamadoN1,
+  text: string,
+  author: string,
+  origin: 'agente' | 'cliente',
+  metaSource: string,
+  date?: Date | null,
+) {
   if (!text.trim() || !chamado.registro?.[0]) return;
   chamado.registro.push({
-    data: new Date(),
-    origin: 'agente',
-    autor: author,
+    data: date && !Number.isNaN(date.getTime()) ? date : new Date(),
+    origin,
+    autor: origin === 'cliente' ? (chamado.cliente?.[0] as { clienteNome?: string } | undefined)?.clienteNome || 'Consumidor' : author,
     mensagemPublica: text.trim(),
     anexosMensagemPublica: [],
     anotacaoInterna: '',
     anexosAnotacaoInterna: [],
     alteracoes: [],
-    metadados: { source: 'hugme-import-resposta' },
+    metadados: { source: metaSource },
     status: 'novo',
   });
   chamado.markModified('registro');
@@ -339,16 +421,10 @@ export async function upsertRaTicketFromSource(
       }
       chamado.markModified('registro');
     }
-    // chamado.createdAt é immutable por padrão no schema (timestamps: true do Mongoose 8) —
-    // atribuição direta no documento é silenciosamente ignorada no save(). overwriteImmutable
-    // é obrigatório para o reimport da planilha corrigir a data de criação retroativamente.
-    if (reclamacaoDate) {
-      await ChamadoN1.updateOne(
-        { _id: chamado._id },
-        { $set: { createdAt: reclamacaoDate } },
-        { overwriteImmutable: true },
-      );
-    }
+    // chamado.createdAt NÃO é mais retroagido à data da reclamação (handoff RA-datas, Bug 1):
+    // createdAt passa a significar "quando o ticket entrou no Velodesk" de verdade — a data da
+    // reclamação em si já fica só em reclamacoes_reclameAqui.dataReclamacao (ver Bug 2 acima) e
+    // em registros[raIdx].data, logo acima, que continua sendo corrigido a cada reimport.
     const lastIdx = chamado.tabulacao?.length ? chamado.tabulacao.length - 1 : -1;
     if (lastIdx >= 0) {
       chamado.tabulacao[lastIdx] = {
@@ -388,7 +464,40 @@ export async function upsertRaTicketFromSource(
     }
     await chamado.save();
 
-    const reclamacao = await persistRaReclamacao(chamado, sourced, origemEntrada, { route: false });
+    // Resposta pública e consideração do consumidor são imutáveis depois de aplicadas uma vez:
+    // reupload da mesma base não deve reinserir as mensagens no chat. Só aplicam quando o ticket
+    // ainda não tinha nenhuma registrada e a base atual já traz uma — cobre o caso de reimport
+    // trazer status/resposta mais atualizados do que os que tínhamos (6 meses de base viva).
+    const existingRa = existing as unknown as {
+      respostaPublica?: string;
+      consideracaoConsumidor?: string;
+    };
+    const previousRespostaPublica = String(existingRa?.respostaPublica || '').trim();
+    const incomingRespostaPublica = String(sourced.respostaPublica || '').trim();
+    const shouldApplyResposta = !previousRespostaPublica && Boolean(incomingRespostaPublica);
+
+    const previousConsideracao = String(existingRa?.consideracaoConsumidor || '').trim();
+    const incomingConsideracao = String(sourced.consideracaoConsumidor || '').trim();
+    const shouldApplyConsideracao = !previousConsideracao && Boolean(incomingConsideracao);
+
+    const reclamacao = await persistRaReclamacao(chamado, sourced, origemEntrada, {
+      route: false,
+      respostaPublicaToApply: shouldApplyResposta ? incomingRespostaPublica : undefined,
+      consideracaoConsumidorToApply: shouldApplyConsideracao ? incomingConsideracao : undefined,
+    });
+
+    if (shouldApplyResposta) {
+      await appendRaMensagem(
+        chamado, incomingRespostaPublica, author, 'agente', 'hugme-import-resposta',
+        parseReclamacaoDate(sourced.dataResposta),
+      );
+    }
+    if (shouldApplyConsideracao) {
+      await appendRaMensagem(
+        chamado, incomingConsideracao, author, 'cliente', 'hugme-import-consideracao',
+        parseReclamacaoDate(sourced.dataConsideracaoConsumidor),
+      );
+    }
 
     return {
       chamadoId: chamado._id as Types.ObjectId,
@@ -404,12 +513,10 @@ export async function upsertRaTicketFromSource(
   // nunca teve produto/motivo classificados no Desk mesmo já estando fechada na plataforma RA.
   // Passar "resolvido" aqui bloquearia a importação dessas linhas com "Preencha a tabulação".
   const partial = await createChamadoFromBody(payload, 'novo');
-  // Sem isto, o Mongoose (timestamps: true) grava createdAt como "agora" na importação em lote,
-  // fazendo milhares de reclamações históricas parecerem ter chegado todas hoje.
-  const reclamacaoDateForCreate = parseReclamacaoDate(sourced.dataReclamacao);
-  if (reclamacaoDateForCreate) {
-    (partial as Record<string, unknown>).createdAt = reclamacaoDateForCreate;
-  }
+  // createdAt NÃO é mais retroagido à data da reclamação (handoff RA-datas, Bug 1) — o Mongoose
+  // grava o momento real de criação no Velodesk, que é o que dashboards/TMA/TME devem enxergar
+  // como "criado". A data real da reclamação vive em reclamacoes_reclameAqui.dataReclamacao
+  // (Bug 2) e no registro[] do chat (abaixo), não mais em createdAt.
   const chamado = await ChamadoN1.create(partial) as IChamadoN1;
 
   // Ajusta o status real do registro DEPOIS da criação, sem passar pela validação de
@@ -421,10 +528,21 @@ export async function upsertRaTicketFromSource(
     await chamado.save();
   }
 
+  const respostaPublicaInicial = String(source.respostaPublica || '').trim();
+  const consideracaoInicial = String(source.consideracaoConsumidor || '').trim();
   const reclamacao = await persistRaReclamacao(chamado, sourced, origemEntrada, {
     route: origemEntrada !== 'hugme-import',
+    respostaPublicaToApply: respostaPublicaInicial || undefined,
+    consideracaoConsumidorToApply: consideracaoInicial || undefined,
   });
-  await appendRespostaPublica(chamado, source.respostaPublica || '', author);
+  await appendRaMensagem(
+    chamado, respostaPublicaInicial, author, 'agente', 'hugme-import-resposta',
+    parseReclamacaoDate(sourced.dataResposta),
+  );
+  await appendRaMensagem(
+    chamado, consideracaoInicial, author, 'cliente', 'hugme-import-consideracao',
+    parseReclamacaoDate(sourced.dataConsideracaoConsumidor),
+  );
 
   return {
     chamadoId: chamado._id as Types.ObjectId,

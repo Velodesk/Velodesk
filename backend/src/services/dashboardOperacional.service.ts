@@ -155,6 +155,12 @@ async function loadSnapshotCounters(): Promise<SnapshotCounters> {
  * Todos os cards do dashboard excluem cancelados. Os helpers compartilhados
  * (`getVolumeSummary`, `getVolumeSeries`, `getTopMotivosPorProduto`) NÃO são alterados —
  * outras telas do time dependem deles com semântica atual (que inclui cancelados como terminal).
+ *
+ * Os três helpers abaixo (`countCriadosNoPeriodoSemCancelados`, `computeTmaTmeSemCancelados`,
+ * `loadSerieSemCancelados`) também excluem canais especiais (Procon/Bacen/Consumidor.gov/Reclame
+ * Aqui) via `excludeEspeciaisChannelsMongoFilter()` — sem isto, uma reimportação de base histórica
+ * do Reclame Aqui conta em massa como "criado hoje" (createdAt = momento real da importação desde
+ * o handoff RA-datas) e derruba o TMA pra perto de zero, distorcendo os KPIs e a série diária.
  */
 const RESOLVIDO_STATUSES_SEM_CANCELADO = ['resolvido', 'fechado'];
 const CANCELADO_STATUSES = ['cancelado'];
@@ -163,10 +169,16 @@ const CANCELADO_STATUSES = ['cancelado'];
 // pular para a data de fechamento em vez da resolução real).
 const RESOLVED_STATUS_ONLY = 'resolvido';
 
-/** Contagem de tickets criados no período, EXCLUINDO cancelados. */
+/** Contagem de tickets criados no período, EXCLUINDO cancelados e canais especiais (Procon/Bacen/
+ *  Consumidor.gov/Reclame Aqui) — sem isto, um reimport de base histórica do RA conta como "criado
+ *  hoje" em massa, mesmo tendo sido respondido/resolvido meses atrás (handoff RA-datas, Bug 1). */
 async function countCriadosNoPeriodoSemCancelados(start: Date, end: Date): Promise<number> {
   const result = await ChamadoN1.aggregate<{ total: number }>([
-    { $match: { createdAt: { $gte: start, $lte: end } } },
+    {
+      $match: {
+        $and: [excludeEspeciaisChannelsMongoFilter(), { createdAt: { $gte: start, $lte: end } }],
+      },
+    },
     {
       $addFields: {
         __lastStatus: { $ifNull: [{ $arrayElemAt: ['$registro.status', -1] }, 'novo'] },
@@ -248,7 +260,11 @@ async function computeTmaTmeSemCancelados(
   };
 
   const [row] = await ChamadoN1.aggregate<{ tmaSum: number; tmaN: number; tmeSum: number; tmeN: number }>([
-    { $match: { 'registro.data': { $gte: start, $lte: end } } },
+    {
+      $match: {
+        $and: [excludeEspeciaisChannelsMongoFilter(), { 'registro.data': { $gte: start, $lte: end } }],
+      },
+    },
     { $addFields: { __resolvedAt: resolvedAtExpr, __firstResp: firstResponseExpr } },
     { $match: { __resolvedAt: { $gte: start, $lte: end } } },
     { $addFields: { __createdEff: { $ifNull: ['$createdAt', '$__resolvedAt'] } } },
@@ -318,7 +334,11 @@ async function loadSerieSemCancelados(
 
   const [abertosRows, encerradosRows, csatRows] = await Promise.all([
     ChamadoN1.aggregate<{ _id: string; n: number }>([
-      { $match: { createdAt: { $gte: start, $lte: end } } },
+      {
+        $match: {
+          $and: [excludeEspeciaisChannelsMongoFilter(), { createdAt: { $gte: start, $lte: end } }],
+        },
+      },
       {
         $addFields: {
           __lastStatus: { $ifNull: [{ $arrayElemAt: ['$registro.status', -1] }, 'novo'] },
@@ -328,7 +348,11 @@ async function loadSerieSemCancelados(
       { $group: { _id: dayKeyExprLocal('$createdAt'), n: { $sum: 1 } } },
     ]),
     ChamadoN1.aggregate<{ _id: string; n: number }>([
-      { $match: { 'registro.data': { $gte: start, $lte: end } } },
+      {
+        $match: {
+          $and: [excludeEspeciaisChannelsMongoFilter(), { 'registro.data': { $gte: start, $lte: end } }],
+        },
+      },
       { $addFields: { __resolvedAt: resolvedAtExpr } },
       { $match: { __resolvedAt: { $gte: start, $lte: end } } },
       { $group: { _id: dayKeyExprLocal('$__resolvedAt'), n: { $sum: 1 } } },

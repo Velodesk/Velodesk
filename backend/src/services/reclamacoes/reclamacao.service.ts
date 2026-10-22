@@ -1003,12 +1003,14 @@ export function reclamacaoToPortalDto(doc: IReclamacao): Record<string, unknown>
     prazoLegal: doc.prazoLegal,
     prazoRa: doc.orgao === 'reclame_aqui' ? (meta.prazoRa || doc.prazoLegal) : undefined,
     passivelNota: doc.orgao === 'reclame_aqui' ? Boolean(meta.passivelNota) : undefined,
+    // moderacaoSolicitada/moderacaoAceita/moderacaoQtd/moderacaoStatusBase vêm da base HugMe
+    // (coluna "Moderação status"/"Moderações neste ticket") — sobrescritos a cada reimport, não
+    // editáveis pelo agente (ver reclameAquiTicketCreate.service enrichRaReclamacaoFirstClassFields).
     moderacaoSolicitada: doc.orgao === 'reclame_aqui' ? Boolean(meta.moderacaoSolicitada) : undefined,
     moderacaoAceita: doc.orgao === 'reclame_aqui' ? Boolean(meta.moderacaoAceita) : undefined,
+    moderacaoQtd: doc.orgao === 'reclame_aqui' ? String(meta.moderacaoQtd ?? '') : undefined,
+    moderacaoStatusBase: doc.orgao === 'reclame_aqui' ? String(meta.moderacaoStatusBase ?? '') : undefined,
     moderacaoMotivo: doc.orgao === 'reclame_aqui' ? String(meta.moderacaoMotivo ?? '') : undefined,
-    moderacaoAvaliacaoCliente: doc.orgao === 'reclame_aqui'
-      ? String(meta.moderacaoAvaliacaoCliente ?? '')
-      : undefined,
     tentativaContato: doc.orgao === 'reclame_aqui' ? String(meta.tentativaContato ?? '') : undefined,
     slaPct: doc.slaPct,
     orgaoProcon: doc.orgao === 'procon' ? doc.orgaoInstituicao : undefined,
@@ -1040,10 +1042,13 @@ export function reclamacaoToPortalDto(doc: IReclamacao): Record<string, unknown>
         produtoRa: ra.produtoRa,
         sentimentoRa: ra.sentimentoRa,
         nota: ra.nota,
+        raResolvido: ra.raResolvido,
+        raVoltariaNegocio: ra.raVoltariaNegocio,
         statusHugme: ra.statusHugme,
         statusRaLabelPlanilha: ra.statusRaLabel,
         dataResposta: ra.dataResposta,
         respostaPublica: ra.respostaPublica,
+        consideracaoConsumidor: ra.consideracaoConsumidor,
         dadosPlanilha: ra.dadosPlanilha,
         fusao: ra.fusao,
       };

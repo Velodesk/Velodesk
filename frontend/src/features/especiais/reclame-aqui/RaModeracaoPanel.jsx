@@ -8,17 +8,11 @@ import { patchReclamacao } from '../../../services/especiais/reclameAquiStore';
 
 export default function RaModeracaoPanel({ raItem, onSaved }) {
   const { showNotification } = useNotifications();
-  const [solicitada, setSolicitada] = useState(Boolean(raItem?.moderacaoSolicitada));
-  const [aceita, setAceita] = useState(Boolean(raItem?.moderacaoAceita));
   const [motivo, setMotivo] = useState(raItem?.moderacaoMotivo || '');
-  const [avaliacaoCliente, setAvaliacaoCliente] = useState(raItem?.moderacaoAvaliacaoCliente || '');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setSolicitada(Boolean(raItem?.moderacaoSolicitada));
-    setAceita(Boolean(raItem?.moderacaoAceita));
     setMotivo(raItem?.moderacaoMotivo || '');
-    setAvaliacaoCliente(raItem?.moderacaoAvaliacaoCliente || '');
   }, [raItem?.id]);
 
   const handleSave = async () => {
@@ -28,10 +22,7 @@ export default function RaModeracaoPanel({ raItem, onSaved }) {
       const updated = await reclamacoesApi.patch('reclame-aqui', raItem.id, {
         updatedAt: raItem.updatedAt,
         meta: {
-          moderacaoSolicitada: solicitada,
-          moderacaoAceita: aceita,
           moderacaoMotivo: motivo,
-          moderacaoAvaliacaoCliente: avaliacaoCliente,
         },
       });
       const merged = { ...raItem, ...updated };
@@ -50,52 +41,36 @@ export default function RaModeracaoPanel({ raItem, onSaved }) {
 
   if (!raItem) return null;
 
+  // Solicitada/aceita/quantidade vêm direto da base Reclame Aqui (coluna "Moderação status" /
+  // "Moderações neste ticket") e são atualizadas a cada reimport — não são editáveis aqui.
+  const solicitada = Boolean(raItem.moderacaoSolicitada);
+  const aceita = Boolean(raItem.moderacaoAceita);
+  const qtd = raItem.moderacaoQtd || '';
+  const statusBase = raItem.moderacaoStatusBase || '';
+
   return (
     <div className="ra-moderacao-panel">
       <h3 className="ra-moderacao-panel__title">Moderação — Reclame Aqui</h3>
       <p className="ra-moderacao-panel__hint">
-        Registro de solicitação de remoção ou edição de reclamações que violam os termos da plataforma.
+        Solicitação, desfecho e quantidade vêm da base do Reclame Aqui e são atualizados a cada importação.
       </p>
 
-      <div className="ra-moderacao-panel__field">
-        <span className="ra-registro__side-label">Ocorreu solicitação de moderação?</span>
-        <div className="ra-registro__toggle">
-          <button
-            type="button"
-            className={`ra-registro__toggle-btn${solicitada ? ' is-active' : ''}`}
-            onClick={() => setSolicitada(true)}
-          >
-            Sim
-          </button>
-          <button
-            type="button"
-            className={`ra-registro__toggle-btn${!solicitada ? ' is-active' : ''}`}
-            onClick={() => setSolicitada(false)}
-          >
-            Não
-          </button>
+      <dl className="ra-moderacao-panel__base-info">
+        <div>
+          <dt>Solicitação de moderação?</dt>
+          <dd>{solicitada ? 'Sim' : 'Não'}</dd>
         </div>
-      </div>
-
-      <div className="ra-moderacao-panel__field">
-        <span className="ra-registro__side-label">Moderação aceita pelo RA?</span>
-        <div className="ra-registro__toggle">
-          <button
-            type="button"
-            className={`ra-registro__toggle-btn${aceita ? ' is-active' : ''}`}
-            onClick={() => setAceita(true)}
-          >
-            Sim
-          </button>
-          <button
-            type="button"
-            className={`ra-registro__toggle-btn${!aceita ? ' is-active' : ''}`}
-            onClick={() => setAceita(false)}
-          >
-            Não
-          </button>
+        {solicitada ? (
+          <div>
+            <dt>Moderação aceita pelo RA?</dt>
+            <dd>{aceita ? 'Sim' : 'Não'}{statusBase ? ` (${statusBase})` : ''}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt>Moderações neste ticket</dt>
+          <dd>{qtd || '—'}</dd>
         </div>
-      </div>
+      </dl>
 
       <div className="ra-moderacao-panel__field ra-registro__field">
         <label htmlFor="ra-moderacao-motivo">Motivo</label>
@@ -106,18 +81,6 @@ export default function RaModeracaoPanel({ raItem, onSaved }) {
           value={motivo}
           onChange={(e) => setMotivo(e.target.value)}
           placeholder="Descreva o motivo da solicitação de moderação..."
-        />
-      </div>
-
-      <div className="ra-moderacao-panel__field ra-registro__field">
-        <label htmlFor="ra-moderacao-avaliacao">Avaliação do RA encaminhada pelo cliente</label>
-        <textarea
-          id="ra-moderacao-avaliacao"
-          className="ra-registro__textarea"
-          rows={4}
-          value={avaliacaoCliente}
-          onChange={(e) => setAvaliacaoCliente(e.target.value)}
-          placeholder="Cole aqui a avaliação encaminhada pelo cliente..."
         />
       </div>
 

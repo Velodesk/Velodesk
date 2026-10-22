@@ -153,11 +153,9 @@ function isDataRow(row, headerIndex) {
 }
 
 function buildDescricao(row, headerIndex) {
-  const texto = getFieldFromRow(row, headerIndex, 'descricao');
-  const consideracao = getFieldFromRow(row, headerIndex, 'consideracaoConsumidor');
-  if (!consideracao) return texto;
-  if (!texto) return consideracao;
-  return `${texto}\n\nConsideração do consumidor:\n${consideracao}`;
+  // "Consideração Consumidor" não entra mais na descrição — vira mensagem própria no chat do
+  // ticket (ver backend hugmeSpreadsheet.service). Este preview só reflete o backend.
+  return getFieldFromRow(row, headerIndex, 'descricao');
 }
 
 function mapStatusRaFromHugme(label) {
