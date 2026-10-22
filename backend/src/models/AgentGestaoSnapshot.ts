@@ -1,6 +1,6 @@
 /**
- * AgentGestaoSnapshot v1.0.1 — protocolo com fallback no schema
- * VERSION: v1.0.1 | DATE: 2026-07-16
+ * AgentGestaoSnapshot v1.1.0 — TTL de 24 h
+ * VERSION: v1.1.0 | DATE: 2026-10-22
  */
 import mongoose, { Schema, Document } from 'mongoose';
 
@@ -63,6 +63,9 @@ const AgentGestaoSnapshotSchema = new Schema<IAgentGestaoSnapshot>(
   },
   { timestamps: true, collection: 'agent_gestao_snapshots' },
 );
+
+// Só o último dia interessa: o Mongo apaga cada snapshot ao completar 24 h (varredura do TTL a cada ~1 min).
+AgentGestaoSnapshotSchema.index({ createdAt: 1 }, { expireAfterSeconds: 24 * 60 * 60, name: 'ttl_createdAt_1d' });
 
 export const AgentGestaoSnapshot = mongoose.model<IAgentGestaoSnapshot>(
   'AgentGestaoSnapshot',

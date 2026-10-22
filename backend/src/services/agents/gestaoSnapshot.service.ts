@@ -1,6 +1,6 @@
 /**
- * gestaoSnapshot.service v1.0.1 — fallback de protocolo ausente no inventário
- * VERSION: v1.0.1 | DATE: 2026-07-16
+ * gestaoSnapshot.service v1.1.0 — inventário só com tickets que pedem atuação (sem resolvido/cancelado/fechado)
+ * VERSION: v1.1.0 | DATE: 2026-10-22
  */
 import { ChamadoN1 } from '../../models/ChamadoN1';
 import type { IChamadoN1 } from '../../models/ChamadoN1';
@@ -11,11 +11,11 @@ import {
 } from '../../models/AgentGestaoSnapshot';
 import { env } from '../../config/env';
 import {
-  activeTicketsStatusFilter,
   currentStatus,
   excludeEspeciaisChannelsMongoFilter,
   isSlaBreached,
   MEUS_CHAMADOS_COLUMNS,
+  mergeTerminalStatusVariants,
 } from '../chamado.mapper';
 
 export interface GestaoSnapshotAggregates {
@@ -113,9 +113,26 @@ const GESTAO_SNAPSHOT_PROJECTION = {
   tabulacao: { $slice: -1 },
 } as const;
 
+/**
+ * Tickets que ainda pedem atuação do gestor: último status fora de resolvido/cancelado/fechado. Resolvido já não é
+ * operado (o fechamento ocorre pelos gatilhos da plataforma e, se o cliente responder, o ticket volta a em-aberto e
+ * entra no snapshot seguinte). Usa o último registro, não o campo denormalizado `statusAtual`, que falta em tickets
+ * antigos e os faria parecer ativos.
+ */
+function needsManagementFilter(): Record<string, unknown> {
+  return {
+    $expr: {
+      $not: [{ $in: [
+        { $toLower: { $ifNull: [{ $arrayElemAt: ['$registro.status', -1] }, 'novo'] } },
+        mergeTerminalStatusVariants().map((s) => s.toLowerCase()),
+      ] }],
+    },
+  };
+}
+
 export async function fetchActiveTicketsLean(): Promise<IChamadoN1[]> {
   const rows = await ChamadoN1.find(
-    { $and: [activeTicketsStatusFilter(), excludeEspeciaisChannelsMongoFilter()] },
+    { $and: [needsManagementFilter(), excludeEspeciaisChannelsMongoFilter()] },
     GESTAO_SNAPSHOT_PROJECTION,
   )
     .sort({ updatedAt: -1 })
