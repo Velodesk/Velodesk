@@ -1304,7 +1304,8 @@ function filterCustomQueueEntries(customBox, searchQuery) {
  */
 export function isInAiAutonomousFlow(ticket) {
   const status = ticket?.aiAutomation?.status;
-  return status === 'aguardando_aprovacao' || status === 'em_revisao';
+  if (status !== 'aguardando_aprovacao' && status !== 'em_revisao') return false;
+  return !TERMINAL_TICKET_STATUSES.has(String(ticket?.status || '').trim().toLowerCase());
 }
 
 /** options.aiFlow: 'exclude' (padrão — filas dos agentes humanos) | 'only' (Área de IA). */
@@ -2475,5 +2476,6 @@ export { getAgentName };
 
 /** Ticket com resposta do agente autônomo pronta, aguardando a aprovação do auditor humano (Área de IA). */
 export function isPendingAiApproval(ticket) {
-  return ticket?.aiAutomation?.status === 'aguardando_aprovacao';
+  return ticket?.aiAutomation?.status === 'aguardando_aprovacao'
+    && !TERMINAL_TICKET_STATUSES.has(String(ticket?.status || '').trim().toLowerCase());
 }

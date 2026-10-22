@@ -20,7 +20,9 @@ export type AiUsageFeature =
   | 'chamado_ia_analise'
   | 'telephony_ia_analise'
   | 'assunto_semelhante'
-  | 'redes_sociais_classificacao';
+  | 'redes_sociais_classificacao'
+  | 'gratitude_gate_classificacao'
+  | 'gratitude_gate_auditoria';
 
 export interface IAiUsageLog extends Document {
   provider: AiUsageProvider;

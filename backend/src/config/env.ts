@@ -262,6 +262,15 @@ export const env = {
   openaiAuditVectorStoreId: (process.env.OPENAI_AUDIT_VECTOR_STORE_ID || '').trim(),
   openaiModel: (process.env.OPENAI_MODEL || 'gpt-4.1-mini').trim(),
   agentsEnabled: process.env.AGENTS_ENABLED === 'true',
+  /** Agente 1 + Agente 2 fechando sozinhos resposta de agradecimento a ticket Resolvido — flag
+   *  própria, independente de AGENTS_ENABLED, pra testar/ligar essa automação isoladamente sem
+   *  acender o resto do pipeline (sugestão de resposta na criação de ticket, etc.). */
+  gratitudeReplyGateEnabled: process.env.GRATITUDE_REPLY_GATE_ENABLED === 'true',
+  /** Nº de tickets diferentes em que a MESMA frase (normalizada) precisa ser confirmada pelos dois
+   *  agentes antes de virar exemplo "promovido" (entra na checagem rápida, sem custo de IA) — ver
+   *  GratitudeLearnedExample. Exigir repetição evita que 1 acerto duvidoso da IA vire regra
+   *  permanente sem segunda checada. */
+  gratitudeLearningPromotionThreshold: parseInt(process.env.GRATITUDE_LEARNING_PROMOTION_THRESHOLD || '3', 10),
   /** Agente 4 — triagem silenciosa de casos especiais na entrada do ticket (classificação só) */
   agentCasosEspeciaisEnabled: process.env.AGENT_CASOS_ESPECIAIS_ENABLED === 'true',
   /** Agente 5 — extração de campos (Procon/Bacen/Consumidor.gov) após a classificação do Agente 4 */

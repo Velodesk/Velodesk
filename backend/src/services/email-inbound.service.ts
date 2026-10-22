@@ -12,9 +12,9 @@ import {
   currentStatus,
   normalizeStatusValue,
   prependInboundDerivedTicketNote,
-  resolveInboundClientReplyStatus,
   shouldSpawnNewTicketOnInbound,
 } from './chamado.mapper';
+import { resolveInboundClientReplyStatusSmart } from './agents/gratitudeReplyGate.service';
 import { publishTicketEvent } from './presence/ticketEventsBroadcast.service';
 import {
   findOrCreateClienteFromCpfLookup,
@@ -851,7 +851,7 @@ async function runInboundEmailFlow(
   const attachments = attachmentUrls(payload);
 
   if (existing && !shouldSpawnNewTicketOnInbound(existing)) {
-    const statusOverride = resolveInboundClientReplyStatus(existing);
+    const statusOverride = await resolveInboundClientReplyStatusSmart(existing, bodyText);
     persistInboundEmailOnChamado(existing, payload, bodyText, attachments, emailMeta, statusOverride);
     const current = normalizeStatusValue(currentStatus(existing));
     if (statusOverride && statusOverride !== current) {

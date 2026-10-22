@@ -10,9 +10,9 @@ import {
   currentStatus,
   normalizeStatusValue,
   prependInboundDerivedTicketNote,
-  resolveInboundClientReplyStatus,
   shouldSpawnNewTicketOnInbound,
 } from '../chamado.mapper';
+import { resolveInboundClientReplyStatusSmart } from '../agents/gratitudeReplyGate.service';
 import { findClienteByPhone, resolveClienteRefFromBody } from '../cliente.service';
 import { fetchAndPersistInboundAttachmentFromUrl } from '../inboundAttachmentStorage.service';
 import { notifyTicketOpenedAsync } from '../emailNotification.service';
@@ -200,7 +200,7 @@ async function appendInboundReply(
 ): Promise<InboundTicketResult> {
   // Nota interna só é suportada nas origens chat e agente-ia — demais origens sempre respondem em público.
   const internal = (origin === 'chat' || origin === 'agente-ia') && payload.internal === true;
-  const statusOverride = internal ? undefined : resolveInboundClientReplyStatus(chamado);
+  const statusOverride = internal ? undefined : await resolveInboundClientReplyStatusSmart(chamado, payload.text);
   const metadados: Record<string, unknown> = {
     source: config.source,
     inboundTicketOrigin: origin,

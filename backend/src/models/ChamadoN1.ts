@@ -99,7 +99,9 @@ export type AiAutomationStatus =
   | 'em_revisao'
   | 'aprovada'
   | 'enviada_direto'
-  | 'encerrada_humano';
+  | 'encerrada_humano'
+  /** Ticket cancelado/resolvido/fechado por fora da fila (ex.: cancelado pelo atendente, mesclado). */
+  | 'cancelada';
 
 export interface IAiAutomationTabulacao {
   tipo: string;
@@ -345,7 +347,7 @@ const AiAutomationSchema = new Schema<IAiAutomation>(
   {
     status: {
       type: String,
-      enum: ['aguardando_aprovacao', 'em_revisao', 'aprovada', 'enviada_direto', 'encerrada_humano'],
+      enum: ['aguardando_aprovacao', 'em_revisao', 'aprovada', 'enviada_direto', 'encerrada_humano', 'cancelada'],
       required: true,
     },
     tentativas: { type: Number, default: 0 },
@@ -412,6 +414,16 @@ ChamadoN1Schema.index(
 ChamadoN1Schema.pre('save', function syncStatusAtual() {
   const registros = this.registro ?? [];
   this.statusAtual = (registros.length ? registros[registros.length - 1].status : '') || 'novo';
+});
+// Ticket encerrado (cancelado/resolvido/fechado/mesclado) enquanto aguardava aprovação humana: o item sai da fila.
+// Não mexe em 'em_revisao' (aprovação em andamento) nem em decisões já registradas.
+ChamadoN1Schema.pre('save', function closeAiAutomationWhenTerminal() {
+  const ai = this.aiAutomation;
+  if (ai?.status === 'aguardando_aprovacao' && ['resolvido', 'cancelado', 'fechado'].includes(String(this.statusAtual))) {
+    ai.status = 'cancelada';
+    ai.pendente = undefined;
+    ai.updatedAt = new Date();
+  }
 });
 // Callback de status do Twilio (POST /inbound/whatsapp/message-status) busca o ticket pelo
 // MessageSid a cada mudança de estado de cada mensagem enviada; sem índice era varredura completa.

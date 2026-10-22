@@ -26,6 +26,7 @@ const STATUSES: AiAutomationStatus[] = [
   'aprovada',
   'enviada_direto',
   'encerrada_humano',
+  'cancelada',
 ];
 
 function fail(res: Response, err: unknown) {

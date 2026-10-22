@@ -428,6 +428,19 @@ function sanitizeTicketDetailFlags(ticket) {
  * estado velho (ex.: ticket "resolvido" voltando a aparecer como "novo"). Nesse caso o status/
  * boxId/datas do preservado prevalecem; do contrário, o servidor é a fonte da verdade.
  */
+/**
+ * Estado do agente autônomo vem do servidor (a lista traz só status/tentativa). O que está em cache só mantém a
+ * resposta pendente (carregada no detalhe) enquanto for a mesma tentativa; senão ticket já aberto não entrava na
+ * fila da Área de IA até um F5, porque o merge preservava o objeto antigo (sem aiAutomation).
+ */
+function mergeAiAutomationState(prev, next) {
+  if (!next) return undefined;
+  if (prev?.pendente && Number(prev.pendente.tentativa) === Number(next.tentativa)) {
+    return { ...next, pendente: prev.pendente };
+  }
+  return next;
+}
+
 function mergePreservedDetails(prevCols, nextCols, fetchStartedAt = 0) {
   const preserved = new Map();
   (prevCols || []).forEach((box) => {
@@ -457,6 +470,7 @@ function mergePreservedDetails(prevCols, nextCols, fetchStartedAt = 0) {
         clientPhone: prev.clientPhone || ticket.clientPhone,
         clienteId: prev.clienteId || ticket.clienteId,
         responsibleAgent: ticket.responsibleAgent ?? prev.responsibleAgent,
+        aiAutomation: mergeAiAutomationState(prev.aiAutomation, ticket.aiAutomation),
         slaBreached: ticket.slaBreached ?? prev.slaBreached,
         // `null` é um valor válido pra slaTone/slaRemainingMinutes (status não rastreado) —
         // por isso não usa `??` aqui: cairia pro valor antigo do cache até num ticket que
