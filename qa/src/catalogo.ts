@@ -408,6 +408,15 @@ export const CATALOGO: CasoCatalogo[] = [
     objetivo: 'A rotina horária que dispara a pesquisa está rodando',
     esperado: 'Não há acúmulo de tickets resolvidos há mais de 4 dias sem pesquisa enviada',
   },
+  {
+    id: 'C08',
+    area: 'CSAT',
+    funcionalidade: 'CSAT sem envio em duplicidade',
+    objetivo: 'Nenhum cliente recebe a mesma pesquisa (ou o mesmo lembrete) mais de uma vez',
+    esperado: 'Nas últimas 24h, nenhum ticket tem mais de um envio de CSAT inicial nem mais de um de repescagem',
+    modos: ['oficial', 'vigilancia'],
+    resumoCurto: 'pesquisa enviada em duplicidade',
+  },
 
   // ── Erros ─────────────────────────────────────────────────────────────────
   {

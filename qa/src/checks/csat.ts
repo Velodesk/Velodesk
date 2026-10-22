@@ -1,5 +1,5 @@
 /**
- * checks/csat v1.0.0 — pesquisa de satisfação
+ * checks/csat v1.1.0 — pesquisa de satisfação (C08: envio em duplicidade)
  *
  * O envio real do CSAT é feito por uma rotina que roda de hora em hora e só
  * dispara 48 horas úteis depois da resolução — não dá para esperar isso numa
@@ -11,6 +11,7 @@ import type { Contexto } from '../contexto';
 import { colChamados, filtroStatusAtual, prepararCsatDoTicketQa, buscarComRetry } from '../db';
 import { ok, falha, parcial, bloqueado, comTicket } from '../resultado';
 
+const UM_DIA = 24 * 60 * 60 * 1000;
 const QUATRO_DIAS = 4 * 24 * 60 * 60 * 1000;
 const SETE_DIAS = 7 * 24 * 60 * 60 * 1000;
 
@@ -158,6 +159,55 @@ export async function checarCsat(ctx: Contexto): Promise<void> {
     return falha(
       `${atrasados} tickets resolvidos há mais de 4 dias sem pesquisa enviada. A rotina horária do CSAT ` +
         'parece parada ou o modelo de e-mail está inativo.',
+    );
+  });
+
+  // C08 — envio em duplicidade
+  await coletor.checar('C08', async () => {
+    if (!ctx.temBanco) return bloqueado('Sem acesso ao banco para conferir envios repetidos do CSAT.');
+    const col = await colChamados();
+    const desde = new Date(Date.now() - UM_DIA);
+    // Cada envio grava um registro com metadados.csatType ('inicial' | 'repescagem') — mais de um
+    // do mesmo tipo no ticket é e-mail repetido pro cliente (incidente de 22/10/2026).
+    const repetidos = await col
+      .aggregate([
+        { $match: { $or: [{ 'csat.enviadoEm': { $gte: desde } }, { 'csat.repescagemEnviadaEm': { $gte: desde } }] } },
+        {
+          $project: {
+            chamadoProtocolo: 1,
+            envios: {
+              $filter: {
+                input: { $ifNull: ['$registro', []] },
+                as: 'r',
+                cond: { $in: ['$$r.metadados.csatType', ['inicial', 'repescagem']] },
+              },
+            },
+          },
+        },
+        { $unwind: '$envios' },
+        { $group: { _id: { protocolo: '$chamadoProtocolo', tipo: '$envios.metadados.csatType' }, envios: { $sum: 1 } } },
+        { $match: { envios: { $gt: 1 } } },
+        { $sort: { envios: -1 } },
+      ])
+      .toArray();
+
+    const clientes = new Set(repetidos.map((r: any) => r._id.protocolo)).size;
+    const extras = repetidos.reduce((soma: number, r: any) => soma + r.envios - 1, 0);
+    coletor.metrica({
+      nome: 'CSAT enviados em duplicidade (24h)',
+      valor: extras,
+      situacao: extras > 0 ? 'Alerta' : 'Normal',
+    });
+    if (!repetidos.length) return ok('Nenhum ticket recebeu a pesquisa ou o lembrete mais de uma vez nas últimas 24h.');
+
+    const exemplos = repetidos
+      .slice(0, 5)
+      .map((r: any) => `${r._id.protocolo} (${r._id.tipo === 'repescagem' ? 'lembrete' : 'pesquisa'} ${r.envios}x)`)
+      .join(', ');
+    return falha(
+      `${clientes} cliente(s) receberam a pesquisa de satisfação repetida nas últimas 24h ` +
+        `(${extras} e-mail(s) a mais). Ex.: ${exemplos}. Verifique se mais de uma instância ` +
+        'rodou a rotina do CSAT ao mesmo tempo.',
     );
   });
 }
