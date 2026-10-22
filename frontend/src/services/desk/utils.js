@@ -2200,6 +2200,14 @@ function emailAutomaticoNomeFromEntry(entry) {
   return nome || null;
 }
 
+/** Rótulo do evento de envio — CSAT (metadados.csatType, ver csatEmail.service) tem nome próprio. */
+function emailAutomaticoBadgeFromEntry(entry, nome) {
+  const csatType = String(entry?.metadados?.csatType ?? '').trim();
+  if (csatType === 'inicial') return 'Pesquisa de satisfação enviada';
+  if (csatType === 'repescagem') return 'Lembrete da pesquisa de satisfação enviado';
+  return `Mensagem Automática Enviada: ${nome}`;
+}
+
 /** Recebimento da avaliação CSAT (ver csat.routes.ts) é um evento em si — a nota/
  * comentário do cliente é que fica só na aba Notas via anotacaoInterna. Usa o
  * metadado estruturado, nunca o texto, pra Eventos não vazar conteúdo de nota. */
@@ -2212,8 +2220,11 @@ function csatNotaFromEntry(entry) {
  * (sem outra mudança junto) pertence só à aba Notas (buildInternalNotesOnlyFeed),
  * nunca às duas. */
 function shouldShowSupervisorRegistroOccurrence(entry, previousTabulationState, prevStatus) {
-  if (!isAgentRegistroEntry(entry)) return false;
+  // E-mail automático vem antes do filtro de origem: o registro é gravado com origin 'sistema',
+  // que o backend não reconhece e, por ter mensagemPublica, mapeia pra 'cliente' — o envio
+  // (inclusive CSAT em duplicidade) sumia da aba Eventos.
   if (emailAutomaticoNomeFromEntry(entry) !== null) return true;
+  if (!isAgentRegistroEntry(entry)) return false;
   if (csatNotaFromEntry(entry) !== null) return true;
 
   const { tabulationChanges, statusChanged } = collectRegistroOccurrenceData(
@@ -2237,7 +2248,7 @@ function mapSupervisorRegistroOccurrence(entry, ticket, client, previousTabulati
       kind: 'email-automatico',
       author: 'Sistema',
       initials: 'SY',
-      badge: `Mensagem Automática Enviada: ${emailAutomaticoNome}`,
+      badge: emailAutomaticoBadgeFromEntry(entry, emailAutomaticoNome),
       timestamp: entry.time || entry.timestamp || ticket.updatedAt,
       ticketId,
       ticketTitle: getTicketTitle(ticket),
@@ -2281,9 +2292,15 @@ function buildAgentInternalNotesFeed(ticket) {
 
   normalizeTicketForDeskV2(ticket);
 
-  const pushMappedNote = (mappedNote) => {
+  const pushMappedNote = (mappedNote, registroIndex) => {
     if (!mappedNote || seen.has(mappedNote.id)) return;
-    const bodyKey = String(mappedNote.body || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const bodyText = String(mappedNote.body || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    // A mesma anotação chega duas vezes (internalNotes e registroHistorico) e o texto igual junta
+    // as cópias. E-mail automático é exceção: dois envios do mesmo modelo têm texto idêntico e
+    // são eventos distintos (ex.: CSAT em duplicidade) — junta só as cópias do mesmo registro.
+    const bodyKey = bodyText.startsWith('Mensagem Automática Enviada:') && registroIndex != null
+      ? `email-automatico:${registroIndex}`
+      : bodyText;
     if (bodyKey && seenBody.has(bodyKey)) return;
     seen.add(mappedNote.id);
     if (bodyKey) seenBody.add(bodyKey);
@@ -2291,7 +2308,7 @@ function buildAgentInternalNotesFeed(ticket) {
   };
 
   (ticket.internalNotes || []).forEach((note) => {
-    pushMappedNote(mapAgentInternalNote(note, ticket));
+    pushMappedNote(mapAgentInternalNote(note, ticket), note.registroIndex);
   });
 
   (ticket.registroHistorico || ticket.registroAlteracoes || []).forEach((entry, index) => {
@@ -2302,7 +2319,7 @@ function buildAgentInternalNotesFeed(ticket) {
       text,
       timestamp: entry.time || entry.timestamp,
       author: entry.autor,
-    }, ticket));
+    }, ticket), entry.registroIndex);
   });
 
   getWorkflowInfoRequestsForTicket(ticket).forEach((req) => {
