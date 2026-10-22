@@ -8,7 +8,7 @@ import CgClassificacaoFields from './CgClassificacaoFields';
 import CgResponsavelCard from './CgResponsavelCard';
 import EspeciaisTicketSideFooter from '../shared/EspeciaisTicketSideFooter';
 
-export default function CgTicketSide({
+function CgTicketSide({
   cgItem,
   ticket,
   waChatOpen = false,
@@ -65,3 +65,5 @@ export default function CgTicketSide({
     </aside>
   );
 }
+
+export default React.memo(CgTicketSide);

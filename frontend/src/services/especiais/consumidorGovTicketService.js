@@ -16,6 +16,7 @@ import {
   getDemandaById,
   getDemandaByTicketId,
   mirrorDemandaFromTicket,
+  patchDemanda,
   refreshDemandasFromApi,
   updateDemandaGroupFromTicket,
 } from './consumidorGovStore';
@@ -174,7 +175,12 @@ export async function ensureCgTicketForRespond(cgItem) {
     throw new Error('Demanda inválida.');
   }
 
-  const current = getDemandaById(cgItem.id) || cgItem;
+  let current = getDemandaById(cgItem.id);
+  if (!current) {
+    // item vindo de busca global (fora da lista da API): fixa no cache antes de abrir a visão do ticket
+    patchDemanda(cgItem);
+    current = cgItem;
+  }
 
   if (current.ticketId) {
     const view = await fetchCgTicketView(current.id);

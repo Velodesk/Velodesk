@@ -11,7 +11,7 @@ import RaResponsavelCard from './RaResponsavelCard';
 import RaRelatedTicketsCard from './RaRelatedTicketsCard';
 import EspeciaisTicketSideFooter from '../shared/EspeciaisTicketSideFooter';
 
-export default function RaTicketSide({
+function RaTicketSide({
   raItem,
   ticket,
   waChatOpen = false,
@@ -94,3 +94,5 @@ export default function RaTicketSide({
     </aside>
   );
 }
+
+export default React.memo(RaTicketSide);

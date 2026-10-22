@@ -19,6 +19,7 @@ import {
 import { isInitialMessageAnswered, markInitialMessageAnswered } from '../../../services/especiais/initialMessagePrompt';
 import { getAgentName } from '../../../services/clientDb';
 import { useEspeciaisTicketCommit } from '../shared/useEspeciaisTicketCommit';
+import { publishLiveTicket } from '../../../services/especiais/liveTicketStore';
 import { useEspeciaisDualSearch } from '../shared/useEspeciaisDualSearch';
 import PcQueuePanel from './PcQueuePanel';
 import PcTicketList from './PcTicketList';
@@ -120,6 +121,39 @@ export default function ProconCrmRoot() {
     return items;
   }, [allItems, activeGroup, activeSort, listSearchDraft, isRemoteSearch]);
 
+  // Refresh de fundo nunca deve mexer na tela: só aplica dado novo quando o conteúdo realmente
+  // mudou (mantém a mesma referência senão) e jamais redireciona/limpa o ticket em atendimento.
+  const ticketRef = useRef(null);
+  const pcItemRef = useRef(null);
+  const sameData = (a, b) => {
+    if (a === b) return true;
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return false;
+    }
+  };
+
+  // Campos que mudam quando chega mensagem/nota nova: vão só pela store externa (re-render restrito
+  // à lista de mensagens), nunca por setTicket — que re-renderizaria o ticket inteiro.
+  const withoutThread = (tk) => {
+    if (!tk) return tk;
+    const { messages, internalNotes, registroHistorico, updatedAt, ...rest } = tk;
+    return rest;
+  };
+
+  const applyTicket = useCallback((next) => {
+    if (!next) return;
+    const prev = ticketRef.current;
+    publishLiveTicket(next);
+    if (prev && String(prev.id) === String(next.id) && sameData(withoutThread(prev), withoutThread(next))) {
+      ticketRef.current = next;
+      return;
+    }
+    ticketRef.current = next;
+    setTicket(next);
+  }, []);
+
   const reloadTicket = useCallback(async (silent = false) => {
     if (!id) {
       setPcItem(null);
@@ -129,12 +163,14 @@ export default function ProconCrmRoot() {
       return;
     }
 
-    if (!silent) setTicketLoading(true);
-    setRedirectTo(null);
+    if (!silent) {
+      setTicketLoading(true);
+      setRedirectTo(null);
+    }
     try {
       const view = await fetchPcTicketView(id);
       if (!view?.pcItem) {
-        if (!syncedOnceRef.current) {
+        if (silent || !syncedOnceRef.current) {
           // ainda sincronizando com a API — mantém o loading e tenta de novo quando os dados chegarem
           return;
         }
@@ -145,16 +181,20 @@ export default function ProconCrmRoot() {
         return;
       }
       if (!view.pcItem.ticketId) {
+        if (silent) return;
         setTicketLoading(false);
         setRedirectTo(`/especiais/procon/registro/${view.pcItem.id}`);
         return;
       }
-      setPcItem(view.pcItem);
-      setTicket(view.ticket);
-      if (view.pcItem.groupKey) {
+      applyTicket(view.ticket);
+      if (!sameData(pcItemRef.current, view.pcItem)) {
+        pcItemRef.current = view.pcItem;
+        setPcItem(view.pcItem);
+      }
+      if (!silent && view.pcItem.groupKey) {
         setActiveGroup(view.pcItem.groupKey);
       }
-      if (!silent) setTicketLoading(false);
+      setTicketLoading(false);
     } catch {
       if (silent) return;
       showNotification('Não foi possível carregar o ticket.', 'error');
@@ -162,17 +202,37 @@ export default function ProconCrmRoot() {
       setTicket(null);
       setTicketLoading(false);
     }
-  }, [id, showNotification]);
+  }, [id, showNotification, applyTicket]);
 
   // listVersion sobe tanto por navegação real (troca de ticket) quanto por sincronizações de
   // fundo (mensagem WhatsApp enviada, salvar/finalizar) — só a primeira precisa do spinner de
   // tela cheia; as demais devem atualizar os dados sem re-exibir "Carregando ticket...".
+  useEffect(() => { ticketRef.current = ticket; }, [ticket]);
+  useEffect(() => { pcItemRef.current = pcItem; }, [pcItem]);
+
   const lastLoadedIdRef = useRef(null);
   useEffect(() => {
     const isSameTicket = lastLoadedIdRef.current === id;
     lastLoadedIdRef.current = id;
     reloadTicket(isSameTicket);
   }, [reloadTicket, listVersion, id]);
+
+  // Tempo real do ticket aberto: puxa o ticket em silêncio; mensagem nova entra pela store externa
+  // (sem re-render do ticket). Pausa com a aba oculta e nunca sobrepõe duas buscas.
+  useEffect(() => {
+    if (!id) return undefined;
+    let busy = false;
+    const timer = setInterval(async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      try {
+        await reloadTicket(true);
+      } finally {
+        busy = false;
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [id, reloadTicket]);
 
   useEffect(() => {
     setWaChatOpen(false);
@@ -199,13 +259,13 @@ export default function ProconCrmRoot() {
   }), [composeText, internalText, composeAttachments, classificacaoDraft]);
 
   const handleCommitSaved = useCallback((result) => {
-    setTicket(result.ticket);
+    applyTicket(result.ticket);
     if (result.channelItem) setPcItem(result.channelItem);
     setListVersion((v) => v + 1);
   }, []);
 
   const handleCommitFinalized = useCallback((result) => {
-    setTicket(result.ticket);
+    applyTicket(result.ticket);
     if (result.channelItem) setPcItem(result.channelItem);
     setActiveGroup('finalizadas');
     setListVersion((v) => v + 1);
@@ -233,7 +293,7 @@ export default function ProconCrmRoot() {
   }, [navigate]);
 
   const handleTicketUpdated = useCallback((updatedTicket) => {
-    setTicket(updatedTicket);
+    applyTicket(updatedTicket);
     setListVersion((v) => v + 1);
   }, []);
 
@@ -269,7 +329,7 @@ export default function ProconCrmRoot() {
         agentName: getAgentName(),
       });
       const updated = await sendPcWaMessage(ticketId, text, ticket);
-      if (updated) setTicket(updated);
+      if (updated) applyTicket(updated);
       markInitialMessageAnswered('Pc', ticketId);
       setInitialMessageAnsweredLocally(true);
       showNotification('Mensagem inicial enviada ao cliente.', 'success');
@@ -293,6 +353,13 @@ export default function ProconCrmRoot() {
     setListCollapsed(collapsed);
     localStorage.setItem('velodeskPcListCollapsed', collapsed ? '1' : '0');
   }, []);
+
+  const initialMessagePrompt = useMemo(
+    () => (showInitialMessagePrompt
+      ? { onSend: handleSendInitialMessage, busy: initialMessageBusy }
+      : null),
+    [showInitialMessagePrompt, handleSendInitialMessage, initialMessageBusy],
+  );
 
   if (redirectTo) {
     return <Navigate to={redirectTo} replace />;
@@ -361,9 +428,7 @@ export default function ProconCrmRoot() {
         finalized={finalized}
         onClassificacaoDraftChange={handleClassificacaoDraftChange}
         onPcItemUpdated={handlePcItemUpdated}
-        initialMessagePrompt={showInitialMessagePrompt
-          ? { onSend: handleSendInitialMessage, busy: initialMessageBusy }
-          : null}
+        initialMessagePrompt={initialMessagePrompt}
       />
 
       {demandaModals}

@@ -8,7 +8,7 @@ import BcClassificacaoFields from './BcClassificacaoFields';
 import BcResponsavelCard from './BcResponsavelCard';
 import EspeciaisTicketSideFooter from '../shared/EspeciaisTicketSideFooter';
 
-export default function BcTicketSide({
+function BcTicketSide({
   bcItem,
   ticket,
   waChatOpen = false,
@@ -65,3 +65,5 @@ export default function BcTicketSide({
     </aside>
   );
 }
+
+export default React.memo(BcTicketSide);

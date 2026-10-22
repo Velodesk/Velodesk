@@ -25,6 +25,9 @@ const GROUP_OPTS = {
 };
 
 let memoryCache = null;
+// Itens abertos por busca global/Responder que não vêm na lista da API (refreshDemandasFromApi
+// substitui o cache inteiro). Só servem de fallback na abertura por id — não entram em listas/contagens.
+const pinnedItems = new Map();
 
 function ensureNormalizedCache(items) {
   const normalized = items.map((item) => normalizeEspeciaisItemGroup(item, GROUP_OPTS));
@@ -354,7 +357,7 @@ export function createEmptyDemanda() {
 
 export function getDemandaById(id) {
   const items = loadAllDemandas();
-  const found = items.find((i) => i.id === id);
+  const found = items.find((i) => i.id === id) || pinnedItems.get(id);
   if (!found) return null;
   return { ...found, ...buildRegistroDefaults(found) };
 }
@@ -376,7 +379,8 @@ export function getDemandaByTicketId(ticketId) {
   if (!ticketId) return null;
   const id = String(ticketId);
   const items = loadAllDemandas();
-  const found = items.find((i) => String(i.ticketId || '') === id);
+  const found = items.find((i) => String(i.ticketId || '') === id)
+    || [...pinnedItems.values()].find((i) => String(i.ticketId || '') === id);
   if (!found) return null;
   return { ...found, ...buildRegistroDefaults(found) };
 }
@@ -395,6 +399,7 @@ function upsertDemanda(item) {
     items.unshift(normalized);
   }
   writeAll(items);
+  pinnedItems.set(normalized.id, normalized);
   return normalized;
 }
 

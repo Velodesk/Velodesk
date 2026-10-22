@@ -9,6 +9,7 @@ import { useNotifications } from '../../../context/NotificationContext';
 import { useCgNovaDemandaModals } from '../../../hooks/useCgNovaDemandaModals';
 import { CG_GROUPS } from '../../../services/especiais/consumidorGovData';
 import { loadDemandas, searchDemandasFromApi } from '../../../services/especiais/consumidorGovStore';
+import { publishLiveTicket } from '../../../services/especiais/liveTicketStore';
 import {
   buildCgInitialGreetingMessage,
   cgTicketHasAgentReply,
@@ -120,6 +121,39 @@ export default function ConsumidorGovCrmRoot() {
     return items;
   }, [allItems, activeGroup, activeSort, listSearchDraft, isRemoteSearch]);
 
+  // Refresh de fundo nunca deve mexer na tela: só aplica dado novo quando o conteúdo realmente
+  // mudou (mantém a mesma referência senão) e jamais redireciona/limpa o ticket em atendimento.
+  const ticketRef = useRef(null);
+  const cgItemRef = useRef(null);
+  const sameData = (a, b) => {
+    if (a === b) return true;
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return false;
+    }
+  };
+
+  // Campos que mudam quando chega mensagem/nota nova: vão só pela store externa (re-render restrito
+  // à lista de mensagens), nunca por setTicket — que re-renderizaria o ticket inteiro.
+  const withoutThread = (t) => {
+    if (!t) return t;
+    const { messages, internalNotes, registroHistorico, updatedAt, ...rest } = t;
+    return rest;
+  };
+
+  const applyTicket = useCallback((next) => {
+    if (!next) return;
+    const prev = ticketRef.current;
+    publishLiveTicket(next);
+    if (prev && String(prev.id) === String(next.id) && sameData(withoutThread(prev), withoutThread(next))) {
+      ticketRef.current = next;
+      return;
+    }
+    ticketRef.current = next;
+    setTicket(next);
+  }, []);
+
   const reloadTicket = useCallback(async (silent = false) => {
     if (!id) {
       setCgItem(null);
@@ -129,13 +163,15 @@ export default function ConsumidorGovCrmRoot() {
       return;
     }
 
-    if (!silent) setTicketLoading(true);
-    setRedirectTo(null);
+    if (!silent) {
+      setTicketLoading(true);
+      setRedirectTo(null);
+    }
     try {
       const view = await fetchCgTicketView(id);
       if (!view?.cgItem) {
-        if (!syncedOnceRef.current) {
-          // ainda sincronizando com a API — mantém o loading e tenta de novo quando os dados chegarem
+        if (silent || !syncedOnceRef.current) {
+          // sync de fundo (ou ainda sincronizando): mantém o que está na tela
           return;
         }
         setCgItem(null);
@@ -145,16 +181,20 @@ export default function ConsumidorGovCrmRoot() {
         return;
       }
       if (!view.cgItem.ticketId) {
+        if (silent) return;
         setTicketLoading(false);
         setRedirectTo(`/especiais/consumidor-gov/registro/${view.cgItem.id}`);
         return;
       }
-      setCgItem(view.cgItem);
-      setTicket(view.ticket);
-      if (view.cgItem.groupKey) {
+      applyTicket(view.ticket);
+      if (!silent || !sameData(cgItemRef.current, view.cgItem)) {
+        cgItemRef.current = view.cgItem;
+        setCgItem(view.cgItem);
+      }
+      if (!silent && view.cgItem.groupKey) {
         setActiveGroup(view.cgItem.groupKey);
       }
-      if (!silent) setTicketLoading(false);
+      setTicketLoading(false);
     } catch {
       if (silent) return;
       showNotification('Não foi possível carregar o ticket.', 'error');
@@ -162,17 +202,37 @@ export default function ConsumidorGovCrmRoot() {
       setTicket(null);
       setTicketLoading(false);
     }
-  }, [id, showNotification]);
+  }, [id, showNotification, applyTicket]);
 
   // listVersion sobe tanto por navegação real (troca de ticket) quanto por sincronizações de
   // fundo (mensagem WhatsApp enviada, salvar/finalizar) — só a primeira precisa do spinner de
   // tela cheia; as demais devem atualizar os dados sem re-exibir "Carregando ticket...".
+  useEffect(() => { ticketRef.current = ticket; }, [ticket]);
+  useEffect(() => { cgItemRef.current = cgItem; }, [cgItem]);
+
   const lastLoadedIdRef = useRef(null);
   useEffect(() => {
     const isSameTicket = lastLoadedIdRef.current === id;
     lastLoadedIdRef.current = id;
     reloadTicket(isSameTicket);
   }, [reloadTicket, listVersion, id]);
+
+  // Tempo real do ticket aberto: puxa o ticket em silêncio; mensagem nova entra pela store externa
+  // (sem re-render do ticket). Pausa com a aba oculta e nunca sobrepõe duas buscas.
+  useEffect(() => {
+    if (!id) return undefined;
+    let busy = false;
+    const timer = setInterval(async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      try {
+        await reloadTicket(true);
+      } finally {
+        busy = false;
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [id, reloadTicket]);
 
   useEffect(() => {
     setWaChatOpen(false);
@@ -199,13 +259,13 @@ export default function ConsumidorGovCrmRoot() {
   }), [composeText, internalText, composeAttachments, classificacaoDraft]);
 
   const handleCommitSaved = useCallback((result) => {
-    setTicket(result.ticket);
+    applyTicket(result.ticket);
     if (result.channelItem) setCgItem(result.channelItem);
     setListVersion((v) => v + 1);
   }, []);
 
   const handleCommitFinalized = useCallback((result) => {
-    setTicket(result.ticket);
+    applyTicket(result.ticket);
     if (result.channelItem) setCgItem(result.channelItem);
     setActiveGroup('finalizadas');
     setListVersion((v) => v + 1);
@@ -233,7 +293,7 @@ export default function ConsumidorGovCrmRoot() {
   }, [navigate]);
 
   const handleTicketUpdated = useCallback((updatedTicket) => {
-    setTicket(updatedTicket);
+    applyTicket(updatedTicket);
     setListVersion((v) => v + 1);
   }, []);
 
@@ -269,7 +329,7 @@ export default function ConsumidorGovCrmRoot() {
         agentName: getAgentName(),
       });
       const updated = await sendCgWaMessage(ticketId, text, ticket);
-      if (updated) setTicket(updated);
+      if (updated) applyTicket(updated);
       markInitialMessageAnswered('Cg', ticketId);
       setInitialMessageAnsweredLocally(true);
       showNotification('Mensagem inicial enviada ao cliente.', 'success');
@@ -279,6 +339,13 @@ export default function ConsumidorGovCrmRoot() {
       setInitialMessageBusy(false);
     }
   }, [cgItem?.ticketId, ticket, showNotification]);
+
+  const initialMessagePrompt = useMemo(
+    () => (showInitialMessagePrompt
+      ? { onSend: handleSendInitialMessage, busy: initialMessageBusy }
+      : null),
+    [showInitialMessagePrompt, handleSendInitialMessage, initialMessageBusy],
+  );
 
   const handleQueueCollapse = useCallback((collapsed) => {
     setQueueCollapsed(collapsed);
@@ -361,9 +428,7 @@ export default function ConsumidorGovCrmRoot() {
         finalized={finalized}
         onClassificacaoDraftChange={handleClassificacaoDraftChange}
         onCgItemUpdated={handleCgItemUpdated}
-        initialMessagePrompt={showInitialMessagePrompt
-          ? { onSend: handleSendInitialMessage, busy: initialMessageBusy }
-          : null}
+        initialMessagePrompt={initialMessagePrompt}
       />
 
       {demandaModals}

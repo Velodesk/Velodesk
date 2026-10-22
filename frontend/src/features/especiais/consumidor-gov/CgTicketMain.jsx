@@ -14,7 +14,7 @@ import {
   sendCgWaMessage,
 } from '../../../services/especiais/consumidorGovTicketService';
 
-export default function CgTicketMain({
+function CgTicketMain({
   cgItem,
   ticket,
   loading,
@@ -129,3 +129,5 @@ export default function CgTicketMain({
     />
   );
 }
+
+export default React.memo(CgTicketMain);
