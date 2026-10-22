@@ -25,6 +25,7 @@
  * humana pra essa ação, a nota é o registro de auditoria).
  */
 import { env } from '../../config/env';
+import { handBackToHumansOnClientReply } from './autonomousHandback.util';
 import type { IChamadoN1 } from '../../models/ChamadoN1';
 import {
   appendMessage,
@@ -354,7 +355,20 @@ function logGratitudeClosure(
  * capaz de, no caso específico "ticket estava Resolvido", reconhecer que a resposta do cliente é
  * só agradecimento e manter undefined (sem reabrir) em vez do "em-aberto" padrão.
  */
+/**
+ * Resposta que reabre o ticket e foi dada pelo agente autônomo antes: a continuação é de um humano (roleta).
+ * Os três pontos de entrada (WhatsApp, e-mail, inbound-ticket) salvam o chamado logo depois desta chamada.
+ */
 export async function resolveInboundClientReplyStatusSmart(
+  chamado: IChamadoN1,
+  replyText: string,
+): Promise<string | undefined> {
+  const status = await resolveReplyStatus(chamado, replyText);
+  if (status) await handBackToHumansOnClientReply(chamado);
+  return status;
+}
+
+async function resolveReplyStatus(
   chamado: IChamadoN1,
   replyText: string,
 ): Promise<string | undefined> {

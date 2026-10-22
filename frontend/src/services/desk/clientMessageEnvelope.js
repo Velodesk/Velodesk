@@ -20,14 +20,14 @@ function resolveClientGreetingName(clientName) {
 
 /** Identidade fixa do agente autônomo de IA (espelha backend/src/config/agenteAutonomo.ts). */
 export const AGENTE_AUTONOMO_RESPONSAVEL = 'Agente Autônomo';
-export const AGENTE_AUTONOMO_ENVELOPE_NOME = 'CláudIA';
+export const AGENTE_AUTONOMO_ENVELOPE_NOME = 'Cláudia';
 
 function normalizeLabel(value) {
   return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 }
 
 /**
- * Ticket tratado pelo agente autônomo (responsável = "Agente Autônomo") se apresenta como CláudIA,
+ * Ticket tratado pelo agente autônomo (responsável = "Agente Autônomo") se apresenta como Cláudia,
  * nunca com o nome de quem está logado.
  */
 export function resolveEnvelopeAgentName(ticket, agentName) {
