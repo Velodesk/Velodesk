@@ -9,6 +9,7 @@
  * Consumidor.gov, que rodam antes, no e-mail inbound). Campos que a LLM não encontrar ficam em
  * branco mesmo, para preenchimento manual do responsável pela ocorrência.
  */
+import { reasoningParams } from './openaiAgent.util';
 import { Types } from 'mongoose';
 import type { IChamadoN1 } from '../../models/ChamadoN1';
 import { env } from '../../config/env';
@@ -251,6 +252,7 @@ export async function extractCasosEspeciaisFields(params: {
     const openai = createOpenAiClient();
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: personaFn() },
         { role: 'user', content: buildUserBlock(chamado, canalLabel, tabConfig) },

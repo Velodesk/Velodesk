@@ -2,6 +2,7 @@
  * gestaoChamadosAgent.service v1.1.0 — ciclo horário com snapshot completo de tickets ativos
  * VERSION: v1.1.0 | DATE: 2026-07-14
  */
+import { reasoningParams } from './openaiAgent.util';
 import { AgentGestaoAlert } from '../../models/AgentGestaoAlert';
 import { env } from '../../config/env';
 import { chamadoToTicket } from '../chamado.mapper';
@@ -164,6 +165,7 @@ export async function runGestaoChamadosCycle(): Promise<{
         const openai = createOpenAiClient();
         const response = await openai.responses.create({
           model: env.openaiModel,
+          ...reasoningParams(),
           input: [
             { role: 'system', content: getGestaoChamadosPersona() },
             { role: 'user', content: buildGestaoUserBlock(snapshot) },

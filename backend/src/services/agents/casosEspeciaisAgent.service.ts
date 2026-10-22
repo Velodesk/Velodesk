@@ -2,6 +2,7 @@
  * casosEspeciaisAgent.service v1.0.0 — classificação LLM do Agente 4
  * VERSION: v1.0.0 | DATE: 2026-08-07
  */
+import { reasoningParams } from './openaiAgent.util';
 import type { IChamadoN1 } from '../../models/ChamadoN1';
 import { env } from '../../config/env';
 import { adaptChamadoToTicketIa, buildTicketIaText } from '../ticketIaAdapter.service';
@@ -80,6 +81,7 @@ export async function classifyCasosEspeciais(params: {
 
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: getCasosEspeciaisPersona() },
         { role: 'user', content: userBlock },

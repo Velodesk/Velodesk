@@ -260,7 +260,9 @@ export const env = {
   ).trim(),
   openaiPublicVectorStoreId: (process.env.OPENAI_PUBLIC_VECTOR_STORE_ID || '').trim(),
   openaiAuditVectorStoreId: (process.env.OPENAI_AUDIT_VECTOR_STORE_ID || '').trim(),
-  openaiModel: (process.env.OPENAI_MODEL || 'gpt-4.1-mini').trim(),
+  openaiModel: (process.env.OPENAI_MODEL || 'gpt-6-luna').trim(),
+  /** Esforço de raciocínio dos modelos gpt-5/gpt-6 (none|low|medium|high). Menor = mais rápido e barato. Ignorado em outros modelos. */
+  openaiReasoningEffort: (process.env.OPENAI_REASONING_EFFORT || 'low').trim(),
   agentsEnabled: process.env.AGENTS_ENABLED === 'true',
   /** Agente 1 + Agente 2 fechando sozinhos resposta de agradecimento a ticket Resolvido — flag
    *  própria, independente de AGENTS_ENABLED, pra testar/ligar essa automação isoladamente sem
@@ -312,7 +314,7 @@ export const env = {
   /** Batch periódico de re-varredura da IA de telefonia (sort pesado em telephony_calls).
    * Desativado por padrão: cada ligação já é classificada na chegada (telephonyInbound). */
   telephonyIaBatchEnabled: process.env.TELEPHONY_IA_BATCH_ENABLED === 'true',
-  chamadoIaAnaliseModel: (process.env.CHAMADO_IA_ANALISE_MODEL || 'gpt-5-mini').trim(),
+  chamadoIaAnaliseModel: (process.env.CHAMADO_IA_ANALISE_MODEL || 'gpt-6-luna').trim(),
   chamadoIaAnaliseIntervalMs: parseInt(process.env.CHAMADO_IA_ANALISE_INTERVAL_MS || '900000', 10),
   chamadoIaAnaliseMaxPerCycle: parseInt(process.env.CHAMADO_IA_ANALISE_MAX_PER_CYCLE || '60', 10),
   ticketSequenceFloor: (process.env.TICKET_SEQUENCE_FLOOR || '100177678').trim(),

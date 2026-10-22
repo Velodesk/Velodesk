@@ -2,6 +2,7 @@
  * criticidadeTriagem.service v1.0.0 — avalia se palavra-chave crítica detectada por regex
  * (criticalKeywords.service) representa ameaça real antes do handoff mecânico pro Agente Gestor.
  */
+import { reasoningParams } from './openaiAgent.util';
 import { env } from '../../config/env';
 import { getCriticidadeTriagemPersona } from './personas/criticidadeTriagemPersona';
 import {
@@ -56,6 +57,7 @@ export async function avaliarAmeacaCritica(
     const openai = createOpenAiClient();
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: getCriticidadeTriagemPersona() },
         {

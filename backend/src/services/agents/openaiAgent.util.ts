@@ -26,6 +26,17 @@ export function createOpenAiClient(): OpenAI {
   return clientInstance;
 }
 
+/**
+ * Parâmetro de raciocínio das chamadas à OpenAI. Os modelos gpt-5/gpt-6 raciocinam por padrão (esforço "medium": lento e
+ * mais caro); aqui fixamos o esforço configurado. Em modelos sem raciocínio (gpt-4.x) o parâmetro não é enviado.
+ */
+export function reasoningParams(): { reasoning?: { effort: 'low' | 'medium' | 'high' } } {
+  if (!/^gpt-[56]/i.test(env.openaiModel)) return {};
+  const effort = ['none', 'low', 'medium', 'high'].includes(env.openaiReasoningEffort) ? env.openaiReasoningEffort : 'low';
+  // O SDK instalado ainda não tipa "none" (aceito pelo gpt-6); o valor segue como string normalmente.
+  return { reasoning: { effort: effort as 'low' } };
+}
+
 export function trimStr(value: unknown, maxLen: number): string {
   const s = String(value ?? '').trim();
   if (!s) return '';

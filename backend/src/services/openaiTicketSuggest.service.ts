@@ -4,6 +4,7 @@
  * nenhuma chamada de LLM
  * VERSION: v1.5.0 | DATE: 2026-09-02
  */
+import { reasoningParams } from './agents/openaiAgent.util';
 import OpenAI from 'openai';
 import { env } from '../config/env';
 import { ChamadoN1, type IChamadoN1 } from '../models/ChamadoN1';
@@ -451,6 +452,7 @@ export async function generateTicketAiSuggest(
 
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userBlock },

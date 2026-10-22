@@ -24,6 +24,7 @@
  * não. Toda decisão de manter resolvido vira nota interna no ticket (sem fila de aprovação
  * humana pra essa ação, a nota é o registro de auditoria).
  */
+import { reasoningParams } from './openaiAgent.util';
 import { env } from '../../config/env';
 import { handBackToHumansOnClientReply } from './autonomousHandback.util';
 import type { IChamadoN1 } from '../../models/ChamadoN1';
@@ -222,6 +223,7 @@ export async function classifyGratitudeOnly(
     const openai = createOpenAiClient();
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: CLASSIFY_SYSTEM_PROMPT },
         { role: 'user', content: buildClassifyPrompt(replyText) },
@@ -294,6 +296,7 @@ export async function auditGratitudeClosure(
     const openai = createOpenAiClient();
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: AUDIT_SYSTEM_PROMPT },
         { role: 'user', content: buildAuditPrompt(replyText, classification) },

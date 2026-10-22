@@ -1,5 +1,6 @@
 /** classificacaoComentario.service v1.0.0 — classifica comentário/avaliação de rede social
  * (sentimento + motivo) via OpenAI, mesmo padrão dos demais agentes do Velodesk. */
+import { reasoningParams } from '../agents/openaiAgent.util';
 import { env } from '../../config/env';
 import {
   createOpenAiClient,
@@ -68,6 +69,7 @@ export async function classificarComentario(
     const openai = createOpenAiClient();
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: PERSONA },
         { role: 'user', content: buildUserBlock(comentario) },

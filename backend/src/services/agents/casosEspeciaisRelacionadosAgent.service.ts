@@ -2,6 +2,7 @@
  * casosEspeciaisRelacionadosAgent.service v1.1.0 — Agente 6 (renumerado), correlação LLM de tickets relacionados
  * VERSION: v1.1.0 | DATE: 2026-09-15
  */
+import { reasoningParams } from './openaiAgent.util';
 import { env } from '../../config/env';
 import {
   createOpenAiClient,
@@ -81,6 +82,7 @@ export async function classifyCasosEspeciaisRelacionados(params: {
 
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: getCasosEspeciaisRelacionadosPersona() },
         { role: 'user', content: userBlock },

@@ -4,6 +4,7 @@
  * única camada de proteção contra pedido implícito/incoerente
  * VERSION: v1.3.0 | DATE: 2026-09-02
  */
+import { reasoningParams } from './openaiAgent.util';
 import { env } from '../../config/env';
 import type { AtendimentoInput, AtendimentoResult, RevisaoInput, ConfidenceLevel } from './agentTypes';
 import { getAtendimentoPersona } from './personas/atendimentoPersona';
@@ -88,6 +89,7 @@ async function callAtendimentoOpenAi(
 
   const response = await openai.responses.create({
     model: env.openaiModel,
+    ...reasoningParams(),
     input: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userBlock },
@@ -247,6 +249,7 @@ export async function classifyAtendimento(
     const openai = createOpenAiClient();
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: CLASSIFICACAO_SYSTEM_PROMPT },
         { role: 'user', content: userBlock },

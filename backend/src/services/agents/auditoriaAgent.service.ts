@@ -4,6 +4,7 @@
  * usado em sentido administrativo forçando criticidade máxima sem ameaça real.
  * VERSION: v1.2.0 | DATE: 2026-09-02
  */
+import { reasoningParams } from './openaiAgent.util';
 import { env } from '../../config/env';
 import type {
   AuditDecisao,
@@ -200,6 +201,7 @@ export async function validateAuditoria(params: AuditoriaInput): Promise<Auditor
 
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: getAuditoriaPersona(params.modo) },
         { role: 'user', content: userBlock },

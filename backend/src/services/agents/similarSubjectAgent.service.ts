@@ -2,6 +2,7 @@
  * similarSubjectAgent.service v1.0.0 — compara o assunto da reclamação atual com o histórico
  * de tickets do cliente (por CPF), pra destacar reclamações sobre o mesmo tema.
  */
+import { reasoningParams } from './openaiAgent.util';
 import { env } from '../../config/env';
 import {
   createOpenAiClient,
@@ -76,6 +77,7 @@ export async function findSimilarSubjectTickets(params: {
 
     const response = await openai.responses.create({
       model: env.openaiModel,
+      ...reasoningParams(),
       input: [
         { role: 'system', content: getSimilarSubjectPersona() },
         { role: 'user', content: userBlock },
