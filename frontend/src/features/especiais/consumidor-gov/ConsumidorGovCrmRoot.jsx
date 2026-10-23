@@ -24,6 +24,7 @@ import CgQueuePanel from './CgQueuePanel';
 import CgTicketList from './CgTicketList';
 import CgTicketMain from './CgTicketMain';
 import CgTicketSide from './CgTicketSide';
+import EspeciaisFinalizadosTable from '../shared/EspeciaisFinalizadosTable';
 import { sortOldestFirst } from '../../../services/especiais/especiaisSort';
 import {
   ESPECIAIS_LIST_NARROW_QUERY,
@@ -38,6 +39,10 @@ export default function ConsumidorGovCrmRoot() {
   const { showNotification } = useNotifications();
 
   const [activeGroup, setActiveGroup] = useState(CG_GROUPS[0]?.id || 'vencendo-hoje');
+  // A tela com fila+lista+detalhe só existe na URL com um ticket aberto (/ticket/:id) — não há
+  // rota "sem ticket" pra ela. Por isso a tabela cheia de Finalizados (ver render abaixo) não
+  // pode depender da URL; usa esse estado local em vez disso.
+  const [tableQueueBrowsing, setTableQueueBrowsing] = useState(false);
   const [appliedSearch] = useState('');
   const [listSearchDraft, setListSearchDraft] = useState('');
   const [activeSort, setActiveSort] = useState('data');
@@ -229,8 +234,14 @@ export default function ConsumidorGovCrmRoot() {
   });
 
   const handleSelectItem = useCallback((cgId) => {
+    setTableQueueBrowsing(false);
     navigate(`/especiais/consumidor-gov/ticket/${cgId}`, { replace: true });
   }, [navigate]);
+
+  const handleSelectGroup = useCallback((groupId) => {
+    setActiveGroup(groupId);
+    setTableQueueBrowsing(true);
+  }, []);
 
   const handleTicketUpdated = useCallback((updatedTicket) => {
     setTicket(updatedTicket);
@@ -304,12 +315,22 @@ export default function ConsumidorGovCrmRoot() {
         activeGroup={activeGroup}
         collapsed={queueCollapsed}
         groupCounts={groupCounts}
-        onSelectGroup={setActiveGroup}
+        onSelectGroup={handleSelectGroup}
         onCollapse={() => handleQueueCollapse(true)}
         onExpand={() => handleQueueCollapse(false)}
         onNovaReclamacao={openNovaDemandaFlow}
       />
 
+      {activeGroup === 'finalizadas' && tableQueueBrowsing ? (
+        <EspeciaisFinalizadosTable
+          items={listItems}
+          getProtocol={(item) => item.protocoloGov}
+          onSelectItem={handleSelectItem}
+          onReload={() => setListVersion((v) => v + 1)}
+        />
+      ) : (
+      <>
+      {activeGroup !== 'finalizadas' && (
       <CgTicketList
         activeGroup={activeGroup}
         activeCgId={id}
@@ -326,6 +347,7 @@ export default function ConsumidorGovCrmRoot() {
         onExpand={() => handleListCollapse(false)}
         onReload={() => setListVersion((v) => v + 1)}
       />
+      )}
 
       <CgTicketMain
         cgItem={cgItem}
@@ -366,6 +388,8 @@ export default function ConsumidorGovCrmRoot() {
           ? { onSend: handleSendInitialMessage, busy: initialMessageBusy }
           : null}
       />
+      </>
+      )}
 
       {demandaModals}
     </div>
