@@ -729,9 +729,13 @@ export function getWorkflowProgress(ticket) {
   if (!template?.steps?.length) return null;
 
   const stepIndex = typeof workflow.step === 'number' ? workflow.step : null;
-  const currentStepId = stepIndex != null && template.steps[stepIndex]
-    ? template.steps[stepIndex].id
-    : (workflow.currentStepId || template.defaultActiveStepId);
+  // `workflow.step` é a profundidade do path gravada pelo backend (não o índice do passo no template);
+  // currentStepId é o id real — só cai no índice quando ele não existe no template.
+  const currentStepId = workflow.currentStepId && template.steps.some((s) => s.id === workflow.currentStepId)
+    ? workflow.currentStepId
+    : (stepIndex != null && template.steps[stepIndex]
+      ? template.steps[stepIndex].id
+      : (workflow.currentStepId || template.defaultActiveStepId));
   const currentIndex = template.steps.findIndex((s) => s.id === currentStepId);
   const activeStepIndex = currentIndex >= 0 ? currentIndex : 0;
   const activeStep = template.steps[activeStepIndex];
