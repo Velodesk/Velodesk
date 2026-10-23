@@ -13,7 +13,7 @@ import {
   sendBcWaMessage,
 } from '../../../services/especiais/bacenTicketService';
 
-export default function BcTicketMain({
+function BcTicketMain({
   bcItem,
   ticket,
   loading,
@@ -123,3 +123,5 @@ export default function BcTicketMain({
     />
   );
 }
+
+export default React.memo(BcTicketMain);

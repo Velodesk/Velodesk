@@ -27,7 +27,7 @@ function toDatetimeLocalInput(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function PcTicketSide({
+function PcTicketSide({
   pcItem,
   ticket,
   waChatOpen = false,
@@ -187,3 +187,5 @@ export default function PcTicketSide({
     </aside>
   );
 }
+
+export default React.memo(PcTicketSide);

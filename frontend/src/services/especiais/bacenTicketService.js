@@ -16,6 +16,7 @@ import {
   getDemandaById,
   getDemandaByTicketId,
   mirrorDemandaFromTicket,
+  patchDemanda,
   refreshDemandasFromApi,
   updateDemandaGroupFromTicket,
 } from './bacenStore';
@@ -173,7 +174,12 @@ export async function ensureBcTicketForRespond(bcItem) {
     throw new Error('Demanda inválida.');
   }
 
-  const current = getDemandaById(bcItem.id) || bcItem;
+  let current = getDemandaById(bcItem.id);
+  if (!current) {
+    // item vindo de busca global (fora da lista da API): fixa no cache antes de abrir a visão do ticket
+    patchDemanda(bcItem);
+    current = bcItem;
+  }
 
   if (current.ticketId) {
     const view = await fetchBcTicketView(current.id);

@@ -21,6 +21,28 @@ import {
 } from '../../../services/desk/utils';
 import { saveEspeciaisTicketContact } from './especiaisSaveContact';
 import { formatDateBr } from '../../../utils/dateTimeBr';
+import { useLiveTicket } from '../../../services/especiais/liveTicketStore';
+
+/** Só esta subárvore renderiza quando chega dado novo do ticket aberto (mensagens em tempo real). */
+function LiveTicket({ ticketId, ticket, children }) {
+  const live = useLiveTicket(ticketId, ticket);
+  return children(live);
+}
+
+function LiveWhatsAppChat({ ticketId, ticket, ...props }) {
+  const live = useLiveTicket(ticketId, ticket);
+  const messages = useMemo(() => (live ? buildWhatsAppConvMsgs(live) : []), [live]);
+  return <DeskWhatsAppChat ticket={live} messages={messages} {...props} />;
+}
+
+function LiveConversation({ ticketId, ticket, ...props }) {
+  const live = useLiveTicket(ticketId, ticket);
+  const messages = useMemo(
+    () => collapseWhatsAppThreadToBalloon(live ? buildRegistroThread(live) : []),
+    [live],
+  );
+  return <DeskConversation ticket={live} messages={messages} {...props} />;
+}
 
 export default function EspeciaisDeskTicketView({
   ticket,
@@ -57,21 +79,6 @@ export default function EspeciaisDeskTicketView({
   const { showNotification } = useNotifications();
   const [mainTab, setMainTab] = useState('conversa');
   const [historyOpen, setHistoryOpen] = useState(false);
-
-  const convMsgs = useMemo(
-    () => (ticket ? buildRegistroThread(ticket) : []),
-    [ticket],
-  );
-
-  const waConvMsgs = useMemo(
-    () => (ticket ? buildWhatsAppConvMsgs(ticket) : []),
-    [ticket],
-  );
-
-  const displayMsgs = useMemo(
-    () => collapseWhatsAppThreadToBalloon(convMsgs),
-    [convMsgs],
-  );
 
   const ticketReadOnly = isTicketReadOnly(ticket);
   // Selo = status do ticket (o mesmo do "Enviar como": Em andamento, Pendente, Resolvido,
@@ -180,11 +187,11 @@ export default function EspeciaisDeskTicketView({
         <div className={'crm-conversation-wrap' + (waChatOpen ? ' crm-conversation-wrap--wa' : '')}>
           {mainTab === 'conversa' && waChatOpen ? (
             <div className="tab-panel is-active" data-panel="conversa">
-              <DeskWhatsAppChat
+              <LiveWhatsAppChat
                 key={ticket?.id || ticketId}
+                ticketId={ticket?.id || ticketId}
                 ticket={ticket}
                 client={client}
-                messages={waConvMsgs}
                 composeText={waComposeText}
                 onComposeTextChange={onWaComposeTextChange}
                 onUseIaReply={onWaComposeTextChange}
@@ -213,9 +220,9 @@ export default function EspeciaisDeskTicketView({
                       <strong>{channelConfig.deadlineLabel}</strong>
                     </div>
                   ) : null}
-                  <DeskConversation
+                  <LiveConversation
+                    ticketId={ticket?.id || ticketId}
                     ticket={ticket}
-                    messages={displayMsgs}
                     iaShowBar={false}
                     onOpenWhatsAppChat={onOpenWaChat}
                   />
@@ -241,9 +248,13 @@ export default function EspeciaisDeskTicketView({
                   />
                 </>
               ) : mainTab === 'notas' ? (
-                <DeskInternalNotesPanel ticket={ticket} client={client} />
+                <LiveTicket ticketId={ticket?.id || ticketId} ticket={ticket}>
+                  {(live) => <DeskInternalNotesPanel ticket={live} client={client} />}
+                </LiveTicket>
               ) : mainTab === 'eventos' ? (
-                <DeskEventsPanel ticket={ticket} client={client} />
+                <LiveTicket ticketId={ticket?.id || ticketId} ticket={ticket}>
+                  {(live) => <DeskEventsPanel ticket={live} client={client} />}
+                </LiveTicket>
               ) : (
                 <DeskConsultasPanel
                   ticket={ticket}

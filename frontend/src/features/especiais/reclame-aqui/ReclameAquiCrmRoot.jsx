@@ -24,6 +24,7 @@ import {
 import { isRaInitialMessageAnswered, markRaInitialMessageAnswered } from '../../../services/especiais/raInitialMessagePrompt';
 import { getAgentName } from '../../../services/clientDb';
 import { useEspeciaisTicketCommit } from '../shared/useEspeciaisTicketCommit';
+import { publishLiveTicket } from '../../../services/especiais/liveTicketStore';
 import { useEspeciaisDualSearch } from '../shared/useEspeciaisDualSearch';
 import RaQueuePanel from './RaQueuePanel';
 import RaTicketList from './RaTicketList';
@@ -170,6 +171,39 @@ export default function ReclameAquiCrmRoot() {
     setListPage(1);
   }, [activeGroup, listSearchDraft, isRemoteSearch]);
 
+  // Refresh de fundo nunca deve mexer na tela: só aplica dado novo quando o conteúdo realmente
+  // mudou (mantém a mesma referência senão) e jamais redireciona/limpa o ticket em atendimento.
+  const ticketRef = useRef(null);
+  const raItemRef = useRef(null);
+  const sameData = (a, b) => {
+    if (a === b) return true;
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return false;
+    }
+  };
+
+  // Campos que mudam quando chega mensagem/nota nova: vão só pela store externa (re-render restrito
+  // à lista de mensagens), nunca por setTicket — que re-renderizaria o ticket inteiro.
+  const withoutThread = (tk) => {
+    if (!tk) return tk;
+    const { messages, internalNotes, registroHistorico, updatedAt, ...rest } = tk;
+    return rest;
+  };
+
+  const applyTicket = useCallback((next) => {
+    if (!next) return;
+    const prev = ticketRef.current;
+    publishLiveTicket(next);
+    if (prev && String(prev.id) === String(next.id) && sameData(withoutThread(prev), withoutThread(next))) {
+      ticketRef.current = next;
+      return;
+    }
+    ticketRef.current = next;
+    setTicket(next);
+  }, []);
+
   const reloadTicket = useCallback(async (silent = false) => {
     if (!id) {
       setRaItem(null);
@@ -179,12 +213,14 @@ export default function ReclameAquiCrmRoot() {
       return;
     }
 
-    if (!silent) setTicketLoading(true);
-    setRedirectTo(null);
+    if (!silent) {
+      setTicketLoading(true);
+      setRedirectTo(null);
+    }
     try {
       const view = await fetchRaTicketView(id);
       if (!view?.raItem) {
-        if (!syncedOnceRef.current) {
+        if (silent || !syncedOnceRef.current) {
           // ainda sincronizando com a API — mantém o loading e tenta de novo quando os dados chegarem
           return;
         }
@@ -195,16 +231,20 @@ export default function ReclameAquiCrmRoot() {
         return;
       }
       if (!view.raItem.ticketId) {
+        if (silent) return;
         setTicketLoading(false);
         setRedirectTo(`/especiais/reclame-aqui/registro/${view.raItem.id}`);
         return;
       }
-      setRaItem(view.raItem);
-      setTicket(view.ticket);
-      if (view.raItem.groupKey) {
+      applyTicket(view.ticket);
+      if (!sameData(raItemRef.current, view.raItem)) {
+        raItemRef.current = view.raItem;
+        setRaItem(view.raItem);
+      }
+      if (!silent && view.raItem.groupKey) {
         setActiveGroup(view.raItem.groupKey);
       }
-      if (!silent) setTicketLoading(false);
+      setTicketLoading(false);
     } catch {
       if (silent) return;
       showNotification('Não foi possível carregar o ticket.', 'error');
@@ -212,17 +252,37 @@ export default function ReclameAquiCrmRoot() {
       setTicket(null);
       setTicketLoading(false);
     }
-  }, [id, showNotification]);
+  }, [id, showNotification, applyTicket]);
 
   // listVersion sobe tanto por navegação real (troca de ticket) quanto por sincronizações de
   // fundo (poll do Agente 5, sininhos, salvar/finalizar) — só a primeira precisa do spinner de
   // tela cheia; as demais devem atualizar os dados sem re-exibir "Carregando ticket...".
+  useEffect(() => { ticketRef.current = ticket; }, [ticket]);
+  useEffect(() => { raItemRef.current = raItem; }, [raItem]);
+
   const lastLoadedIdRef = useRef(null);
   useEffect(() => {
     const isSameTicket = lastLoadedIdRef.current === id;
     lastLoadedIdRef.current = id;
     reloadTicket(isSameTicket);
   }, [reloadTicket, listVersion, id]);
+
+  // Tempo real do ticket aberto: puxa o ticket em silêncio; mensagem nova entra pela store externa
+  // (sem re-render do ticket). Pausa com a aba oculta e nunca sobrepõe duas buscas.
+  useEffect(() => {
+    if (!id) return undefined;
+    let busy = false;
+    const timer = setInterval(async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      try {
+        await reloadTicket(true);
+      } finally {
+        busy = false;
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [id, reloadTicket]);
 
   useEffect(() => {
     setWaChatOpen(false);
@@ -252,13 +312,13 @@ export default function ReclameAquiCrmRoot() {
   }), [composeText, internalText, clienteText, composeAttachments, classificacaoDraft]);
 
   const handleCommitSaved = useCallback((result) => {
-    setTicket(result.ticket);
+    applyTicket(result.ticket);
     if (result.channelItem) setRaItem(result.channelItem);
     setListVersion((v) => v + 1);
   }, []);
 
   const handleCommitFinalized = useCallback((result) => {
-    setTicket(result.ticket);
+    applyTicket(result.ticket);
     if (result.channelItem) setRaItem(result.channelItem);
     setActiveGroup('finalizadas');
     setListVersion((v) => v + 1);
@@ -286,7 +346,7 @@ export default function ReclameAquiCrmRoot() {
   }, [navigate]);
 
   const handleTicketUpdated = useCallback((updatedTicket) => {
-    setTicket(updatedTicket);
+    applyTicket(updatedTicket);
     setListVersion((v) => v + 1);
   }, []);
 
@@ -310,7 +370,7 @@ export default function ReclameAquiCrmRoot() {
         agentName: getAgentName(),
       });
       const updated = await sendRaWaMessage(ticketId, text, ticket);
-      if (updated) setTicket(updated);
+      if (updated) applyTicket(updated);
       markRaInitialMessageAnswered(ticketId);
       setInitialMessageAnsweredLocally(true);
       showNotification('Mensagem inicial enviada ao cliente.', 'success');
@@ -346,6 +406,13 @@ export default function ReclameAquiCrmRoot() {
     setListCollapsed(collapsed);
     localStorage.setItem('velodeskRaListCollapsed', collapsed ? '1' : '0');
   }, []);
+
+  const initialMessagePrompt = useMemo(
+    () => (showInitialMessagePrompt
+      ? { onSend: handleSendInitialMessage, busy: initialMessageBusy }
+      : null),
+    [showInitialMessagePrompt, handleSendInitialMessage, initialMessageBusy],
+  );
 
   if (redirectTo) {
     return <Navigate to={redirectTo} replace />;
@@ -422,9 +489,7 @@ export default function ReclameAquiCrmRoot() {
         disabled={readOnly || finalized}
         finalized={finalized}
         onClassificacaoDraftChange={handleClassificacaoDraftChange}
-        initialMessagePrompt={showInitialMessagePrompt
-          ? { onSend: handleSendInitialMessage, busy: initialMessageBusy }
-          : null}
+        initialMessagePrompt={initialMessagePrompt}
       />
 
       {novaModals}

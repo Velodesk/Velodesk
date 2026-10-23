@@ -1,6 +1,7 @@
 /**
- * csatEmail.service v1.4.0 — remove card grande duplicado (usa so a linha compacta)
- * VERSION: v1.4.0 | DATE: 2026-08-24
+ * csatEmail.service v1.5.0 — reserva atômica do envio (CSAT e repescagem) antes de mandar o
+ * e-mail: N instâncias do Cloud Run varrendo a mesma lista não enviam mais em duplicidade
+ * VERSION: v1.5.0 | DATE: 2026-10-22
  */
 import fs from 'fs';
 import path from 'path';
@@ -129,6 +130,61 @@ export function buildCsatStarsHtml(protocolo: string): string {
 </table>`;
 }
 
+function csatInicialReservado(enviadoEm: Date): NonNullable<IChamadoN1['csat']> {
+  return {
+    enviado: true,
+    enviadoEm,
+    nota: null,
+    comentario: '',
+    respondido: false,
+    respondidoEm: null,
+    repescagemEnviada: false,
+    repescagemEnviadaEm: null,
+  };
+}
+
+/**
+ * Marca o envio no próprio ticket, num passo único e condicional ("só marca se ainda não estiver
+ * marcado"): entre N execuções concorrentes, exatamente uma recebe true. A repescagem confere
+ * também `respondido` direto no banco — cliente que avaliou depois da carga da lista não recebe.
+ */
+async function reservarEnvioCsat(chamado: IChamadoN1, isRepescagem: boolean, reservadoEm: Date): Promise<boolean> {
+  const res = isRepescagem
+    ? await ChamadoN1.updateOne(
+        {
+          _id: chamado._id,
+          'csat.enviado': true,
+          'csat.respondido': { $ne: true },
+          'csat.repescagemEnviada': { $ne: true },
+        },
+        { $set: { 'csat.repescagemEnviada': true, 'csat.repescagemEnviadaEm': reservadoEm } },
+      )
+    : await ChamadoN1.updateOne(
+        { _id: chamado._id, 'csat.enviado': { $ne: true } },
+        { $set: { csat: csatInicialReservado(reservadoEm) } },
+      );
+  return res.modifiedCount > 0;
+}
+
+/** Desfaz a reserva quando o e-mail não saiu — o ticket volta pra fila da próxima rodada. */
+async function liberarReservaCsat(chamado: IChamadoN1, isRepescagem: boolean, reservadoEm: Date): Promise<void> {
+  try {
+    if (isRepescagem) {
+      await ChamadoN1.updateOne(
+        { _id: chamado._id, 'csat.repescagemEnviadaEm': reservadoEm },
+        { $set: { 'csat.repescagemEnviada': false, 'csat.repescagemEnviadaEm': null } },
+      );
+    } else {
+      await ChamadoN1.updateOne(
+        { _id: chamado._id, 'csat.enviadoEm': reservadoEm, 'csat.respondido': { $ne: true } },
+        { $set: { 'csat.enviado': false, 'csat.enviadoEm': null } },
+      );
+    }
+  } catch (err) {
+    console.warn('[csatEmail] falha ao liberar reserva:', chamado.chamadoProtocolo, (err as Error).message);
+  }
+}
+
 async function composeAndSendCsatEmail(
   chamado: IChamadoN1,
   opts: { templateNome: string; isRepescagem: boolean },
@@ -200,24 +256,56 @@ async function composeAndSendCsatEmail(
     return;
   }
 
-  const result = await sendOutboundEmail({
-    to,
-    subject,
-    text: assembled.text,
-    html: assembled.html,
-    headers: { messageId },
-    inlineImages: [...assembled.inlineImages, ...starInlineImages],
-  });
+  // Reserva no banco ANTES do envio. Os guards de idempotência acima olham o documento carregado
+  // no início da rodada — que pode ter minutos de idade —, então duas instâncias com a mesma lista
+  // mandavam o mesmo e-mail (incidente de 22/10/2026: 124 clientes com CSAT em dobro/triplo).
+  // Só quem conseguir gravar a reserva envia; quem chegar depois encontra o ticket já reservado.
+  const reservadoEm = new Date();
+  const reservado = await reservarEnvioCsat(chamado, opts.isRepescagem, reservadoEm);
+  if (!reservado) {
+    console.info('[csatEmail] envio pulado — já reservado por outra execução:', protocolo, opts.templateNome);
+    return;
+  }
+
+  let result: Awaited<ReturnType<typeof sendOutboundEmail>>;
+  try {
+    result = await sendOutboundEmail({
+      to,
+      subject,
+      text: assembled.text,
+      html: assembled.html,
+      headers: { messageId },
+      inlineImages: [...assembled.inlineImages, ...starInlineImages],
+    });
+  } catch (err) {
+    await liberarReservaCsat(chamado, opts.isRepescagem, reservadoEm);
+    throw err;
+  }
 
   if (!result.sent) {
+    await liberarReservaCsat(chamado, opts.isRepescagem, reservadoEm);
     console.warn('[csatEmail] não enviado:', opts.templateNome, result.reason);
     return;
   }
 
+  // Reflete a reserva no documento em memória — o job conta `sent` lendo daqui.
+  if (opts.isRepescagem) {
+    chamado.csat!.repescagemEnviada = true;
+    chamado.csat!.repescagemEnviadaEm = reservadoEm;
+  } else {
+    chamado.csat = csatInicialReservado(reservadoEm);
+  }
+
+  // Histórico gravado num documento relido agora, não no carregado no início da rodada: salvar
+  // aquele reescreveria `statusAtual` a partir de um histórico velho (ticket reaberto nesse meio
+  // tempo voltaria a "resolvido") e sobrescreveria `csat` (nota dada logo após o envio).
+  const alvo = await ChamadoN1.findById(chamado._id);
+  if (!alvo) return;
+
   // Registro de auditoria (mesmo padrão de sendTemplateEmail em emailTrigger.service)
-  const status = currentStatus(chamado);
-  if (!chamado.registro) chamado.registro = [];
-  chamado.registro.push({
+  const status = currentStatus(alvo);
+  if (!alvo.registro) alvo.registro = [];
+  alvo.registro.push({
     data: new Date(),
     origin: 'sistema',
     autor: 'e-mail padrão',
@@ -230,27 +318,9 @@ async function composeAndSendCsatEmail(
     status,
   });
 
-  persistOutboundEmailMeta(chamado, messageId, chamado.registro.length - 1);
+  persistOutboundEmailMeta(alvo, messageId, alvo.registro.length - 1);
 
-  // Atualiza subdocumento csat
-  const now = new Date();
-  if (opts.isRepescagem) {
-    chamado.csat!.repescagemEnviada = true;
-    chamado.csat!.repescagemEnviadaEm = now;
-  } else {
-    chamado.csat = {
-      enviado: true,
-      enviadoEm: now,
-      nota: null,
-      comentario: '',
-      respondido: false,
-      respondidoEm: null,
-      repescagemEnviada: false,
-      repescagemEnviadaEm: null,
-    };
-  }
-
-  await chamado.save();
+  await alvo.save();
 
   console.info('[csatEmail] enviado:', {
     protocolo,

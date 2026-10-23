@@ -16,6 +16,7 @@ import {
   getDemandaById,
   getDemandaByTicketId,
   mirrorDemandaFromTicket,
+  patchDemanda,
   refreshDemandasFromApi,
   updateDemandaGroupFromTicket,
 } from './proconStore';
@@ -173,7 +174,12 @@ export async function ensurePcTicketForRespond(pcItem) {
     throw new Error('Demanda inválida.');
   }
 
-  const current = getDemandaById(pcItem.id) || pcItem;
+  let current = getDemandaById(pcItem.id);
+  if (!current) {
+    // item vindo de busca global (fora da lista da API): fixa no cache antes de abrir a visão do ticket
+    patchDemanda(pcItem);
+    current = pcItem;
+  }
 
   if (current.ticketId) {
     const view = await fetchPcTicketView(current.id);

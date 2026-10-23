@@ -13,7 +13,7 @@ import {
   sendPcWaMessage,
 } from '../../../services/especiais/proconTicketService';
 
-export default function PcTicketMain({
+function PcTicketMain({
   pcItem,
   ticket,
   loading,
@@ -123,3 +123,5 @@ export default function PcTicketMain({
     />
   );
 }
+
+export default React.memo(PcTicketMain);

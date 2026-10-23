@@ -14,7 +14,7 @@ import {
   sendRaWaMessage,
 } from '../../../services/especiais/reclameAquiTicketService';
 
-export default function RaTicketMain({
+function RaTicketMain({
   raItem,
   ticket,
   loading,
@@ -155,3 +155,5 @@ export default function RaTicketMain({
     />
   );
 }
+
+export default React.memo(RaTicketMain);
