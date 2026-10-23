@@ -21,6 +21,7 @@ export default function CgTicketMain({
   waChatOpen = false,
   waComposeText = '',
   onWaComposeTextChange,
+  onOpenWaChat,
   onTicketUpdated,
   composeMode,
   onComposeModeChange,
@@ -113,6 +114,7 @@ export default function CgTicketMain({
       waChatOpen={waChatOpen}
       waComposeText={waComposeText}
       onWaComposeTextChange={onWaComposeTextChange}
+      onOpenWaChat={onOpenWaChat}
       onWaSend={handleWaSend}
       onTicketUpdated={onTicketUpdated}
       onSelectHistoryTicket={handleSelectHistoryTicket}

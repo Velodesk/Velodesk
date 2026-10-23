@@ -20,6 +20,7 @@ export default function BcTicketMain({
   waChatOpen = false,
   waComposeText = '',
   onWaComposeTextChange,
+  onOpenWaChat,
   onTicketUpdated,
   composeMode,
   onComposeModeChange,
@@ -107,6 +108,7 @@ export default function BcTicketMain({
       waChatOpen={waChatOpen}
       waComposeText={waComposeText}
       onWaComposeTextChange={onWaComposeTextChange}
+      onOpenWaChat={onOpenWaChat}
       onWaSend={handleWaSend}
       onTicketUpdated={onTicketUpdated}
       onSelectHistoryTicket={handleSelectHistoryTicket}

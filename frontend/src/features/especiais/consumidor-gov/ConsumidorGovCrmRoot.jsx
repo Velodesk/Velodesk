@@ -334,6 +334,7 @@ export default function ConsumidorGovCrmRoot() {
         waChatOpen={waChatOpen}
         waComposeText={waComposeText}
         onWaComposeTextChange={setWaComposeText}
+        onOpenWaChat={handleOpenChat}
         onTicketUpdated={handleTicketUpdated}
         composeMode={composeMode}
         onComposeModeChange={setComposeMode}
