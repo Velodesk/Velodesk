@@ -171,12 +171,12 @@ function digitsOnly(value: string): string {
  * em vez de dígitos puros. Um regex de substring nos dígitos puros não bate contra isso — monta
  * um padrão que tolera qualquer separador não-dígito entre os dígitos do CPF buscado.
  */
-function cpfToleranceRegex(digits: string): string {
+export function cpfToleranceRegex(digits: string): string {
   return digits.split('').map(escapeRegex).join('\\D*');
 }
 
 /** CPF só-dígitos e com máscara — ambos batem no índice cliente_clienteCpf_1 (busca exata). */
-function cpfExactVariants(digits: string): string[] {
+export function cpfExactVariants(digits: string): string[] {
   const d = digits.replace(/\D/g, '');
   if (d.length !== 11) return [d];
   return [d, `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`];

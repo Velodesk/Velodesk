@@ -1,6 +1,7 @@
 /**
- * DeskResolvedTicketTable v1.3.1 — ícone de workflow imediatamente após o título
- * VERSION: v1.3.1 | DATE: 2026-08-20
+ * DeskResolvedTicketTable v1.4.0 — paginação/busca server-side (pagination/search externos),
+ * pra não depender só dos 500 itens do board (ver DeskV2Root)
+ * VERSION: v1.4.0 | DATE: 2026-10-22
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -37,19 +38,28 @@ export default function DeskResolvedTicketTable({
   onSelectTicket,
   onReload,
   refreshing = false,
+  // pagination/search externos — quando presentes, `entries` já é só a página atual, buscada
+  // sob demanda direto do servidor (ver DeskV2Root). Sem isso, a lista inteira ficava limitada
+  // aos 500 itens mais recentes do board (GET /boxes), e páginas além da ~25 vinham em branco
+  // mesmo a contagem real (displayTotal) sendo maior — mesmo padrão já usado em
+  // EspeciaisFinalizadosTable.jsx pro "Finalizados" de Casos Especiais.
+  pagination, // { page, totalPages, totalCount, onPageChange }
+  search, // { query, onChange, onSubmit }
 }) {
-  const [page, setPage] = useState(1);
+  const [internalPage, setInternalPage] = useState(1);
   const [sortField, setSortField] = useState('finalizacao');
   const [sortDir, setSortDir] = useState('desc');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [internalSearchQuery, setInternalSearchQuery] = useState('');
 
+  const searchQuery = search ? search.query : internalSearchQuery;
+  const setSearchQuery = search ? search.onChange : setInternalSearchQuery;
   const localSearchActive = Boolean(searchQuery.trim());
   const searchActive = localSearchActive || externalSearchActive;
   const detectedLabel = getDeskSearchInferredLabel(searchQuery);
 
   const filteredEntries = useMemo(
-    () => filterEntriesByDeskSearch(entries, searchQuery),
-    [entries, searchQuery],
+    () => (search ? entries : filterEntriesByDeskSearch(entries, searchQuery)),
+    [entries, searchQuery, search],
   );
 
   const sortedEntries = useMemo(
@@ -57,22 +67,26 @@ export default function DeskResolvedTicketTable({
     [filteredEntries, sortField, sortDir],
   );
 
-  const total = searchActive
-    ? sortedEntries.length
-    : (typeof displayTotal === 'number' ? displayTotal : sortedEntries.length);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const total = pagination
+    ? pagination.totalCount
+    : (searchActive ? sortedEntries.length : (typeof displayTotal === 'number' ? displayTotal : sortedEntries.length));
+  const totalPages = pagination ? pagination.totalPages : Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const page = pagination ? pagination.page : internalPage;
+  const setPage = pagination ? pagination.onPageChange : setInternalPage;
 
   useEffect(() => {
-    setPage(1);
-  }, [filteredEntries.length, sortField, sortDir, searchActive]);
+    if (pagination) return;
+    setInternalPage(1);
+  }, [filteredEntries.length, sortField, sortDir, searchActive, pagination]);
 
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    if (pagination) return;
+    if (internalPage > totalPages) setInternalPage(totalPages);
+  }, [internalPage, totalPages, pagination]);
 
   const pageStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const pageEnd = Math.min(page * PAGE_SIZE, total);
-  const pageEntries = sortedEntries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pageEntries = pagination ? sortedEntries : sortedEntries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const pageNumbers = buildPageNumbers(page, totalPages);
 
   const handleSortTitulo = () => {
@@ -104,6 +118,12 @@ export default function DeskResolvedTicketTable({
               placeholder="Buscar por CPF ou protocolo…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (search && e.key === 'Enter') {
+                  e.preventDefault();
+                  search.onSubmit?.();
+                }
+              }}
               aria-label="Buscar ticket por CPF ou protocolo"
             />
             <span
@@ -124,7 +144,7 @@ export default function DeskResolvedTicketTable({
               type="button"
               className="desk-resolved-table__page-btn"
               disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
+              onClick={() => setPage(page - 1)}
               aria-label="Página anterior"
             >
               <i className="ti ti-chevron-left" aria-hidden="true" />
@@ -149,7 +169,7 @@ export default function DeskResolvedTicketTable({
               type="button"
               className="desk-resolved-table__page-btn"
               disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
+              onClick={() => setPage(page + 1)}
               aria-label="Próxima página"
             >
               <i className="ti ti-chevron-right" aria-hidden="true" />

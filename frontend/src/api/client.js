@@ -167,6 +167,8 @@ export const uploadsApi = {
 export const boxesApi = {
   list: (params) => api.get('/boxes', { params }).then((r) => r.data),
   queueCounts: (params) => api.get('/boxes/queue-counts', { params }).then((r) => r.data),
+  /** Página sob demanda da fila Resolvidos — sem o teto de 500 itens que GET /boxes usa pro board. */
+  resolvedPage: (params) => api.get('/boxes/resolvidos/page', { params }).then((r) => r.data),
 };
 
 export const agentQueueBoxesApi = {

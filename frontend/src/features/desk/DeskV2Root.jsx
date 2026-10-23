@@ -28,7 +28,6 @@ import {
   pickNextTicketFromEntries,
   resolveDeskWorkingEntries,
   isPendingAiApproval,
-  countByQueue,
   getEntryTicketId,
   isDeskTableQueue,
   isMeusTicketsQueue,
@@ -87,7 +86,7 @@ import {
 } from '../../services/ticketsCache';
 import { apiTicketToCockpit, cockpitTicketToApi } from '../../api/adapters/ticketAdapter';
 import { lookupClient, upsertClientFromContact } from '../../services/clientDb';
-import { agentsApi, aiApprovalsApi, clientsApi, colaboradoresApi, ticketsApi } from '../../api/client';
+import { agentsApi, aiApprovalsApi, boxesApi, clientsApi, colaboradoresApi, ticketsApi } from '../../api/client';
 import { persistClienteContact, applyClienteDocToTicket, mapClienteDocToContact } from '../../api/adapters/clienteAdapter';
 import {
   approveWorkflowDecision,
@@ -494,6 +493,58 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
   const entries = hideComposer ? allWorkingEntries.filter((e) => isIaPending(e.ticket)) : allWorkingEntries;
   const isTableQueueView = isDeskTableQueue(activeQueue);
   const isResolvedQueue = activeQueue === 'resolvidos';
+
+  // "Resolvidos" busca sua página sob demanda direto do servidor (GET /boxes/resolvidos/page) —
+  // a lista geral (`entries`, acima) fica limitada aos 500 tickets mais recentes do board
+  // (BOX_LIST_MAX_ITEMS, por performance), então páginas além da ~25 ficavam em branco mesmo a
+  // contagem real sendo maior. Ver DeskResolvedTicketTable.jsx e o plano dessa mudança.
+  const [resolvedPage, setResolvedPage] = useState(1);
+  const [resolvedSearchQuery, setResolvedSearchQuery] = useState('');
+  const [resolvedSearchApplied, setResolvedSearchApplied] = useState('');
+  const [resolvedPageState, setResolvedPageState] = useState({ items: [], total: 0, loading: false });
+  const resolvedSearchTimerRef = useRef(null);
+  const resolvedPageRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    if (isResolvedQueue) return;
+    setResolvedPage(1);
+    setResolvedSearchQuery('');
+    setResolvedSearchApplied('');
+  }, [isResolvedQueue]);
+
+  useEffect(() => {
+    if (resolvedSearchTimerRef.current) clearTimeout(resolvedSearchTimerRef.current);
+    resolvedSearchTimerRef.current = setTimeout(() => {
+      setResolvedSearchApplied(resolvedSearchQuery.trim());
+    }, 350);
+    return () => clearTimeout(resolvedSearchTimerRef.current);
+  }, [resolvedSearchQuery]);
+
+  useEffect(() => {
+    setResolvedPage(1);
+  }, [resolvedSearchApplied]);
+
+  const reloadResolvedPage = useCallback(() => {
+    if (!isResolvedQueue) return;
+    const requestId = (resolvedPageRequestIdRef.current += 1);
+    setResolvedPageState((prev) => ({ ...prev, loading: true }));
+    boxesApi.resolvedPage({
+      skip: (resolvedPage - 1) * 20,
+      limit: 20,
+      ...(resolvedSearchApplied ? { q: resolvedSearchApplied } : {}),
+    }).then((data) => {
+      if (resolvedPageRequestIdRef.current !== requestId) return;
+      const items = (data?.items || []).map((t) => ({ ticket: apiTicketToCockpit(t), boxId: 'resolvidos' }));
+      setResolvedPageState({ items, total: Number(data?.total) || 0, loading: false });
+    }).catch(() => {
+      if (resolvedPageRequestIdRef.current !== requestId) return;
+      setResolvedPageState((prev) => ({ ...prev, loading: false }));
+    });
+  }, [isResolvedQueue, resolvedPage, resolvedSearchApplied]);
+
+  useEffect(() => {
+    reloadResolvedPage();
+  }, [reloadResolvedPage]);
   const isMyTicketsQueue = isMeusTicketsQueue(activeQueue);
   const myTicketsExpandedSection = parseDeskMyTicketsSectionFromUrl(searchParams.get('section'));
   const entry = useMemo(() => {
@@ -3008,12 +3059,21 @@ export default function DeskV2Root({ hideComposer = false, queueIds = null } = {
               />
             ) : showTableQueueMain && isResolvedQueue ? (
               <DeskResolvedTicketTable
-                entries={entries}
-                searchActive={!!appliedSearch.trim()}
-                displayTotal={countByQueue('resolvidos')}
+                entries={resolvedPageState.items}
                 onSelectTicket={selectTicket}
-                onReload={reload}
-                refreshing={ticketsLoading}
+                onReload={reloadResolvedPage}
+                refreshing={resolvedPageState.loading}
+                pagination={{
+                  page: resolvedPage,
+                  totalPages: Math.max(1, Math.ceil((resolvedPageState.total || 0) / 20)),
+                  totalCount: resolvedPageState.total,
+                  onPageChange: setResolvedPage,
+                }}
+                search={{
+                  query: resolvedSearchQuery,
+                  onChange: setResolvedSearchQuery,
+                  onSubmit: () => setResolvedSearchApplied(resolvedSearchQuery.trim()),
+                }}
               />
             ) : !showTicketMain ? (
               <div className="crm-empty-state" id="crmEmptyMain">Selecione um ticket na lista ao lado</div>
