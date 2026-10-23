@@ -1078,7 +1078,10 @@ export function sortTicketEntries(entries, activeSort, sortDir = 'desc', forceEn
       return (prio[a.ticket.priority] || 9) - (prio[b.ticket.priority] || 9);
     }
     if (activeSort === 'sla') {
-      return (a.ticket.slaRemaining || 999) - (b.ticket.slaRemaining || 999);
+      // Aba SLA = espelho da aba Data: sempre pela data/hora da última mudança de status
+      // (quando entrou em pendente/em-andamento/etc.), mais novo primeiro — não pelo tempo
+      // numérico restante de SLA (isso já aparece no badge/selo de cada ticket).
+      return compareQueueEntryTime(a, b, -1);
     }
     if (activeSort === 'titulo') {
       return dir * getTicketTitle(a.ticket).localeCompare(getTicketTitle(b.ticket), 'pt-BR', { sensitivity: 'base' });
