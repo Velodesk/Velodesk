@@ -1,10 +1,11 @@
 /**
- * DeskMyTicketsTable v1.6.0 — botão de ordenação por entrada na caixa (mais antigos primeiro), igual à lista de tickets
- * VERSION: v1.6.0 | DATE: 2026-10-05
+ * DeskMyTicketsTable v1.6.1 — card de SLA mostra data/hora de entrada na caixa
+ * VERSION: v1.6.1 | DATE: 2026-10-21
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   filterEntriesByDeskSearch,
+  formatTicketQueueEntryDateTime,
   formatTicketSlaRemaining,
   getDeskSearchInferredLabel,
   getSlaClass,
@@ -26,6 +27,7 @@ function renderTicketRows(sectionEntries, onSelectTicket, mergeSelectedIds, onTo
     const slaClass = getSlaClass(ticket);
     const slaLabel = formatTicketSlaRemaining(ticket);
     const slaStatus = SLA_SHORT_LABELS[slaClass] || 'No prazo';
+    const slaEntryLabel = formatTicketQueueEntryDateTime(ticket);
     const workflowIcon = getClient360WorkflowIconMeta(ticket);
     const ticketId = String(ticket.id);
     const selecionavel = isRealTicketId(ticketId);
@@ -70,8 +72,13 @@ function renderTicketRows(sectionEntries, onSelectTicket, mergeSelectedIds, onTo
         </td>
         <td className="desk-my-tickets-table__sla">
           <span className="desk-my-tickets-table__sla-inner">
-            <span className={'desk-my-tickets-table__sla-badge desk-my-tickets-table__sla-badge--' + slaClass}>
-              {slaStatus}
+            <span className="desk-my-tickets-table__sla-top-row">
+              <span className={'desk-my-tickets-table__sla-badge desk-my-tickets-table__sla-badge--' + slaClass}>
+                {slaStatus}
+              </span>
+              {slaEntryLabel ? (
+                <span className="desk-my-tickets-table__sla-entry">{slaEntryLabel}</span>
+              ) : null}
             </span>
             <span className="desk-my-tickets-table__sla-time">{slaLabel}</span>
           </span>

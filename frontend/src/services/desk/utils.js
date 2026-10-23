@@ -1199,6 +1199,13 @@ function filterMyTicketsEntries(searchQuery) {
   });
 }
 
+/** Data/hora de entrada na caixa atual, pro card de SLA de "Meus tickets" (ex.: "21/10 10:52"). */
+export function formatTicketQueueEntryDateTime(ticket) {
+  const iso = getTicketQueueEntryAt(ticket);
+  if (!iso) return '';
+  return `${formatDateBr(iso, { year: false })} ${formatTimeBr(iso)}`;
+}
+
 export function formatTicketSlaRemaining(ticket) {
   normalizeTicketForDeskV2(ticket);
   const remaining = ticket.slaRemaining;
