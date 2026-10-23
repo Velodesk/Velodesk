@@ -11332,6 +11332,7 @@ body.desk-v2-mode #cockpitFocusContext {
 .ticket-print-modal__swatch--publica { background: #E8ECF6; border-color: #C9D3EE; }
 .ticket-print-modal__swatch--interna { background: #FEF3C7; border-color: #F5D565; }
 .ticket-print-modal__swatch--automatica { background: #F3F4F6; border-color: #D1D5DB; }
+.ticket-print-modal__swatch--whatsapp { background: #DCF8E6; border-color: #86DCA6; }
 
 .ticket-print-modal__phase {
     padding: 2px 8px;

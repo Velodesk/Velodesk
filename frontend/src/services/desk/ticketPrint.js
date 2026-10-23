@@ -10,6 +10,7 @@ export const DEFAULT_TICKET_PRINT_OPTIONS = {
   publicas: true,
   internas: true,
   automaticas: true,
+  whatsapp: true,
 };
 
 function writeTab(tab, html) {
@@ -28,7 +29,7 @@ function messagePage(title, message) {
 /**
  * Abre o extrato numa nova aba. Chamar direto no clique. Retorna false se o navegador bloqueou a aba.
  * @param {string} protocolo chamadoProtocolo do ticket
- * @param {{publicas:boolean, internas:boolean, automaticas:boolean}} options
+ * @param {{publicas:boolean, internas:boolean, automaticas:boolean, whatsapp:boolean}} options
  */
 export function openTicketExtract(protocolo, options = DEFAULT_TICKET_PRINT_OPTIONS) {
   if (typeof window === 'undefined') return false;
@@ -40,6 +41,7 @@ export function openTicketExtract(protocolo, options = DEFAULT_TICKET_PRINT_OPTI
     publicas: options.publicas ? '1' : '0',
     internas: options.internas ? '1' : '0',
     autom: options.automaticas ? '1' : '0',
+    wa: options.whatsapp ? '1' : '0',
     detalhe: '0',
     sla: '0',
   };

@@ -1,7 +1,8 @@
 /**
- * chamadoExtrato.service v1.0.0 — extrato do ticket em HTML para impressão (Ctrl+P → Salvar como PDF),
+ * chamadoExtrato.service v1.1.0 — extrato do ticket em HTML para impressão (Ctrl+P → Salvar como PDF),
  * no padrão do Octadesk. Usado em complementos judiciais, auditoria interna e envio de histórico
- * ao cliente. Fase 1: filtros Interações públicas / Anotações internas / Ações automáticas.
+ * ao cliente. Filtros: Interações públicas / Anotações internas / Ações automáticas / Conversa WhatsApp
+ * (cada mensagem do WhatsApp vira uma entrada própria, intercalada por data com o resto do histórico).
  * "Detalhamento das interações" e "Informações de SLA" chegam nas opções mas ainda não são renderizados (Fase 2).
  */
 import { ChamadoN1 } from '../models/ChamadoN1';
@@ -10,11 +11,14 @@ import type { IRegistro } from '../models/shared/registro.schema';
 import { getClienteModel } from '../models/Cliente';
 import { htmlToPlainTextForEmail } from './emailHtml.util';
 import { currentStatus } from './chamado.mapper';
+import { readWhatsAppMensagens, WHATSAPP_THREAD_SOURCE } from './twilio/whatsappThread.service';
 
 export interface ChamadoExtratoOptions {
   incluirPublicas: boolean;
   incluirInternas: boolean;
   incluirAutomaticas: boolean;
+  /** Conversa do WhatsApp, mensagem a mensagem. Desligado = extrato só com as demais interações. */
+  incluirWhatsapp: boolean;
   detalhamento: boolean;
   sla: boolean;
 }
@@ -157,12 +161,15 @@ function renderRegistro(reg: IRegistro, options: ChamadoExtratoOptions, clienteN
   if (!showPublica && !showInterna && !showAutomaticaVazia) return '';
 
   const origin = String(reg.origin ?? '').trim().toLowerCase();
-  const autor = String(reg.autor ?? '').trim()
-    || (origin === 'cliente' ? clienteNome || 'Cliente' : origin === 'sistema' ? 'Sistema' : '—');
+  const quem = origin === 'cliente' ? 'Cliente' : origin === 'sistema' ? 'Sistema' : 'Atendente';
+  // O extrato não identifica o atendente pelo nome — só o papel.
+  const autor = origin === 'cliente'
+    ? String(reg.autor ?? '').trim() || clienteNome || 'Cliente'
+    : quem;
   // Cinza só quando o filtro de ações automáticas está ligado; senão o registro aparece pelo outro tipo.
   const kind = coveredByAutomatica ? 'automatica' : showPublica ? 'publica' : 'interna';
   const kindLabel = kind === 'automatica' ? 'Ação automática' : kind === 'publica' ? 'Interação pública' : 'Anotação interna';
-  const quem = origin === 'cliente' ? 'Cliente' : origin === 'sistema' ? 'Sistema' : 'Atendente';
+  const papel = origin === 'cliente' ? ' <span class="registro__papel">(Cliente)</span>' : '';
 
   const partes: string[] = [];
   if (showPublica) {
@@ -182,11 +189,104 @@ function renderRegistro(reg: IRegistro, options: ChamadoExtratoOptions, clienteN
   return `<article class="registro registro--${kind}">
   <header class="registro__head">
     <span class="registro__tipo">${escapeHtml(kindLabel)}</span>
-    <span class="registro__autor">${escapeHtml(autor)} <span class="registro__papel">(${escapeHtml(quem)})</span></span>
+    <span class="registro__autor">${escapeHtml(autor)}${papel}</span>
     <time class="registro__data">${escapeHtml(formatDateTime(reg.data))}</time>
   </header>
   ${partes.join('\n')}
 </article>`;
+}
+
+const WA_DELIVERY_LABELS: Record<string, string> = {
+  queued: 'Enviando',
+  sent: 'Enviada',
+  delivered: 'Entregue',
+  read: 'Lida',
+  failed: 'Falha na entrega',
+  undelivered: 'Falha na entrega',
+};
+
+/**
+ * Registro que pertence ao WhatsApp: a thread (mensagens em metadados.whatsappMensagens) ou um
+ * registro avulso de formato antigo (channel whatsapp / waFrom). Fica fora do extrato quando o
+ * filtro de WhatsApp está desligado — senão apareceria misturado como interação pública.
+ */
+function isWhatsAppRegistro(reg: IRegistro): boolean {
+  const meta = (reg.metadados ?? {}) as Record<string, unknown>;
+  return String(meta.source ?? '') === WHATSAPP_THREAD_SOURCE
+    || String(meta.channel ?? '').toLowerCase() === 'whatsapp'
+    || Boolean(String(meta.waFrom ?? '').trim());
+}
+
+interface ExtratoEntry {
+  data: number;
+  html: string;
+}
+
+function toTime(value: unknown): number {
+  const t = new Date(value as string).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function renderWhatsAppEntry(input: {
+  data: unknown;
+  origin: string;
+  autor: string;
+  texto: string;
+  anexos: string[];
+  deliveryStatus?: string;
+  transcriptionText?: string;
+}, clienteNome: string): string {
+  const isCliente = input.origin === 'cliente';
+  // O extrato não identifica o atendente pelo nome — só o papel.
+  const autor = isCliente ? input.autor || clienteNome || 'Cliente' : 'Atendente';
+  const status = !isCliente && input.deliveryStatus ? WA_DELIVERY_LABELS[input.deliveryStatus] : '';
+  const texto = input.texto
+    ? `<div class="registro__texto">${escapeHtml(toPlainText(input.texto))}</div>`
+    : '';
+  const transcricao = input.transcriptionText
+    ? `<div class="registro__nota registro__nota--wa"><span class="registro__nota-label">Transcrição do áudio</span><div class="registro__texto">${escapeHtml(input.transcriptionText)}</div></div>`
+    : '';
+  return `<article class="registro registro--whatsapp">
+  <header class="registro__head">
+    <span class="registro__tipo">WhatsApp</span>
+    <span class="registro__autor">${escapeHtml(autor)}${isCliente ? ' <span class="registro__papel">(Cliente)</span>' : ''}</span>
+    ${status ? `<span class="registro__papel">${escapeHtml(status)}</span>` : ''}
+    <time class="registro__data">${escapeHtml(formatDateTime(input.data))}</time>
+  </header>
+  ${texto}${renderAnexos(input.anexos)}${transcricao}
+</article>`;
+}
+
+/** Uma entrada por mensagem do WhatsApp (thread nova ou registro avulso antigo). */
+function whatsAppEntries(reg: IRegistro, clienteNome: string): ExtratoEntry[] {
+  const meta = (reg.metadados ?? {}) as Record<string, unknown>;
+  if (String(meta.source ?? '') === WHATSAPP_THREAD_SOURCE) {
+    return readWhatsAppMensagens(reg).map((msg) => ({
+      data: toTime(msg.data),
+      html: renderWhatsAppEntry({
+        data: msg.data,
+        origin: msg.origin,
+        autor: msg.autor,
+        texto: msg.texto,
+        anexos: msg.anexos,
+        deliveryStatus: msg.deliveryStatus,
+        transcriptionText: msg.transcriptionText,
+      }, clienteNome),
+    }));
+  }
+  const texto = String(reg.mensagemPublica ?? '').trim();
+  const anexos = (reg.anexosMensagemPublica ?? []).filter(Boolean);
+  if (!texto && !anexos.length) return [];
+  return [{
+    data: toTime(reg.data),
+    html: renderWhatsAppEntry({
+      data: reg.data,
+      origin: String(reg.origin ?? '').trim().toLowerCase() === 'cliente' ? 'cliente' : 'agente',
+      autor: String(reg.autor ?? '').trim(),
+      texto,
+      anexos,
+    }, clienteNome),
+  }];
 }
 
 export async function findChamadoForExtrato(protocolo: string): Promise<IChamadoN1> {
@@ -204,19 +304,26 @@ export async function renderChamadoExtrato(
 ): Promise<string> {
   const cliente = await loadClienteResumo(chamado);
   const tab = chamado.tabulacao?.[chamado.tabulacao.length - 1];
-  const protocolo = chamado.chamadoProtocolo || String(chamado._id);
   const clienteNome = cliente.nome || 'Cliente';
   const status = STATUS_LABELS[currentStatus(chamado)] || currentStatus(chamado) || '—';
 
-  const registros = [...(chamado.registro ?? [])]
-    .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime())
-    .map((reg) => renderRegistro(reg, options, clienteNome))
-    .filter(Boolean);
+  const entries: ExtratoEntry[] = [];
+  for (const reg of chamado.registro ?? []) {
+    if (isWhatsAppRegistro(reg)) {
+      if (options.incluirWhatsapp) entries.push(...whatsAppEntries(reg, clienteNome));
+      continue;
+    }
+    const html = renderRegistro(reg, options, clienteNome);
+    if (html) entries.push({ data: toTime(reg.data), html });
+  }
+  // sort estável: empate de horário mantém a ordem original (thread do WhatsApp já vem cronológica)
+  const registros = entries.sort((a, b) => a.data - b.data).map((entry) => entry.html);
 
   const filtros = [
     options.incluirPublicas ? 'Interações públicas' : null,
     options.incluirInternas ? 'Anotações internas' : null,
     options.incluirAutomaticas ? 'Ações automáticas' : null,
+    options.incluirWhatsapp ? 'Conversa WhatsApp' : null,
   ].filter(Boolean).join(' · ') || 'nenhum';
 
   return `<!doctype html>
@@ -224,7 +331,7 @@ export async function renderChamadoExtrato(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(`Extrato ticket ${protocolo} - ${clienteNome}`)}</title>
+<title>${escapeHtml(`Extrato do atendimento - ${clienteNome}`)}</title>
 <style>
   @page { size: A4; margin: 18mm 16mm; }
   * { box-sizing: border-box; }
@@ -250,6 +357,9 @@ export async function renderChamadoExtrato(
   .registro--publica { border-left: 3px solid #8A9BD6; }
   .registro--interna { border-left: 3px solid #E5B700; background: #FFFBEB; }
   .registro--automatica { border-left: 3px solid #9CA3AF; background: #F3F4F6; color: #374151; }
+  .registro--whatsapp { border-left: 3px solid #25D366; background: #F0FBF4; }
+  .registro__nota--wa { background: #fff; border-color: #A7E8BF; }
+  .registro__nota--wa .registro__nota-label { color: #166534; }
   .registro__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 4px; font-size: 10.5px; }
   .registro__tipo { padding: 0 6px; border-radius: 3px; background: rgba(0,0,0,.06); font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #4b5563; }
   .registro__autor { font-weight: 600; color: #111827; }
@@ -271,13 +381,13 @@ export async function renderChamadoExtrato(
 </head>
 <body>
   <div class="barra" role="region" aria-label="Ações do extrato">
-    <div><strong>Extrato do ticket #${escapeHtml(protocolo)}</strong><small>Para gerar o PDF: <kbd>Ctrl</kbd> + <kbd>P</kbd> → destino "Salvar como PDF".</small></div>
+    <div><strong>Extrato do atendimento</strong><small>Para gerar o PDF: <kbd>Ctrl</kbd> + <kbd>P</kbd> → destino "Salvar como PDF".</small></div>
     <button type="button" onclick="window.print()">Imprimir / Salvar PDF</button>
   </div>
   <main class="folha">
     <header class="cabecalho">
       <div>
-        <h1>Extrato do ticket #${escapeHtml(protocolo)}</h1>
+        <h1>Extrato do atendimento</h1>
         <p>${escapeHtml(chamado.chamadoTitulo || '')}</p>
       </div>
       <span class="marca">Velotax · VeloDesk</span>
@@ -296,7 +406,6 @@ export async function renderChamadoExtrato(
       ${field('Produto', tab?.produto)}
       ${field('Motivo', tab?.motivo)}
       ${field('Detalhe', tab?.detalhe)}
-      ${field('Responsável', tab?.responsavel)}
     </section>
 
     <h2>Histórico</h2>

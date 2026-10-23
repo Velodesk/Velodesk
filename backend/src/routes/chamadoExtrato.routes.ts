@@ -33,6 +33,7 @@ router.get('/:protocolo/extrato.html', authMiddleware, async (req: Request, res:
     incluirPublicas: req.query.publicas !== '0',
     incluirInternas: req.query.internas !== '0',
     incluirAutomaticas: req.query.autom !== '0',
+    incluirWhatsapp: req.query.wa !== '0',
     detalhamento: req.query.detalhe === '1',
     sla: req.query.sla === '1',
   };

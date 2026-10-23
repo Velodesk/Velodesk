@@ -12,6 +12,7 @@ const FILTERS = [
   { id: 'publicas', label: 'Resposta Pública', swatch: 'publica' },
   { id: 'internas', label: 'Notas', swatch: 'interna' },
   { id: 'automaticas', label: 'Ações automáticas', swatch: 'automatica' },
+  { id: 'whatsapp', label: 'Conversa WhatsApp', swatch: 'whatsapp' },
 ];
 
 const EXTRAS = [
