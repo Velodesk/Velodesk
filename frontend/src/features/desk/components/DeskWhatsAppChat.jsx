@@ -1,6 +1,6 @@
 /**
- * DeskWhatsAppChat v1.15.1 — microfone de ditado só aparece com o campo em foco
- * VERSION: v1.15.1 | DATE: 2026-10-21
+ * DeskWhatsAppChat v1.16.0 — divisor de data a cada troca de dia (reabertura após 24h) e data/hora no hover da mensagem
+ * VERSION: v1.16.0 | DATE: 2026-10-22
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { uploadsApi } from '../../../api/client';
@@ -10,6 +10,7 @@ import {
   formatWaTime,
   formatWaDateSeparator,
 } from '../../../services/desk/utils';
+import { formatMsgMetaBr, isSameBrDay, parseApiInstant } from '../../../utils/dateTimeBr';
 import {
   attachmentKindIcon,
   attachmentLabelFromUrl,
@@ -23,6 +24,20 @@ import DeskAttachmentPreviewModal from './DeskAttachmentPreviewModal';
 import { compressImageFilesIfNeeded } from '../../../utils/imageCompression.util';
 import VoiceDictationButton from './VoiceDictationButton';
 import { useTextFieldDictationTarget } from '../../../hooks/useTextFieldDictationTarget';
+
+/**
+ * Divisor de data antes da mensagem `i`, como no WhatsApp nativo: na primeira mensagem e
+ * sempre que o dia (horário de Brasília) muda — o que inclui o bloco novo de uma conversa
+ * reaberta depois da janela de 24h. Retorna o ISO a exibir, ou '' se não há divisor.
+ */
+function waDateSeparatorBefore(msgs, i, firstIso) {
+  if (i === 0) return firstIso || '';
+  const ts = msgs[i]?.timestamp;
+  if (!ts || !parseApiInstant(ts)) return '';
+  const prevTs = msgs[i - 1]?.timestamp;
+  if (prevTs && isSameBrDay(prevTs, ts)) return '';
+  return ts;
+}
 
 /** Limite de caracteres por mensagem de texto livre do WhatsApp (Twilio/Meta). */
 export const WA_TEXT_MAX_LENGTH = 1600;
@@ -659,10 +674,6 @@ export default function DeskWhatsAppChat({
           </div>
         )}
 
-        {dateIso && chatMessages.length > 0 && (
-          <div className="wa-chat__date-sep">{formatWaDateSeparator(dateIso)}</div>
-        )}
-
         {chatMessages.length === 0 && !needsInitial ? (
           <div className="crm-empty-state conversation-empty">
             <p>Nenhuma mensagem WhatsApp neste atendimento.</p>
@@ -673,12 +684,17 @@ export default function DeskWhatsAppChat({
             const bubbleClass = msg.type === 'internal'
               ? ' wa-msg__bubble--internal'
               : (isOut ? ' wa-msg__bubble--out' : ' wa-msg__bubble--in');
+            const sepIso = waDateSeparatorBefore(chatMessages, i, dateIso);
             return (
-            <div
-              key={msg.id || i}
-              className={'wa-msg' + (isOut ? ' wa-msg--out' : ' wa-msg--in')}
-            >
-              <div className={'wa-msg__bubble' + bubbleClass}>
+            <React.Fragment key={msg.id || i}>
+            {sepIso && (
+              <div className="wa-chat__date-sep">{formatWaDateSeparator(sepIso)}</div>
+            )}
+            <div className={'wa-msg' + (isOut ? ' wa-msg--out' : ' wa-msg--in')}>
+              <div
+                className={'wa-msg__bubble' + bubbleClass}
+                title={msg.timestamp ? formatMsgMetaBr(msg.timestamp) : undefined}
+              >
                 <WhatsAppMediaAttachments
                   attachments={msg.attachments}
                   contentTypes={msg.mediaContentTypes}
@@ -711,6 +727,7 @@ export default function DeskWhatsAppChat({
                 </span>
               </div>
             </div>
+            </React.Fragment>
             );
           })
         )}
